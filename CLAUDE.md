@@ -94,8 +94,10 @@ Reglas duras (la violación es bloqueante en review):
 5. Los tipos se infieren del schema Drizzle; no se duplican a mano.
 6. Datos de servidor → TanStack Query. Estado de UI → Zustand. Sin mezclar.
 7. `"use client"` lo más abajo posible en el árbol.
-8. Rutas y endpoints de admin protegidos en `middleware.ts` **y** con verificación por código de permiso en el handler (`requirePermission('products.create')`). Comparar nombres de rol en el código (`role === 'admin'`) es hallazgo bloqueante.
-9. `audit_logs` es append-only y se escribe en la misma transacción que la mutación auditada. Sin PII sensible ni secretos en el log.
+8. La autorización vive en el **recurso**, no en el borde. Toda page, layout, Route Handler y Server Function que lea o mute datos protegidos se verifica a sí misma: `await auth()` para la sesión y `requirePermission('products.create')` para el permiso. Un handler bajo `/api/admin/` sin esa verificación es hallazgo bloqueante aunque `proxy.ts` cubra la ruta.
+9. `src/proxy.ts` (Next 16 renombró `middleware.ts` → `proxy.ts`) no lleva lógica de auth: solo `clerkMiddleware()` y su `matcher`. Las rutas son públicas por defecto y el proxy no cuenta como capa de seguridad. La forma exacta de verificar según el tipo de recurso está en §6 de [docs/SETUP.md](docs/SETUP.md).
+10. Comparar nombres de rol en el código (`role === 'admin'`) es hallazgo bloqueante. La verificación es siempre por código de permiso.
+11. `audit_logs` es append-only y se escribe en la misma transacción que la mutación auditada. Sin PII sensible ni secretos en el log.
 
 ---
 
@@ -172,7 +174,7 @@ memoria del modelo se desactualiza.
 | Neon Postgres, conexión serverless, storage | `vercel:vercel-storage` |
 | Variables de entorno, `.env`, claves | `vercel:env-vars` |
 | Clerk — instalación inicial | `clerk-setup` |
-| Clerk — middleware, Server Actions, caché en Next | `clerk-nextjs-patterns` |
+| Clerk — proxy, Server Actions, caché en Next | `clerk-nextjs-patterns` |
 | Clerk — webhooks de sincronización de `users` | `clerk-webhooks` |
 | Clerk — UI de auth a medida, theming | `clerk-custom-ui` |
 | Clerk — operaciones sobre usuarios/orgs desde CLI o API | `clerk-cli`, `clerk-backend-api` |

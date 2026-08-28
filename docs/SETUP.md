@@ -193,7 +193,7 @@ solo enruta y compone; la lógica vive en `modules/` (cliente) y `server/` (dato
     │
     ├── hooks/                   hooks transversales (useDebounce, useMediaQuery)
     ├── types/                   tipos globales compartidos
-    └── middleware.ts            Clerk: rutas públicas vs protegidas vs admin
+    └── proxy.ts                 clerkMiddleware() sin lógica de auth
 ```
 
 ### Convenciones de nombres
@@ -221,7 +221,7 @@ Client Component ──► hook (TanStack Query) ──► service (axios)
                                                      │
                                                      ▼
                                           Route Handler (/api)
-                                             · Clerk auth
+                                             · await auth() + requirePermission()
                                              · validación Zod
                                              · repositorio ──► Drizzle ──► Neon
 ```
@@ -235,6 +235,10 @@ Client Component ──► hook (TanStack Query) ──► service (axios)
 5. Los tipos se **infieren** del schema Drizzle (`InferSelectModel`), no se escriben dos veces.
 6. Datos de servidor → TanStack Query. Estado de UI (carrito local, filtros, sidebar) → Zustand. Sin mezclar.
 7. `"use client"` lo más abajo posible en el árbol. Nunca en un layout que no lo necesita.
+8. La autorización se verifica en el **recurso** que accede a los datos: cada page,
+   layout, Route Handler y Server Function llama a `await auth()` y, cuando aplica,
+   a `requirePermission(<código>)`. `src/proxy.ts` no lleva lógica de auth y no
+   sustituye esa verificación (formas exactas en §6).
 
 ---
 
@@ -264,7 +268,8 @@ El detalle exacto de cada tabla lo define su spec. Precios en **enteros
 **Reglas duras**
 
 1. La verificación se hace siempre por `permission.code`, nunca por nombre de rol
-   quemado en el código (`if (role === 'admin')` es un hallazgo bloqueante).
+   quemado en el código (`if (role === 'admin')` es un hallazgo bloqueante), y corre
+   **dentro del recurso** que accede a los datos, no solo en `proxy.ts`.
 2. Los roles de sistema (`is_system = true`) no se borran ni se renombran desde la UI.
 3. Un usuario sin filas en `user_roles` es `customer` por defecto. Ese default vive
    en un solo lugar del servidor, no repartido por la app.
@@ -341,9 +346,35 @@ gestión de pedidos y cambio de estado · listado de clientes.
 Gestión de accesos: CRUD de roles, matriz rol × permiso, asignación de roles a
 usuarios · bitácora de auditoría filtrable por actor, entidad, acción y fecha.
 
-Acceso admin protegido en dos capas: `middleware.ts` (borde) y verificación por
-**código de permiso** en cada Route Handler bajo `/api/admin/`
-(`requirePermission('products.create')`), nunca por nombre de rol.
+Acceso admin protegido **en el recurso**: cada page, layout y Route Handler bajo
+`/admin` y `/api/admin/` verifica por **código de permiso**
+(`requirePermission('products.create')`), nunca por nombre de rol. Un recurso que
+dependa solo del proxy es hallazgo bloqueante.
+
+`src/proxy.ts` no lleva lógica de autenticación: solo `clerkMiddleware()` y su
+`matcher`, que Clerk sigue necesitando para resolver la sesión. Las rutas son
+públicas por defecto. El motivo lo documentan las dos fuentes:
+
+- Next 16: Proxy no debe usarse como solución completa de gestión de sesión o
+  autorización, y solo debe leer la cookie sin consultar la BD, porque corre en
+  cada request incluidas las prefetch.
+- Clerk 7: `createRouteMatcher` quedó deprecado porque el matching por ruta puede
+  divergir del routing real y dejar recursos alcanzables. Además las Server
+  Functions se invocan por id y no por ruta, así que ningún matcher puede
+  protegerlas.
+
+**Forma exacta de la verificación**, comprobada contra Clerk 7.8.2:
+
+| Recurso | Patrón | Sin sesión |
+|---|---|---|
+| Page / layout | `await auth.protect()` | `307` a `/sign-in?redirect_url=…` |
+| Route Handler | `const { isAuthenticated } = await auth()` + `401` explícito | `401` con `{ message }` |
+| Server Function | `await auth.protect()` | `401` (según la guía de Clerk; no verificado en este repo) |
+
+En un Route Handler **no** se usa `auth.protect()` a secas: redirige con `307` al
+login incluso cuando el cliente manda `Accept: application/json`, y axios acabaría
+leyendo el HTML del formulario. El `401` con `{ message }` es la forma que espera
+el interceptor de `src/lib/axios.ts`.
 
 ---
 
@@ -354,7 +385,8 @@ Acceso admin protegido en dos capas: `middleware.ts` (borde) y verificación por
 - [ ] Proyecto Neon creado y `DATABASE_URL` en `.env.local`
 - [ ] `drizzle.config.ts` apuntando a `src/server/db/schema`
 - [ ] Aplicación Clerk creada y claves en `.env.local`
-- [ ] `middleware.ts` con rutas públicas, protegidas y de admin
+- [ ] `src/proxy.ts` con `clerkMiddleware()` y su `matcher`, sin lógica de auth
+- [ ] Verificación por código de permiso en cada recurso protegido, no solo en el proxy
 - [ ] Webhook de Clerk (`user.created/updated/deleted`) sincronizando `users`
 - [ ] Seed de `permissions` y roles de sistema ejecutado (`npm run db:seed`)
 - [ ] `ClerkProvider` + `QueryProvider` en `src/app/layout.tsx`
