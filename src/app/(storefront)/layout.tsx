@@ -1,6 +1,12 @@
 import type { ReactNode } from 'react';
 
-// Shell de la tienda: header y footer los añade el spec del storefront.
+import { SiteHeader } from '@/components/shared/site-header';
+
 export default function StorefrontLayout({ children }: { children: ReactNode }) {
-  return <div className="flex flex-1 flex-col">{children}</div>;
+  return (
+    <div className="flex flex-1 flex-col">
+      <SiteHeader />
+      <main className="flex-1">{children}</main>
+    </div>
+  );
 }
