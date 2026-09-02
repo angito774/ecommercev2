@@ -1,7 +1,7 @@
 import { Info } from 'lucide-react';
 import type { Metadata } from 'next';
 
-import { requirePermission } from '@/lib/auth';
+import { requirePagePermission } from '@/lib/auth';
 import { RoleMatrix } from '@/modules/roles/components/role-matrix';
 
 export const metadata: Metadata = {
@@ -12,7 +12,7 @@ export const metadata: Metadata = {
 export default async function AdminRolesPage() {
   // El redirect del layout no exime a la página: cada recurso se verifica a sí
   // mismo (CLAUDE.md regla 8).
-  await requirePermission('roles.read');
+  await requirePagePermission('roles.read');
 
   return (
     <div className="mx-auto w-full max-w-5xl space-y-6">

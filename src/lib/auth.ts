@@ -1,6 +1,7 @@
 import { cache } from 'react';
 
 import { auth, currentUser } from '@clerk/nextjs/server';
+import { forbidden } from 'next/navigation';
 
 import { can, ForbiddenError, type PermissionCode } from '@/lib/permissions';
 import { db } from '@/server/db';
@@ -81,7 +82,23 @@ export async function requireAuth(): Promise<User> {
   return user;
 }
 
+// Para Route Handlers. Lanza a propósito: `toErrorResponse()` de api-guard traduce
+// el ForbiddenError al 403 con `{ message }` del contrato, y lanzar hace imposible
+// ignorar el resultado por descuido.
 export async function requirePermission(code: PermissionCode): Promise<void> {
   const granted = await getEffectivePermissions();
   if (!can(granted, code)) throw new ForbiddenError(code);
+}
+
+// Para pages y layouts. Misma verificación, distinto final: `forbidden()` corta el
+// render y devuelve el 403 de `src/app/forbidden.tsx`, mientras que lanzar el
+// ForbiddenError en un Server Component lo dejaba sin capturar y sacaba la pantalla
+// de error de Next —no hay `error.tsx` en el árbol—, que no distingue "no tienes
+// permiso" de "la aplicación se rompió".
+//
+// No se unifican las dos: `forbidden()` señaliza a través del router de Next y en un
+// Route Handler no produciría el JSON que espera el interceptor de axios.
+export async function requirePagePermission(code: PermissionCode): Promise<void> {
+  const granted = await getEffectivePermissions();
+  if (!can(granted, code)) forbidden();
 }

@@ -26,7 +26,7 @@ export default async function AdminLayout({ children }: LayoutProps<'/admin'>) {
 
   // Comodidad, no frontera de seguridad: evita que `employee`, `customer` y quien
   // aún no tiene rol vean un shell vacío. La frontera real es el
-  // `requirePermission()` de cada page y el 401/403 de cada handler, porque la API
+  // `requirePagePermission()` de cada page y el 401/403 de cada handler, porque la API
   // es alcanzable sin atravesar ningún layout (CLAUDE.md regla 8).
   const granted = await getEffectivePermissions();
   if (granted.size === 0) redirect('/');

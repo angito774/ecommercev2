@@ -365,16 +365,32 @@ públicas por defecto. El motivo lo documentan las dos fuentes:
 
 **Forma exacta de la verificación**, comprobada contra Clerk 7.8.2:
 
-| Recurso | Patrón | Sin sesión |
-|---|---|---|
-| Page / layout | `await auth.protect()` | `307` a `/sign-in?redirect_url=…` |
-| Route Handler | `const { isAuthenticated } = await auth()` + `401` explícito | `401` con `{ message }` |
-| Server Function | `await auth.protect()` | `401` (según la guía de Clerk; no verificado en este repo) |
+| Recurso | Sesión | Permiso | Sin sesión | Con sesión y sin permiso |
+|---|---|---|---|---|
+| Page / layout | `await auth.protect()` | `await requirePagePermission(<código>)` | `307` a `/sign-in?redirect_url=…` | `403` con `src/app/forbidden.tsx` |
+| Route Handler | `const { isAuthenticated } = await auth()` + `401` explícito | `await authorize(<código>)` | `401` con `{ message }` | `403` con `{ message }` |
+| Server Function | `await auth.protect()` | — | `401` (según la guía de Clerk; no verificado en este repo) | — |
 
 En un Route Handler **no** se usa `auth.protect()` a secas: redirige con `307` al
 login incluso cuando el cliente manda `Accept: application/json`, y axios acabaría
 leyendo el HTML del formulario. El `401` con `{ message }` es la forma que espera
 el interceptor de `src/lib/axios.ts`.
+
+Las dos comprobaciones de permiso son distintas a propósito y **no se unifican**:
+
+- `requirePagePermission()` (pages y layouts) llama a `forbidden()` de
+  `next/navigation`, que corta el render y devuelve `403` con el boundary
+  `src/app/forbidden.tsx`. Requiere `experimental.authInterrupts: true` en
+  `next.config.ts`; sin ese flag, `forbidden()` lanza en tiempo de ejecución.
+- `requirePermission()` (Route Handlers, vía `authorize()`) lanza `ForbiddenError`,
+  que `toErrorResponse()` traduce al `403` con `{ message }` del contrato.
+  `forbidden()` aquí no serviría: señaliza a través del router de Next y no produce
+  el JSON que espera el interceptor.
+
+Verificado en este repo con una página sonda: `forbidden()` devuelve `403` y
+renderiza el boundary, tanto en `next dev` como en el build de producción. El HTML
+inicial llega vacío y el contenido entra por el payload RSC al hidratar —
+comprobado en navegador, la página se ve.
 
 ---
 

@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
 
-import { requirePermission } from '@/lib/auth';
+import { requirePagePermission } from '@/lib/auth';
 import { UsersTable } from '@/modules/users/components/users-table';
 
 export const metadata: Metadata = {
@@ -11,7 +11,7 @@ export const metadata: Metadata = {
 export default async function AdminUsersPage() {
   // El redirect del layout no exime a la página: cada recurso se verifica a sí
   // mismo (CLAUDE.md regla 8).
-  await requirePermission('users.read');
+  await requirePagePermission('users.read');
 
   return (
     <div className="mx-auto w-full max-w-5xl space-y-6">

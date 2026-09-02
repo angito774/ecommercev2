@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
 
-import { requirePermission } from '@/lib/auth';
+import { requirePagePermission } from '@/lib/auth';
 import { AuditLogsTable } from '@/modules/audit/components/audit-logs-table';
 
 export const metadata: Metadata = {
@@ -11,7 +11,7 @@ export const metadata: Metadata = {
 export default async function AdminAuditLogsPage() {
   // El redirect del layout no exime a la página: cada recurso se verifica a sí
   // mismo (CLAUDE.md regla 8).
-  await requirePermission('audit_logs.read');
+  await requirePagePermission('audit_logs.read');
 
   return (
     <div className="mx-auto w-full max-w-6xl space-y-6">
