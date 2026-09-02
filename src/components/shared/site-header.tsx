@@ -12,13 +12,16 @@ export function SiteHeader() {
           {APP_NAME}
         </Link>
 
+        {/* Sin enlaces a /products ni /orders: esas rutas no existen todavía
+            —productos es la Fase 2 y pedidos no está en ningún spec— y un enlace
+            que lleva a la página de "no encontrada" es peor que no tenerlo.
+            Vuelven cuando exista el catálogo. */}
         <nav className="text-muted-foreground hidden gap-4 text-sm sm:flex">
-          <Link href="/products" className="hover:text-foreground transition-colors">
-            Productos
-          </Link>
-          <Link href="/orders" className="hover:text-foreground transition-colors">
-            Pedidos
-          </Link>
+          <Show when="signed-in">
+            <Link href="/admin/categories" className="hover:text-foreground transition-colors">
+              Administración
+            </Link>
+          </Show>
         </nav>
 
         <div className="ml-auto flex items-center gap-2">
