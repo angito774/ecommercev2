@@ -380,16 +380,22 @@ el interceptor de `src/lib/axios.ts`.
 
 ## 7. Checklist de arranque
 
-- [ ] `create-next-app` ejecutado con las flags de la sección 2
-- [ ] Dependencias instaladas
+- [x] `create-next-app` ejecutado con las flags de la sección 2
+- [x] Dependencias instaladas
 - [ ] Proyecto Neon creado y `DATABASE_URL` en `.env.local`
-- [ ] `drizzle.config.ts` apuntando a `src/server/db/schema`
-- [ ] Aplicación Clerk creada y claves en `.env.local`
-- [ ] `src/proxy.ts` con `clerkMiddleware()` y su `matcher`, sin lógica de auth
-- [ ] Verificación por código de permiso en cada recurso protegido, no solo en el proxy
+- [x] `drizzle.config.ts` apuntando a `src/server/db/schema`
+- [x] Aplicación Clerk creada y claves en `.env.local`
+- [x] `src/proxy.ts` con `clerkMiddleware()` y su `matcher`, sin lógica de auth
+- [x] Verificación por código de permiso en cada recurso protegido, no solo en el proxy
 - [ ] Webhook de Clerk (`user.created/updated/deleted`) sincronizando `users`
 - [ ] Seed de `permissions` y roles de sistema ejecutado (`npm run db:seed`)
-- [ ] `ClerkProvider` + `QueryProvider` en `src/app/layout.tsx`
-- [ ] `shadcn init` ejecutado y componentes base agregados
-- [ ] Estructura de carpetas de la sección 3 creada
-- [ ] `npm run typecheck`, `npm run lint` y `npm run build` en verde
+- [x] `ClerkProvider` + `QueryProvider` en `src/app/layout.tsx`
+- [x] `shadcn init` ejecutado y componentes base agregados
+- [x] Estructura de carpetas de la sección 3 creada
+- [x] `npm run typecheck`, `npm run lint` y `npm run build` en verde
+
+Los tres ítems sin marcar dependen de una base de datos: `DATABASE_URL` sigue
+vacía, así que el seed no se ha ejecutado y el webhook —cuyo código sí está
+escrito y compila, en `src/app/api/webhooks/clerk/route.ts`— no se ha registrado
+en el dashboard de Clerk ni se ha visto sincronizar una fila. Se marcan cuando
+corran de verdad, no cuando exista el código (spec 002, T21).

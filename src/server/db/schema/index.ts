@@ -1,3 +1,9 @@
 // Barrel de tablas. Cada spec que introduzca una tabla la exporta desde aquí;
 // drizzle-kit lee este directorio completo para generar migraciones.
-export {};
+export { auditLogs, auditSeverity } from './audit-log';
+export { categories } from './category';
+export { permissions } from './permission';
+export { rolePermissions } from './role-permission';
+export { roles } from './role';
+export { userRoles } from './user-role';
+export { USER_TEXT_LENGTHS, users } from './user';
