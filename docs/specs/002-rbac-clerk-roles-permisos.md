@@ -949,11 +949,35 @@ aparición que pedía CLAUDE.md §6 no llegó a existir.
   recorrido de los 18 criterios de aceptación con un usuario por rol queda
   pendiente por la misma razón que T61.
 
-**Bloqueante único para cerrar el spec: `DATABASE_URL` está vacía en `.env.local`.**
-Sin proyecto Neon no hay `npm run db:migrate` ni `npm run db:seed`, y sin seed no
-existen ni los 6 roles ni los 11 permisos, así que ninguna vista del panel puede
-resolver un conjunto de permisos no vacío. Todo lo que no depende de eso está
-hecho y compila.
+**Corrección del 2026-09-02.** Una redacción anterior de este párrafo afirmaba
+que `DATABASE_URL` estaba vacía y que por eso no se había migrado ni sembrado.
+Era falso: la base existe, tiene las 2 migraciones aplicadas y está sembrada. La
+comprobación, hecha leyendo la base directamente:
+
+| Tabla | Filas | Contraste |
+|---|---|---|
+| `categories` | 7 | seed del spec 001, una inactiva (`tablets`) |
+| `permissions` | 11 | idénticos a `PERMISSIONS` |
+| `roles` | 6 | idénticos a `ROLE_DEFINITIONS`; elevados: `admin`, `super_admin` |
+| `role_permissions` | 31 | coincide rol a rol con `ROLE_PERMISSION_MATRIX` |
+| `users` · `user_roles` · `audit_logs` | 0 | — |
+
+**Lo que realmente bloquea el cierre son dos huecos operativos, no de código:**
+
+1. **No existe ninguna cuenta con permisos.** `users` está a 0 y
+   `SEED_SUPER_ADMIN_EMAIL` no está definida en `.env.local`, así que el
+   bootstrap del `super_admin` del seed nunca se ejecutó. Cualquiera que se
+   registre resuelve el conjunto vacío y el layout lo manda a `/` — correcto,
+   pero deja el panel inaccesible y con él T61, T64 y los criterios de
+   aceptación que exigen un usuario por rol. Secuencia para desbloquearlo:
+   registrarse desde la web (el upsert JIT de `getCurrentUser()` crea la fila
+   espejo en la primera petición autenticada), poner ese correo en
+   `SEED_SUPER_ADMIN_EMAIL` y volver a ejecutar `npm run db:seed`, que es
+   idempotente (AC16).
+2. **`CLERK_WEBHOOK_SIGNING_SECRET` está vacía** y el endpoint no está
+   registrado en el dashboard de Clerk, así que T21 sigue sin poder verificarse.
+
+Todo lo demás está hecho y compila.
 
 ## 10. Riesgos y consideraciones
 

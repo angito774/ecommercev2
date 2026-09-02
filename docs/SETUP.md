@@ -382,20 +382,31 @@ el interceptor de `src/lib/axios.ts`.
 
 - [x] `create-next-app` ejecutado con las flags de la sección 2
 - [x] Dependencias instaladas
-- [ ] Proyecto Neon creado y `DATABASE_URL` en `.env.local`
+- [x] Proyecto Neon creado y `DATABASE_URL` en `.env.local`
 - [x] `drizzle.config.ts` apuntando a `src/server/db/schema`
 - [x] Aplicación Clerk creada y claves en `.env.local`
 - [x] `src/proxy.ts` con `clerkMiddleware()` y su `matcher`, sin lógica de auth
 - [x] Verificación por código de permiso en cada recurso protegido, no solo en el proxy
 - [ ] Webhook de Clerk (`user.created/updated/deleted`) sincronizando `users`
-- [ ] Seed de `permissions` y roles de sistema ejecutado (`npm run db:seed`)
+- [x] Seed de `permissions` y roles de sistema ejecutado (`npm run db:seed`)
 - [x] `ClerkProvider` + `QueryProvider` en `src/app/layout.tsx`
 - [x] `shadcn init` ejecutado y componentes base agregados
 - [x] Estructura de carpetas de la sección 3 creada
 - [x] `npm run typecheck`, `npm run lint` y `npm run build` en verde
 
-Los tres ítems sin marcar dependen de una base de datos: `DATABASE_URL` sigue
-vacía, así que el seed no se ha ejecutado y el webhook —cuyo código sí está
-escrito y compila, en `src/app/api/webhooks/clerk/route.ts`— no se ha registrado
-en el dashboard de Clerk ni se ha visto sincronizar una fila. Se marcan cuando
-corran de verdad, no cuando exista el código (spec 002, T21).
+Estado comprobado contra la base el 2026-09-02: 2 migraciones aplicadas, 7
+categorías, 11 permisos, 6 roles y 31 filas de `role_permissions`, que coinciden
+exactamente con `PERMISSIONS`, `ROLE_DEFINITIONS` y `ROLE_PERMISSION_MATRIX` de
+`src/lib/permissions.ts`.
+
+El único ítem sin marcar es el webhook: su código está escrito y compila
+(`src/app/api/webhooks/clerk/route.ts`), pero `CLERK_WEBHOOK_SIGNING_SECRET`
+está vacía en `.env.local` y el endpoint no se ha registrado en el dashboard de
+Clerk, así que nunca se le ha visto sincronizar una fila. Se marca cuando corra
+de verdad, no cuando exista el código (spec 002, T21).
+
+Pendiente operativo, no de código: `users` y `user_roles` están a 0 filas y
+`SEED_SUPER_ADMIN_EMAIL` no está definida, así que **todavía no hay ninguna
+cuenta con permisos**. Hasta que alguien se registre y el seed le conceda
+`super_admin`, todo `/admin/**` redirige a `/` incluso con sesión iniciada, que
+es el comportamiento correcto y no un fallo.
