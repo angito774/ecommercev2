@@ -134,7 +134,7 @@ el panel.
   borrado**.
 - [ ] **AC15** — Dado un usuario con `roles.read` en `/admin/roles`, entonces ve la
   matriz de 6 roles × 11 permisos en modo lectura, sin controles de escritura.
-- [ ] **AC16** — Dado `SEED_SUPER_ADMIN_EMAIL` apuntando a un email ya presente en
+- [x] **AC16** — Dado `SEED_SUPER_ADMIN_EMAIL` apuntando a un email ya presente en
   `users`, cuando se ejecuta `npm run db:seed` dos veces seguidas, entonces ese
   usuario queda con rol `super_admin` y la segunda ejecución no duplica filas ni
   falla.
@@ -962,20 +962,34 @@ comprobación, hecha leyendo la base directamente:
 | `role_permissions` | 31 | coincide rol a rol con `ROLE_PERMISSION_MATRIX` |
 | `users` · `user_roles` · `audit_logs` | 0 | — |
 
-**Lo que realmente bloquea el cierre son dos huecos operativos, no de código:**
+**Bootstrap del `super_admin` resuelto el 2026-09-02.** La cuenta ya existía en
+Clerk (alta por Google, correo primario verificado) pero no tenía fila en
+`users`: el upsert JIT de `getCurrentUser()` solo dispara al entrar en
+`/admin/**`, y nunca se había entrado. Se creó la fila espejo llamando al mismo
+`userRepository.upsertFromClerk()` dentro de una transacción, con los datos
+leídos de la Backend API de Clerk y usando **solo el correo primario**, para no
+divergir del camino automático. Después, `npm run db:seed`:
 
-1. **No existe ninguna cuenta con permisos.** `users` está a 0 y
-   `SEED_SUPER_ADMIN_EMAIL` no está definida en `.env.local`, así que el
-   bootstrap del `super_admin` del seed nunca se ejecutó. Cualquiera que se
-   registre resuelve el conjunto vacío y el layout lo manda a `/` — correcto,
-   pero deja el panel inaccesible y con él T61, T64 y los criterios de
-   aceptación que exigen un usuario por rol. Secuencia para desbloquearlo:
-   registrarse desde la web (el upsert JIT de `getCurrentUser()` crea la fila
-   espejo en la primera petición autenticada), poner ese correo en
-   `SEED_SUPER_ADMIN_EMAIL` y volver a ejecutar `npm run db:seed`, que es
-   idempotente (AC16).
-2. **`CLERK_WEBHOOK_SIGNING_SECRET` está vacía** y el endpoint no está
-   registrado en el dashboard de Clerk, así que T21 sigue sin poder verificarse.
+- Primera pasada: *"rol otorgado a nelson.nc421@gmail.com"*.
+- Segunda pasada seguida: *"ya lo tenía"*, sin insertar ni fallar. **AC16
+  verificado.**
+
+Resultado comprobado leyendo la base: `user_roles` con `super_admin`, el join
+real resolviendo **11 permisos de 11**, y `audit_logs` con su primera entrada
+—`user.roles_changed`, severidad `warning`, `actor_id` nulo porque el actor es
+el seed, `changes.before.roleSlugs = []` → `after = ['super_admin']`,
+`metadata.source = 'db:seed'`—, escrita en la misma transacción que la concesión
+(regla 11 de CLAUDE.md).
+
+**Queda abierto:**
+
+1. **`CLERK_WEBHOOK_SIGNING_SECRET` está vacía** y el endpoint no está
+   registrado en el dashboard de Clerk, así que T21, AC7 y AC17 siguen sin poder
+   verificarse.
+2. **T61 y T64 necesitan una cuenta por rol.** Con el `super_admin` ya operativo,
+   las otras cinco se crean desde `/admin/users` con el diálogo de invitación, en
+   vez de a mano contra la base — pero eso depende del correo de invitación, que
+   a su vez es más cómodo con el webhook registrado.
 
 Todo lo demás está hecho y compila.
 

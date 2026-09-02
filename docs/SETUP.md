@@ -405,8 +405,9 @@ está vacía en `.env.local` y el endpoint no se ha registrado en el dashboard d
 Clerk, así que nunca se le ha visto sincronizar una fila. Se marca cuando corra
 de verdad, no cuando exista el código (spec 002, T21).
 
-Pendiente operativo, no de código: `users` y `user_roles` están a 0 filas y
-`SEED_SUPER_ADMIN_EMAIL` no está definida, así que **todavía no hay ninguna
-cuenta con permisos**. Hasta que alguien se registre y el seed le conceda
-`super_admin`, todo `/admin/**` redirige a `/` incluso con sesión iniciada, que
-es el comportamiento correcto y no un fallo.
+Bootstrap del `super_admin` completado el 2026-09-02: `SEED_SUPER_ADMIN_EMAIL`
+apunta a la cuenta de Clerk `nelsonnina`, su fila espejo existe en `users` y
+`user_roles` le concede `super_admin`. El join real resuelve los 11 permisos de
+11, así que `/admin/**` ya abre. La concesión dejó su entrada en `audit_logs`
+(`user.roles_changed`, `actor_id` nulo porque el actor es el seed,
+`metadata.source = 'db:seed'`), que es la primera fila que tiene la tabla.
