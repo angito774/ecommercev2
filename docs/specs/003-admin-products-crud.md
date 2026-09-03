@@ -381,14 +381,26 @@ Lo verificado en esta fase, contra la base y la API reales con una sesión de
 **T25 queda abierta**, y con ella tres criterios, porque los tres necesitan algo
 que no se puede fabricar sin tocar datos ajenos:
 
-- **AC14 y AC15** exigen una segunda cuenta con un rol sin `products.*` (un
-  `audit`, y un `manager` para el caso contrario). La instancia de Clerk de la
-  aplicación tiene otra cuenta, pero es de otra persona: iniciar sesión con ella o
-  cambiarle los roles no procede. La alternativa —degradar temporalmente al único
-  `super_admin`— arriesga dejar el panel sin acceso a mitad de la comprobación.
-  Lo que sí está verificado por separado: la matriz en base coincide con el
-  catálogo rol a rol (T6), `forbidden()` devuelve `403` renderizado (spec 002), y
-  `meta.canCreate/canUpdate/canDelete` viaja resuelto desde el servidor.
+- **AC14 no es alcanzable con la matriz actual, y eso es un hallazgo, no una
+  excusa.** Se comprobó recorriendo el catálogo: **cero** roles llegan a `/admin`
+  sin `products.read`. Los cuatro que abren el panel —`super_admin`, `admin`,
+  `manager` y `audit`— lo tienen; `employee` y `customer` resuelven el conjunto
+  vacío y el layout los redirige a `/` antes de que la página llegue a ejecutarse.
+  Es decir, el `403` de `/admin/products` es **profundidad defensiva**, no un
+  estado que hoy pueda producir ningún usuario real: existe porque CLAUDE.md
+  regla 8 exige que cada recurso se verifique a sí mismo aunque el layout ya haya
+  filtrado, y porque un rol futuro sin `products.read` lo volvería alcanzable de
+  inmediato. El mecanismo sí está verificado por separado: `forbidden()` devuelve
+  un `403` renderizado, comprobado con una página sonda en `next dev` y en el
+  build de producción (spec 002).
+- **AC15 ya es comprobable**: existe una cuenta con rol `audit`
+  (`sistemasyadah@gmail.com`, invitada el 2026-09-02 y con el rol asignado desde
+  `/admin/users`). Falta abrir `/admin/products` con **su** sesión y confirmar que
+  ve la tabla sin el botón Crear y sin la columna de acciones. No se hizo desde
+  aquí porque la sesión es de otra persona. Lo que sí está verificado:
+  `meta.canCreate/canUpdate/canDelete` viaja resuelto desde el servidor, y
+  `getProductColumns()` ni siquiera añade la columna de acciones cuando ambos son
+  falsos.
 - **AC6** (autocompletado del slug al teclear el nombre) es puramente de
   interfaz. Se comprobó que el diálogo de edición **no** reescribe el slug, que es
   la mitad que puede fallar en silencio; la mitad de creación quedó sin teclear
