@@ -3,7 +3,12 @@ import { NextResponse } from 'next/server';
 import { authorize, badRequest, parseJsonBody, toErrorResponse } from '@/lib/api-guard';
 import { getAuditContext, logAudit } from '@/lib/audit';
 import { PRODUCT_CONFLICT_MESSAGES } from '@/modules/products/constants';
-import { productIdSchema, updateProductSchema } from '@/modules/products/schemas/product.schema';
+import {
+  COMPARE_AT_PRICE_MESSAGE,
+  isValidComparePrice,
+  productIdSchema,
+  updateProductSchema,
+} from '@/modules/products/schemas/product.schema';
 import { db } from '@/server/db';
 import * as productRepository from '@/server/repositories/product.repository';
 
@@ -44,7 +49,8 @@ export async function GET(_request: Request, context: Context) {
 type UpdateOutcome =
   | { kind: 'ok'; product: Awaited<ReturnType<typeof productRepository.update>> }
   | { kind: 'not-found' }
-  | { kind: 'invalid-category' };
+  | { kind: 'invalid-category' }
+  | { kind: 'invalid-compare-price' };
 
 export async function PATCH(request: Request, context: Context) {
   try {
@@ -67,6 +73,15 @@ export async function PATCH(request: Request, context: Context) {
         return { kind: 'invalid-category' };
       }
 
+      // El invariante precio anterior > precio actual es cruzado, y un PATCH puede
+      // traer solo uno de los dos campos: se comprueba sobre la fila resultante
+      // —lo que ya hay en la tabla más lo que llega—, no sobre el cuerpo suelto.
+      // `updateProductSchema` no puede hacerlo por ser parcial (spec 004, C-4).
+      const merged = { ...before, ...body.data };
+      if (!isValidComparePrice(merged.priceCents, merged.compareAtPriceCents)) {
+        return { kind: 'invalid-compare-price' };
+      }
+
       const after = await productRepository.update(tx, parsedId.data, body.data);
       if (!after) return { kind: 'not-found' };
 
@@ -84,6 +99,7 @@ export async function PATCH(request: Request, context: Context) {
 
     if (outcome.kind === 'not-found') return NextResponse.json(NOT_FOUND, { status: 404 });
     if (outcome.kind === 'invalid-category') return badRequest(CATEGORY_NOT_FOUND_MESSAGE);
+    if (outcome.kind === 'invalid-compare-price') return badRequest(COMPARE_AT_PRICE_MESSAGE);
 
     return NextResponse.json(outcome.product);
   } catch (error) {

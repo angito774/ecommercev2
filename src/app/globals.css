@@ -47,6 +47,28 @@
   --radius-2xl: calc(var(--radius) * 1.8);
   --radius-3xl: calc(var(--radius) * 2.2);
   --radius-4xl: calc(var(--radius) * 2.6);
+
+  /* Tokens propios del storefront. Van con prefijo `nx-` porque no tienen
+     equivalente en shadcn; los semánticos de shadcn se remapean más abajo, solo
+     dentro de [data-surface="storefront"], para no repintar el panel (AC18). */
+  --color-nx-sunken: var(--nx-sunken);
+  --color-nx-inset: var(--nx-inset);
+  --color-nx-faint: var(--nx-faint);
+  --color-nx-line: var(--nx-border-strong);
+  --color-nx-accent-2: var(--nx-accent-2);
+  --color-nx-accent-soft: var(--nx-accent-soft);
+  --color-nx-on-accent: var(--nx-on-accent);
+  --color-nx-glass: var(--nx-glass);
+  --color-nx-glass-border: var(--nx-glass-border);
+  --color-nx-sale: var(--nx-sale);
+  --color-nx-new: var(--nx-new);
+  --color-nx-hot: var(--nx-hot);
+  --color-nx-ok: var(--nx-ok);
+
+  /* El namespace de fuentes de Tailwind es `--font-*`, así que las claves no
+     pueden llamarse igual que las variables de next/font o se autorreferencian. */
+  --font-nx-display: var(--font-display);
+  --font-nx-body: var(--font-body);
 }
 
 :root {
@@ -127,5 +149,334 @@
   }
   html {
     @apply font-sans;
+  }
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   STOREFRONT — identidad Nexbyte (docs/design/src/styles.css)
+
+   Todo lo de aquí abajo cuelga de [data-surface="storefront"]. El panel de
+   administración no lleva ese atributo, así que conserva la paleta neutra de
+   shadcn intacta (spec 004, D-10 y AC18).
+   ══════════════════════════════════════════════════════════════════════════ */
+
+[data-surface='storefront'] {
+  --background: #fafafc;
+  --foreground: #0b0b12;
+  --card: #ffffff;
+  --card-foreground: #0b0b12;
+  --popover: #ffffff;
+  --popover-foreground: #0b0b12;
+  --primary: #6d5ef8;
+  --primary-foreground: #ffffff;
+  --secondary: #f0f0f5;
+  --secondary-foreground: #0b0b12;
+  --muted: #f5f5f9;
+  --muted-foreground: #565669;
+  --accent: #eeecfe;
+  --accent-foreground: #5b4be8;
+  --destructive: #ff4d6d;
+  --border: rgb(11 11 18 / 9%);
+  --input: rgb(11 11 18 / 16%);
+  --ring: #6d5ef8;
+  --radius: 1rem;
+
+  --nx-sunken: #f0f0f5;
+  --nx-inset: #f5f5f9;
+  --nx-faint: #8c8ca0;
+  --nx-border-strong: rgb(11 11 18 / 16%);
+  --nx-accent-hover: #5b4be8;
+  --nx-accent-2: #0e9ebc;
+  --nx-accent-soft: rgb(109 94 248 / 10%);
+  --nx-on-accent: #ffffff;
+  --nx-glass: rgb(255 255 255 / 75%);
+  --nx-glass-border: rgb(11 11 18 / 7%);
+  --nx-sale: #ff4d6d;
+  --nx-new: #b8f04a;
+  --nx-hot: #ffb020;
+  --nx-ok: #4f8b00;
+  --nx-orb-1: rgb(109 94 248 / 28%);
+  --nx-orb-2: rgb(34 211 238 / 24%);
+  --nx-grid-line: rgb(11 11 18 / 4.5%);
+  --nx-art-bg: linear-gradient(150deg, #eeeef6 0%, #e4e4f2 100%);
+  --nx-art-body: #26263a;
+  --nx-art-body-2: #4c4c68;
+  --nx-art-detail: #6d5ef8;
+  --nx-art-glass: #b9b9ce;
+  --nx-shadow-md: 0 10px 28px -10px rgb(11 11 18 / 16%);
+  --nx-shadow-lg: 0 30px 72px -24px rgb(11 11 18 / 26%);
+  --nx-shadow-accent: 0 14px 40px -14px rgb(109 94 248 / 45%);
+
+  background-color: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-body), ui-sans-serif, system-ui, sans-serif;
+  /* AC17: ni los orbes del hero ni las tarjetas flotantes ni el marquee pueden
+     provocar scroll horizontal en 390 px. Cada uno ya está contenido, pero esto lo
+     garantiza también para lo que se añada después. */
+  overflow-x: hidden;
+}
+
+/* Foco visible en los controles que no son de shadcn —chips de filtro, disparador
+   de búsqueda, enlaces del marquee y del footer—, que no heredan el anillo de
+   `Button`. Solo `:focus-visible`, para no marcarlos al hacer clic con el ratón. */
+[data-surface='storefront'] :is(a, button):focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 3px;
+  border-radius: 6px;
+}
+
+.dark [data-surface='storefront'] {
+  --background: #0a0a0f;
+  --foreground: #f5f5fa;
+  --card: #131320;
+  --card-foreground: #f5f5fa;
+  --popover: #131320;
+  --popover-foreground: #f5f5fa;
+  --primary: #8b7eff;
+  --primary-foreground: #0a0a0f;
+  --secondary: #1b1b2c;
+  --secondary-foreground: #f5f5fa;
+  --muted: #101019;
+  --muted-foreground: #9e9eb8;
+  --accent: #1e1b36;
+  --accent-foreground: #a79cff;
+  --destructive: #ff4d6d;
+  --border: rgb(255 255 255 / 9%);
+  --input: rgb(255 255 255 / 18%);
+  --ring: #8b7eff;
+
+  --nx-sunken: #07070b;
+  --nx-inset: #101019;
+  --nx-faint: #6e6e88;
+  --nx-border-strong: rgb(255 255 255 / 18%);
+  --nx-accent-hover: #a79cff;
+  --nx-accent-2: #22d3ee;
+  --nx-accent-soft: rgb(139 126 255 / 14%);
+  --nx-on-accent: #0a0a0f;
+  --nx-glass: rgb(16 16 26 / 70%);
+  --nx-glass-border: rgb(255 255 255 / 8%);
+  --nx-ok: #b8f04a;
+  --nx-orb-1: rgb(109 94 248 / 40%);
+  --nx-orb-2: rgb(34 211 238 / 28%);
+  --nx-grid-line: rgb(255 255 255 / 4.5%);
+  --nx-art-bg: linear-gradient(150deg, #1b1b2c 0%, #111119 100%);
+  --nx-art-body: #e9e9f4;
+  --nx-art-body-2: #a9a9c6;
+  --nx-art-detail: #8b7eff;
+  --nx-art-glass: #5a5a78;
+  --nx-shadow-md: 0 12px 32px -12px rgb(0 0 0 / 65%);
+  --nx-shadow-lg: 0 36px 84px -28px rgb(0 0 0 / 85%);
+  --nx-shadow-accent: 0 16px 46px -14px rgb(109 94 248 / 62%);
+}
+
+/* Los overlays de Radix (Dialog, Sheet, Command) se portan a document.body por
+   el portal, fuera del div con data-surface. Sin esto heredarían la paleta
+   neutra del admin y el buscador se vería de otro color que la tienda. */
+body:has([data-surface='storefront']) [data-slot='dialog-overlay'],
+body:has([data-surface='storefront']) [data-slot='dialog-content'],
+body:has([data-surface='storefront']) [data-slot='sheet-overlay'],
+body:has([data-surface='storefront']) [data-slot='sheet-content'] {
+  --background: #fafafc;
+  --foreground: #0b0b12;
+  --card: #ffffff;
+  --popover: #ffffff;
+  --primary: #6d5ef8;
+  --primary-foreground: #ffffff;
+  --secondary: #f0f0f5;
+  --secondary-foreground: #0b0b12;
+  --muted: #f5f5f9;
+  --muted-foreground: #565669;
+  --accent: #eeecfe;
+  --accent-foreground: #5b4be8;
+  --border: rgb(11 11 18 / 9%);
+  --input: rgb(11 11 18 / 16%);
+  --ring: #6d5ef8;
+  --radius: 1rem;
+  --nx-sunken: #f0f0f5;
+  --nx-faint: #8c8ca0;
+  --nx-art-bg: linear-gradient(150deg, #eeeef6 0%, #e4e4f2 100%);
+  --nx-art-body: #26263a;
+  --nx-art-body-2: #4c4c68;
+  --nx-art-detail: #6d5ef8;
+  --nx-art-glass: #b9b9ce;
+  --nx-ok: #4f8b00;
+  --nx-sale: #ff4d6d;
+  background-color: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-body), ui-sans-serif, system-ui, sans-serif;
+}
+
+.dark body:has([data-surface='storefront']) [data-slot='dialog-content'],
+.dark body:has([data-surface='storefront']) [data-slot='sheet-content'] {
+  --background: #0a0a0f;
+  --foreground: #f5f5fa;
+  --card: #131320;
+  --popover: #131320;
+  --primary: #8b7eff;
+  --primary-foreground: #0a0a0f;
+  --secondary: #1b1b2c;
+  --secondary-foreground: #f5f5fa;
+  --muted: #101019;
+  --muted-foreground: #9e9eb8;
+  --accent: #1e1b36;
+  --accent-foreground: #a79cff;
+  --border: rgb(255 255 255 / 9%);
+  --input: rgb(255 255 255 / 18%);
+  --ring: #8b7eff;
+  --nx-sunken: #07070b;
+  --nx-faint: #6e6e88;
+  --nx-art-bg: linear-gradient(150deg, #1b1b2c 0%, #111119 100%);
+  --nx-art-body: #e9e9f4;
+  --nx-art-body-2: #a9a9c6;
+  --nx-art-detail: #8b7eff;
+  --nx-art-glass: #5a5a78;
+  --nx-ok: #b8f04a;
+}
+
+/* Titulares en Space Grotesk, texto en Inter. Solo dentro del scope. */
+[data-surface='storefront'] :is(h1, h2, h3, h4),
+body:has([data-surface='storefront']) :is([data-slot='dialog-title'], [data-slot='sheet-title']) {
+  font-family: var(--font-display), ui-sans-serif, system-ui, sans-serif;
+  letter-spacing: -0.032em;
+}
+
+/* Utilidades de token: valores que no son un color plano y por tanto no pueden
+   viajar como clase de Tailwind. */
+.nx-art-surface {
+  background: var(--nx-art-bg);
+}
+
+.nx-art .nx-a1 {
+  fill: var(--nx-art-body);
+}
+.nx-art .nx-a2 {
+  fill: var(--nx-art-body-2);
+}
+.nx-art .nx-a3 {
+  fill: var(--nx-art-detail);
+}
+.nx-art .nx-a4 {
+  fill: var(--nx-art-glass);
+}
+.nx-art .nx-as {
+  fill: none;
+  stroke: var(--nx-art-body);
+}
+
+.nx-glass-panel {
+  background: var(--nx-glass);
+  border-color: var(--nx-glass-border);
+  backdrop-filter: blur(18px) saturate(1.6);
+  -webkit-backdrop-filter: blur(18px) saturate(1.6);
+}
+
+.nx-grid-bg {
+  background-image:
+    linear-gradient(var(--nx-grid-line) 1px, transparent 1px),
+    linear-gradient(90deg, var(--nx-grid-line) 1px, transparent 1px);
+  background-size: 64px 64px;
+  mask-image: radial-gradient(ellipse 80% 60% at 50% 32%, #000 20%, transparent 78%);
+  -webkit-mask-image: radial-gradient(ellipse 80% 60% at 50% 32%, #000 20%, transparent 78%);
+}
+
+.nx-orb {
+  border-radius: 50%;
+  filter: blur(90px);
+}
+.nx-orb-a {
+  background: var(--nx-orb-1);
+}
+.nx-orb-b {
+  background: var(--nx-orb-2);
+}
+
+.nx-shadow-md {
+  box-shadow: var(--nx-shadow-md);
+}
+.nx-shadow-lg {
+  box-shadow: var(--nx-shadow-lg);
+}
+.nx-shadow-accent {
+  box-shadow: var(--nx-shadow-accent);
+}
+
+.nx-fade-x {
+  mask-image: linear-gradient(90deg, transparent, #000 12%, #000 88%, transparent);
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 12%, #000 88%, transparent);
+}
+
+.nx-grad-text {
+  background: linear-gradient(
+    96deg,
+    var(--primary) 0%,
+    var(--nx-accent-2) 50%,
+    var(--primary) 100%
+  );
+  background-size: 200% 100%;
+  background-clip: text;
+  -webkit-background-clip: text;
+  color: transparent;
+  animation: nx-sheen 9s linear infinite;
+}
+
+/* El marquee y la barra de avisos son @keyframes y no Motion a propósito: un
+   bucle infinito en JS ocupa el hilo principal toda la sesión (spec 004, D-4). */
+.nx-marquee-track {
+  animation: nx-slide 34s linear infinite;
+}
+.nx-marquee-track-fast {
+  animation: nx-slide 22s linear infinite;
+}
+
+@keyframes nx-slide {
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+@keyframes nx-sheen {
+  to {
+    background-position: -200% 0;
+  }
+}
+
+@keyframes nx-ping {
+  100% {
+    transform: scale(3.2);
+    opacity: 0;
+  }
+}
+
+.nx-pulse::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: inherit;
+  animation: nx-ping 2s ease-out infinite;
+}
+
+/* AC16: con reduced-motion no queda ninguna animación en marcha y el contenido
+   se ve en su estado final. */
+@media (prefers-reduced-motion: reduce) {
+  .nx-marquee-track,
+  .nx-marquee-track-fast,
+  .nx-grad-text {
+    animation: none;
+  }
+
+  /* `animation: none` dejaría el halo del pulso congelado como un punto sólido en
+     su estado inicial, que es peor que no tenerlo. Se retira del todo. */
+  .nx-pulse::after {
+    display: none;
+  }
+
+  /* `Reveal` emite `opacity:0; transform:translateY(18px)` como estilo inline desde
+     el servidor, porque allí no se conoce la preferencia del usuario. Sin esta
+     regla el contenido revelado por scroll saldría invisible y en su estado
+     inicial. `!important` es obligatorio: compite contra un estilo inline. */
+  [data-reveal] {
+    opacity: 1 !important;
+    transform: none !important;
   }
 }

@@ -22,3 +22,10 @@ export const categoryKeys = {
   lists: () => [...categoryKeys.all, 'list'] as const,
   list: (params: CategoryQueryParams) => [...categoryKeys.lists(), params] as const,
 };
+
+// Espacio propio, igual que `catalogKeys` en productos: el listado público y el del
+// panel no comparten ni endpoint ni proyección.
+export const catalogCategoryKeys = {
+  all: ['catalog-categories'] as const,
+  list: () => [...catalogCategoryKeys.all, 'list'] as const,
+};

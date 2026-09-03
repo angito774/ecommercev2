@@ -25,6 +25,10 @@ export const products = pgTable(
     // `<input>` del formulario y en el formateo de la celda; entre medias es un
     // entero. `0.1 + 0.2 !== 0.3` y un catálogo acumula ese error.
     priceCents: integer('price_cents').notNull(),
+    // Precio anterior (PVP) en céntimos. Sin default y nullable a propósito: la
+    // ausencia es significativa, `NULL` significa "sin descuento" y es lo que
+    // apaga el precio tachado, el badge −N % y la sección de ofertas (spec 004, D-8).
+    compareAtPriceCents: integer('compare_at_price_cents'),
     stock: integer('stock').notNull().default(0),
     // Ficha técnica como pares clave/valor. Una tabla aparte no aporta nada
     // mientras nadie consulte *por* especificación, y `jsonb` evita una migración

@@ -1,7 +1,8 @@
-import { and, asc, count, desc, eq, ilike, type SQL } from 'drizzle-orm';
+import { and, asc, count, desc, eq, gt, ilike, type SQL } from 'drizzle-orm';
 
+import type { CatalogCategory } from '@/modules/categories/types/catalog-category.types';
 import { db, type Reader, type Tx } from '@/server/db';
-import { categories } from '@/server/db/schema';
+import { categories, products } from '@/server/db/schema';
 
 type Category = typeof categories.$inferSelect;
 type NewCategory = typeof categories.$inferInsert;
@@ -55,6 +56,37 @@ export async function findMany(params: CategoryListParams): Promise<CategoryList
 
   return { data, total: totals?.value ?? 0 };
 }
+
+// ── Catálogo público ────────────────────────────────────────────────────────
+
+// Categorías activas con al menos un producto publicable. El `HAVING` es lo que
+// evita que la tienda ofrezca un filtro que lleva a una rejilla vacía: una
+// categoría sin productos activos no es navegable, así que no se anuncia (AC4).
+export async function findPublicWithCounts(): Promise<CatalogCategory[]> {
+  return db
+    .select({
+      id: categories.id,
+      name: categories.name,
+      slug: categories.slug,
+      description: categories.description,
+      imageUrl: categories.imageUrl,
+      productCount: count(products.id),
+    })
+    .from(categories)
+    // `innerJoin` y no `leftJoin`: con el join interno las categorías sin producto
+    // publicable ya desaparecen, y el HAVING solo tiene que cubrir el caso de que
+    // la condición del join cambie en el futuro.
+    .innerJoin(
+      products,
+      and(eq(products.categoryId, categories.id), eq(products.isActive, true)),
+    )
+    .where(eq(categories.isActive, true))
+    .groupBy(categories.id)
+    .having(gt(count(products.id), 0))
+    .orderBy(asc(categories.name));
+}
+
+// ── Administración ──────────────────────────────────────────────────────────
 
 // `reader` por defecto es el `db` global; PATCH y DELETE le pasan su `tx` para que
 // el `before` de la bitácora se lea dentro de la misma transacción que el UPDATE.

@@ -1,3 +1,4 @@
+import type { CatalogQueryInput } from './schemas/catalog.schema';
 import type { ProductQueryParams } from './schemas/product.schema';
 
 export const DEFAULT_PAGE_SIZE = 10;
@@ -32,3 +33,25 @@ export const productKeys = {
   lists: () => [...productKeys.all, 'list'] as const,
   list: (params: ProductQueryParams) => [...productKeys.lists(), params] as const,
 };
+
+// Espacio de claves separado del de administración: las dos listas salen de
+// endpoints distintos y con proyecciones distintas, así que una invalidación del
+// panel no debe tocar el caché de la tienda ni al revés.
+export const catalogKeys = {
+  all: ['catalog'] as const,
+  lists: () => [...catalogKeys.all, 'list'] as const,
+  list: (params: CatalogQueryInput) => [...catalogKeys.lists(), params] as const,
+};
+
+// Tamaño de la primera página del catálogo. Lo comparten la lectura inicial del
+// Server Component y el hook: si divergieran, la clave de `initialData` no
+// coincidiría con la de la primera consulta del cliente y habría un refetch
+// inmediato (AC8).
+export const CATALOG_PAGE_SIZE = 12;
+
+// Cuántos resultados muestra el overlay de búsqueda.
+export const CATALOG_SEARCH_LIMIT = 6;
+
+// Alineado con el `s-maxage=60` de los endpoints públicos: no tiene sentido que el
+// cliente considere rancio un dato que el borde todavía sirve como fresco.
+export const CATALOG_STALE_TIME_MS = 60 * 1000;

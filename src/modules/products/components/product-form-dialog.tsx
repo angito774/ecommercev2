@@ -54,6 +54,7 @@ const EMPTY_VALUES: ProductFormValues = {
   description: null,
   imageUrl: null,
   price: '',
+  compareAtPrice: null,
   stock: 0,
   specs: [],
   categoryId: '',
@@ -70,6 +71,8 @@ function toFormValues(product: ProductWithCategory | null): ProductFormValues {
     description: product.description,
     imageUrl: product.imageUrl,
     price: fromCents(product.priceCents),
+    compareAtPrice:
+      product.compareAtPriceCents === null ? null : fromCents(product.compareAtPriceCents),
     stock: product.stock,
     specs: Object.entries(product.specs ?? {}).map(([key, value]) => ({ key, value })),
     categoryId: product.categoryId,
@@ -142,8 +145,13 @@ function ProductForm({
   const specs = useFieldArray({ control, name: 'specs' });
 
   const onSubmit = handleSubmit(async (values) => {
-    const { price, specs: specRows, ...rest } = values;
-    const payload = { ...rest, priceCents: toCents(price), specs: specsToRecord(specRows) };
+    const { price, compareAtPrice, specs: specRows, ...rest } = values;
+    const payload = {
+      ...rest,
+      priceCents: toCents(price),
+      compareAtPriceCents: compareAtPrice === null ? null : toCents(compareAtPrice),
+      specs: specsToRecord(specRows),
+    };
 
     try {
       if (isEdit) {
@@ -248,7 +256,7 @@ function ProductForm({
           <FieldError errors={[formState.errors.slug]} />
         </Field>
 
-        <div className="grid gap-4 sm:grid-cols-2">
+        <div className="grid gap-4 sm:grid-cols-3">
           <Field data-invalid={Boolean(formState.errors.price)}>
             <FieldLabel htmlFor="product-price">Precio (S/)</FieldLabel>
             <Input
@@ -261,6 +269,22 @@ function ProductForm({
             />
             <FieldDescription>Hasta dos decimales.</FieldDescription>
             <FieldError errors={[formState.errors.price]} />
+          </Field>
+
+          <Field data-invalid={Boolean(formState.errors.compareAtPrice)}>
+            <FieldLabel htmlFor="product-compare-at-price">Precio anterior (S/)</FieldLabel>
+            <Input
+              id="product-compare-at-price"
+              inputMode="decimal"
+              placeholder="1499.00"
+              autoComplete="off"
+              aria-invalid={Boolean(formState.errors.compareAtPrice)}
+              {...register('compareAtPrice', { setValueAs: emptyToNull })}
+            />
+            <FieldDescription>
+              Opcional. Si lo rellenas, la tienda muestra el precio tachado y el descuento.
+            </FieldDescription>
+            <FieldError errors={[formState.errors.compareAtPrice]} />
           </Field>
 
           <Field data-invalid={Boolean(formState.errors.stock)}>

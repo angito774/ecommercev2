@@ -1,0 +1,300 @@
+<!doctype html>
+<html lang="es" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Nexbyte — Diseños mobile</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#08080C; --panel:#111119; --line:rgba(255,255,255,.09); --line-2:rgba(255,255,255,.16);
+  --tx:#F5F5FA; --tx-mut:#9E9EB8; --tx-fnt:#6E6E88;
+  --acc:#8B7EFF; --acc-2:#22D3EE; --acc-soft:rgba(139,126,255,.14);
+  --lime:#B8F04A; --rose:#FF4D6D; --amber:#FFB020;
+  --r:16px; --ease:cubic-bezier(.22,1,.36,1);
+}
+[data-theme="light"]{
+  --bg:#F4F4F8; --panel:#FFFFFF; --line:rgba(11,11,18,.10); --line-2:rgba(11,11,18,.18);
+  --tx:#0B0B12; --tx-mut:#565669; --tx-fnt:#8C8CA0;
+  --acc:#6D5EF8; --acc-2:#0E9EBC; --acc-soft:rgba(109,94,248,.10);
+}
+*,*::before,*::after{box-sizing:border-box}*{margin:0;padding:0}
+body{font-family:Inter,system-ui,sans-serif;background:var(--bg);color:var(--tx);
+  line-height:1.6;-webkit-font-smoothing:antialiased;transition:background-color .4s var(--ease),color .4s var(--ease)}
+h1,h2,h3{font-family:"Space Grotesk",sans-serif;font-weight:600;letter-spacing:-.032em;line-height:1.08}
+ul{list-style:none} a{color:inherit;text-decoration:none} button{font:inherit;color:inherit;background:none;border:none;cursor:pointer}
+.wrap{max-width:1340px;margin-inline:auto;padding-inline:clamp(20px,4vw,40px)}
+.tnum{font-variant-numeric:tabular-nums}
+
+/* ── header ── */
+.top{position:sticky;top:0;z-index:20;background:color-mix(in srgb,var(--bg) 78%,transparent);
+  backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border-bottom:1px solid var(--line)}
+.top-in{display:flex;align-items:center;gap:16px;height:66px}
+.logo{display:flex;align-items:center;gap:10px;font-family:"Space Grotesk",sans-serif;font-weight:700;font-size:18px;letter-spacing:-.04em}
+.logo svg{border-radius:9px}
+.tag{font-size:11px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--acc);
+  background:var(--acc-soft);padding:5px 11px;border-radius:99px}
+.top-actions{margin-left:auto;display:flex;align-items:center;gap:8px}
+.seg{display:flex;padding:3px;border:1px solid var(--line);border-radius:99px;background:var(--panel)}
+.seg button{padding:7px 15px;border-radius:99px;font-size:13px;font-weight:550;color:var(--tx-mut);transition:.25s var(--ease)}
+.seg button[aria-pressed="true"]{background:var(--tx);color:var(--bg)}
+.lnk{display:inline-flex;align-items:center;gap:7px;height:38px;padding-inline:16px;border-radius:99px;
+  border:1px solid var(--line-2);font-size:13.5px;font-weight:550;transition:.25s}
+.lnk:hover{border-color:var(--acc);color:var(--acc);background:var(--acc-soft)}
+
+/* ── hero ── */
+.intro{padding:clamp(40px,6vw,72px) 0 clamp(28px,4vw,44px)}
+.eyebrow{font-size:11.5px;font-weight:600;letter-spacing:.16em;text-transform:uppercase;color:var(--tx-fnt);
+  display:inline-flex;align-items:center;gap:9px;margin-bottom:16px}
+.eyebrow::before{content:"";width:22px;height:1px;background:var(--acc)}
+.intro h1{font-size:clamp(32px,5vw,54px);margin-bottom:18px}
+.intro h1 em{font-style:normal;background:linear-gradient(96deg,var(--acc),var(--acc-2));
+  -webkit-background-clip:text;background-clip:text;color:transparent}
+.intro p{color:var(--tx-mut);max-width:62ch;font-size:16px}
+.meta{display:flex;gap:10px;flex-wrap:wrap;margin-top:26px}
+.pill{display:inline-flex;align-items:center;gap:7px;height:32px;padding-inline:14px;border-radius:99px;
+  border:1px solid var(--line);font-size:12.5px;color:var(--tx-mut);background:var(--panel)}
+.pill i{width:6px;height:6px;border-radius:50%;background:var(--lime);font-style:normal}
+
+/* ── frames ── */
+.screens{padding-bottom:clamp(48px,7vw,90px)}
+.frame-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:clamp(24px,3vw,40px)}
+.screen{display:flex;flex-direction:column;gap:16px}
+.screen-hd{display:flex;align-items:flex-start;gap:12px}
+.screen-n{flex:none;width:28px;height:28px;display:grid;place-items:center;border-radius:9px;
+  background:var(--acc-soft);color:var(--acc);font-size:12.5px;font-weight:700;font-variant-numeric:tabular-nums}
+.screen-hd h3{font-size:17px}
+.screen-hd p{font-size:13px;color:var(--tx-fnt);margin-top:3px;line-height:1.5}
+
+/* carcasa del teléfono */
+.phone{position:relative;width:100%;max-width:340px;margin-inline:auto;
+  aspect-ratio:390/844;padding:11px;border-radius:44px;
+  background:linear-gradient(160deg,#3A3A4E,#16161F 55%,#2A2A38);
+  box-shadow:0 40px 80px -30px rgba(0,0,0,.85),0 0 0 1px rgba(255,255,255,.08) inset;}
+[data-theme="light"] .phone{background:linear-gradient(160deg,#D9D9E4,#B4B4C6 55%,#CFCFDC);
+  box-shadow:0 34px 70px -28px rgba(11,11,18,.4),0 0 0 1px rgba(255,255,255,.6) inset}
+.phone::after{ /* notch */
+  content:"";position:absolute;top:19px;left:50%;transform:translateX(-50%);
+  width:29%;height:26px;border-radius:99px;background:#0A0A0F;z-index:3;pointer-events:none}
+.phone-screen{position:relative;width:100%;height:100%;border-radius:34px;overflow:hidden;background:#0A0A0F;
+  box-shadow:0 0 0 1px rgba(0,0,0,.6)}
+.phone-screen iframe{position:absolute;top:0;left:0;width:390px;height:844px;border:0;
+  transform-origin:0 0;background:transparent}
+/* botones laterales */
+.phone i.btn-l,.phone i.btn-r{position:absolute;width:3px;border-radius:99px;background:rgba(255,255,255,.14)}
+.phone i.btn-l{left:-2px;top:22%;height:7%} .phone i.btn-r{right:-2px;top:28%;height:12%}
+
+.screen-ft{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;
+  padding-top:2px;border-top:1px solid var(--line);margin-top:2px;padding-top:12px}
+.chips{display:flex;gap:6px;flex-wrap:wrap}
+.chip{font-size:11px;font-weight:550;padding:4px 10px;border-radius:99px;
+  border:1px solid var(--line);color:var(--tx-fnt)}
+.open{font-size:12.5px;font-weight:600;color:var(--acc);display:inline-flex;align-items:center;gap:5px}
+.open svg{width:13px;height:13px;stroke:currentColor;stroke-width:2;fill:none;stroke-linecap:round;stroke-linejoin:round}
+
+/* ── specs ── */
+.specs{border-top:1px solid var(--line);padding-block:clamp(44px,6vw,80px)}
+.spec-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:18px;margin-top:32px}
+.spec{padding:24px;border-radius:var(--r);background:var(--panel);border:1px solid var(--line)}
+.spec h3{font-size:15.5px;margin-bottom:14px;display:flex;align-items:center;gap:9px}
+.spec h3 svg{width:17px;height:17px;stroke:var(--acc);stroke-width:1.8;fill:none;stroke-linecap:round;stroke-linejoin:round}
+.spec li{display:flex;justify-content:space-between;gap:14px;font-size:13.5px;padding:8px 0;border-bottom:1px solid var(--line)}
+.spec li:last-child{border-bottom:none}
+.spec li span:first-child{color:var(--tx-mut)}
+.spec li span:last-child{font-weight:550;text-align:right;font-variant-numeric:tabular-nums}
+.spec p{font-size:13.5px;color:var(--tx-mut);line-height:1.65}
+
+.bp{display:grid;gap:10px;margin-top:32px}
+.bp-row{display:grid;grid-template-columns:130px 1fr auto;gap:16px;align-items:center;
+  padding:14px 18px;border-radius:12px;background:var(--panel);border:1px solid var(--line);font-size:13.5px}
+.bp-row b{font-family:"Space Grotesk",sans-serif;font-size:14px;letter-spacing:-.02em}
+.bp-row span{color:var(--tx-mut)}
+.bp-bar{height:6px;border-radius:99px;background:linear-gradient(90deg,var(--acc),var(--acc-2));min-width:24px}
+
+.foot{border-top:1px solid var(--line);padding-block:28px;font-size:13px;color:var(--tx-fnt);
+  display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap}
+
+@media (max-width:640px){
+  .top-in{height:auto;padding-block:12px;flex-wrap:wrap}
+  .top-actions{width:100%;margin-left:0}
+  .bp-row{grid-template-columns:1fr;gap:8px}
+  .frame-grid{grid-template-columns:1fr}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div class="wrap top-in">
+    <span class="logo">
+      <svg viewBox="0 0 32 32" width="28" height="28">
+        <defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#8B7EFF"/><stop offset="1" stop-color="#22D3EE"/></linearGradient></defs>
+        <rect width="32" height="32" rx="9" fill="url(#g)"/>
+        <path d="M10 22V10l12 12V10" stroke="#0A0A0F" stroke-width="2.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      Nexbyte
+    </span>
+    <span class="tag">Mobile · 390 × 844</span>
+    <div class="top-actions">
+      <div class="seg" role="group" aria-label="Tema de las maquetas">
+        <button id="btnDark"  aria-pressed="true">Dark</button>
+        <button id="btnLight" aria-pressed="false">Light</button>
+      </div>
+      <a class="lnk" href="index.html" target="_blank" rel="noopener">Abrir desktop ↗</a>
+    </div>
+  </div>
+</header>
+
+<section class="wrap intro">
+  <span class="eyebrow">Especificación de producto</span>
+  <h1>Los 6 estados de la<br><em>experiencia móvil</em></h1>
+  <p>Cada pantalla es la web real renderizada a 390&nbsp;px — no un mockup estático. Lo que ves aquí es
+     exactamente lo que recibe un iPhone 14/15, con las mismas animaciones de Motion, los mismos tokens
+     de color y el mismo comportamiento táctil.</p>
+  <div class="meta">
+    <span class="pill"><i></i> Renderizado en vivo</span>
+    <span class="pill">Motion 11 · scroll + gesto</span>
+    <span class="pill">Touch targets ≥ 44 px</span>
+    <span class="pill">Safe areas iOS</span>
+  </div>
+</section>
+
+<section class="wrap screens">
+  <div class="frame-grid" id="frames"></div>
+</section>
+
+<section class="wrap specs">
+  <span class="eyebrow">Referencia técnica</span>
+  <h2 style="font-size:clamp(24px,3vw,34px)">Reglas del diseño móvil</h2>
+
+  <div class="bp">
+    <div class="bp-row"><b>≤ 420 px</b><span>Móvil pequeño — grid de 2 columnas con gap 10 px, contador compacto, menú a 26 px</span><i class="bp-bar" style="width:60px"></i></div>
+    <div class="bp-row"><b>≤ 720 px</b><span>Móvil — nav oculta, buscador a pantalla completa, carrito a ancho total, filtros con scroll horizontal</span><i class="bp-bar" style="width:110px"></i></div>
+    <div class="bp-row"><b>≤ 960 px</b><span>Tablet — hero en 1 columna, ofertas apiladas, menú hamburguesa</span><i class="bp-bar" style="width:160px"></i></div>
+    <div class="bp-row"><b>≤ 1120 px</b><span>Portátil — catálogo a 3 columnas, ventajas a 2</span><i class="bp-bar" style="width:210px"></i></div>
+    <div class="bp-row"><b>&gt; 1120 px</b><span>Escritorio — catálogo a 4 columnas, ofertas en split 1,28 / 1</span><i class="bp-bar" style="width:260px"></i></div>
+  </div>
+
+  <div class="spec-grid">
+    <div class="spec">
+      <h3><svg viewBox="0 0 24 24"><rect x="7" y="2.5" width="10" height="19" rx="2.5"/><path d="M10.5 5.5h3"/></svg> Ergonomía táctil</h3>
+      <ul>
+        <li><span>Altura mínima de toque</span><span>44 px</span></li>
+        <li><span>Botón añadir al carrito</span><span>40 × 40 px</span></li>
+        <li><span>Separación entre targets</span><span>≥ 8 px</span></li>
+        <li><span>CTA principal</span><span>48 px</span></li>
+        <li><span>Zona del pulgar</span><span>tercio inferior</span></li>
+      </ul>
+    </div>
+    <div class="spec">
+      <h3><svg viewBox="0 0 24 24"><path d="M12 3v18M3 12h18"/></svg> Retícula y espacio</h3>
+      <ul>
+        <li><span>Margen lateral</span><span>18 px</span></li>
+        <li><span>Gap del catálogo</span><span>12 px</span></li>
+        <li><span>Radio de tarjeta</span><span>22 px</span></li>
+        <li><span>Ritmo vertical</span><span>60 – 116 px</span></li>
+        <li><span>Ancho de contenido</span><span>100 % − 36 px</span></li>
+      </ul>
+    </div>
+    <div class="spec">
+      <h3><svg viewBox="0 0 24 24"><path d="M4 12a8 8 0 1 0 8-8"/><path d="M4 4v5h5"/></svg> Movimiento</h3>
+      <ul>
+        <li><span>Curva estándar</span><span>(.22, 1, .36, 1)</span></li>
+        <li><span>Entrada de sección</span><span>700 ms</span></li>
+        <li><span>Stagger de tarjetas</span><span>45 ms</span></li>
+        <li><span>Drawer del carrito</span><span>550 ms</span></li>
+        <li><span>reduced-motion</span><span>respetado</span></li>
+      </ul>
+    </div>
+    <div class="spec">
+      <h3><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 3v18"/></svg> Tema y contraste</h3>
+      <p>Los dos temas comparten la misma capa semántica: solo cambian los valores de <code>--bg</code>,
+         <code>--text</code>, <code>--border</code> y la intensidad de los orbes. El acento se aclara en
+         dark (<code>#8B7EFF</code>) y se oscurece en light (<code>#6D5EF8</code>) para mantener el
+         contraste AA sobre ambos fondos.</p>
+    </div>
+  </div>
+</section>
+
+<footer class="wrap foot">
+  <p>Nexbyte — sistema de diseño móvil · 2026</p>
+  <p>390 × 844 · escala ajustada al contenedor</p>
+</footer>
+
+<script>
+const SCREENS = [
+  { n:"01", t:"Home · Hero",  d:"Titular en dos líneas con reveal por máscara, tarjeta de producto flotante y prueba social.",
+    src:"index.html", chips:["Hero","Stats animadas","Marquee"] },
+  { n:"02", t:"Ofertas",      d:"Cuenta atrás real hasta medianoche, barra de stock y ofertas secundarias apiladas.",
+    src:"index.html#ofertas", chips:["Countdown","Stock","Urgencia"] },
+  { n:"03", t:"Catálogo",     d:"Filtros con scroll horizontal y grid de 2 columnas con entrada escalonada.",
+    src:"index.html#catalogo", chips:["Filtros","Grid 2col","Wishlist"] },
+  { n:"04", t:"Buscador",     d:"Overlay a pantalla completa, resultados en vivo y navegación con teclado.",
+    src:"index.html?screen=search&q=auriculares", chips:["Full-screen","Live search","⌘K"] },
+  { n:"05", t:"Carrito",      d:"Drawer a ancho total con barra de envío gratis, cantidades y resumen fijo.",
+    src:"index.html?screen=cart&seed=cart", chips:["Drawer","Envío gratis","Sticky total"] },
+  { n:"06", t:"Menú",         d:"Navegación a pantalla completa con entrada en cascada y CTA al pie.",
+    src:"index.html?screen=menu", chips:["Overlay","Stagger","CTA"] }
+];
+
+let theme = "dark";
+const frames = document.getElementById("frames");
+
+/* añade ?theme=… respetando query y hash existentes */
+function withTheme(src, t){
+  const [base, hash] = src.split("#");
+  const sep = base.includes("?") ? "&" : "?";
+  return `${base}${sep}theme=${t}${hash ? "#" + hash : ""}`;
+}
+
+function render(){
+  frames.innerHTML = SCREENS.map(s => {
+    const url = withTheme(s.src, theme);
+    return `
+    <article class="screen">
+      <div class="screen-hd">
+        <span class="screen-n">${s.n}</span>
+        <div><h3>${s.t}</h3><p>${s.d}</p></div>
+      </div>
+      <div class="phone">
+        <i class="btn-l"></i><i class="btn-r"></i>
+        <div class="phone-screen"><iframe loading="lazy" title="${s.t}" src="${url}"></iframe></div>
+      </div>
+      <div class="screen-ft">
+        <div class="chips">${s.chips.map(c=>`<span class="chip">${c}</span>`).join("")}</div>
+        <a class="open" href="${url}" target="_blank" rel="noopener">Abrir
+          <svg viewBox="0 0 24 24"><path d="M7 17 17 7M9 7h8v8"/></svg></a>
+      </div>
+    </article>`;
+  }).join("");
+  scaleFrames();
+}
+
+/* escala el iframe de 390×844 al ancho real de la carcasa */
+function scaleFrames(){
+  document.querySelectorAll(".phone-screen").forEach(sc => {
+    const f = sc.querySelector("iframe");
+    const k = sc.clientWidth / 390;
+    f.style.transform = `scale(${k})`;
+    f.style.height = (sc.clientHeight / k) + "px";
+  });
+}
+window.addEventListener("resize", scaleFrames);
+
+document.getElementById("btnDark").addEventListener("click",  () => setTheme("dark"));
+document.getElementById("btnLight").addEventListener("click", () => setTheme("light"));
+function setTheme(t){
+  theme = t;
+  document.documentElement.setAttribute("data-theme", t);
+  document.getElementById("btnDark").setAttribute("aria-pressed", String(t==="dark"));
+  document.getElementById("btnLight").setAttribute("aria-pressed", String(t==="light"));
+  render();
+}
+
+render();
+</script>
+</body>
+</html>

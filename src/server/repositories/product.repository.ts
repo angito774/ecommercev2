@@ -1,5 +1,6 @@
-import { and, asc, count, desc, eq, ilike, or, type SQL } from 'drizzle-orm';
+import { and, asc, count, desc, eq, ilike, or, sql, type SQL } from 'drizzle-orm';
 
+import type { CatalogProduct, StockLevel } from '@/modules/products/types/catalog.types';
 import { db, type Reader, type Tx } from '@/server/db';
 import { categories, products } from '@/server/db/schema';
 
@@ -45,6 +46,7 @@ const PRODUCT_COLUMNS = {
   description: products.description,
   imageUrl: products.imageUrl,
   priceCents: products.priceCents,
+  compareAtPriceCents: products.compareAtPriceCents,
   stock: products.stock,
   specs: products.specs,
   categoryId: products.categoryId,
@@ -97,6 +99,140 @@ export async function findMany(params: ProductListParams): Promise<ProductListRe
 
   return { data, total: totals?.value ?? 0 };
 }
+
+// ── Catálogo público ────────────────────────────────────────────────────────
+
+// A partir de aquí se sirve la tienda. El umbral vive en una constante para poder
+// subirlo sin tocar el contrato: `low` revela que quedan pocas unidades y eso es
+// información comercial deliberada, no un descuido (spec 004, §10).
+const LOW_STOCK_THRESHOLD = 5;
+
+export type CatalogListParams = {
+  q?: string;
+  // Slug, no uuid: así la URL del filtro es legible y el slug ya es único.
+  category: 'all' | string;
+  sort: 'featured' | 'newest' | 'price_asc' | 'price_desc';
+  discounted: boolean;
+  page: number;
+  pageSize: number;
+};
+
+export type CatalogListResult = {
+  data: CatalogProduct[];
+  total: number;
+};
+
+// `compare_at_price_cents > price_cents` es null-safe: si la columna es NULL la
+// comparación da NULL y el CASE cae al ELSE. El `::int` evita que Postgres
+// devuelva `numeric`, que node-postgres entrega como string.
+const DISCOUNT_PERCENT = sql<number | null>`
+  case
+    when ${products.compareAtPriceCents} > ${products.priceCents}
+      then round(
+        ((${products.compareAtPriceCents} - ${products.priceCents})::numeric * 100)
+        / ${products.compareAtPriceCents}
+      )::int
+    else null
+  end
+`;
+
+const STOCK_LEVEL = sql<StockLevel>`
+  case
+    when ${products.stock} <= 0 then 'out'
+    when ${products.stock} <= ${LOW_STOCK_THRESHOLD} then 'low'
+    else 'in'
+  end
+`;
+
+// Se repite la condición en lugar de ordenar por el alias del SELECT porque un
+// alias no es referenciable desde ORDER BY en todos los motores y aquí importa que
+// la expresión no sea NULL nunca: `desc` en Postgres pone los NULL primero y
+// entonces los productos SIN descuento encabezarían el orden "featured".
+const HAS_DISCOUNT = sql`(${products.compareAtPriceCents} is not null and ${products.compareAtPriceCents} > ${products.priceCents})`;
+
+const IN_STOCK = sql`(${products.stock} > 0)`;
+
+// `id` cierra los cuatro órdenes como desempate estable: sin él, dos filas con el
+// mismo precio o la misma fecha pueden intercambiarse entre páginas y el visitante
+// ve un producto repetido y otro perdido.
+const CATALOG_ORDER_BY = {
+  featured: [desc(HAS_DISCOUNT), desc(IN_STOCK), desc(products.createdAt), asc(products.id)],
+  newest: [desc(products.createdAt), asc(products.id)],
+  price_asc: [asc(products.priceCents), asc(products.id)],
+  price_desc: [desc(products.priceCents), asc(products.id)],
+} as const satisfies Record<CatalogListParams['sort'], readonly SQL[]>;
+
+// `%` y `_` son comodines de LIKE, no texto. Sin escaparlos, `?q=%` se traduce en
+// `ilike '%%%'` y devuelve el catálogo entero como si fuera un resultado de
+// búsqueda, y `?q=_` casa con cualquier carácter. No es inyección —el valor sigue
+// viajando como parámetro— pero sí un resultado incorrecto que el visitante puede
+// provocar. La barra invertida es a su vez el carácter de escape, así que va
+// primero o se escaparía a sí misma dos veces.
+function escapeLikePattern(value: string): string {
+  return value.replace(/[\\%_]/g, (char) => `\\${char}`);
+}
+
+// El filtro invariante no es parametrizable desde fuera a propósito: ningún query
+// param puede desactivarlo, así que un producto inactivo —o uno activo bajo una
+// categoría inactiva— no aparece nunca en la tienda (AC3, AC4).
+function buildCatalogFilters({
+  q,
+  category,
+  discounted,
+}: Pick<CatalogListParams, 'q' | 'category' | 'discounted'>): SQL {
+  const conditions: SQL[] = [
+    eq(products.isActive, true),
+    eq(categories.isActive, true),
+  ];
+
+  if (q) conditions.push(ilike(products.name, `%${escapeLikePattern(q)}%`));
+  if (category !== 'all') conditions.push(eq(categories.slug, category));
+  if (discounted) conditions.push(HAS_DISCOUNT);
+
+  // `and()` con al menos dos condiciones nunca devuelve undefined.
+  return and(...conditions) as SQL;
+}
+
+const CATALOG_COLUMNS = {
+  id: products.id,
+  name: products.name,
+  slug: products.slug,
+  description: products.description,
+  imageUrl: products.imageUrl,
+  priceCents: products.priceCents,
+  compareAtPriceCents: products.compareAtPriceCents,
+  discountPercent: DISCOUNT_PERCENT,
+  stockLevel: STOCK_LEVEL,
+  categoryName: categories.name,
+  categorySlug: categories.slug,
+} as const;
+
+export async function findPublicMany(params: CatalogListParams): Promise<CatalogListResult> {
+  const { page, pageSize, sort } = params;
+  const where = buildCatalogFilters(params);
+
+  // El conteo sí necesita el join, a diferencia del listado de admin: `is_active`
+  // de la categoría y el filtro por slug viven en la otra tabla.
+  const [data, [totals]] = await Promise.all([
+    db
+      .select(CATALOG_COLUMNS)
+      .from(products)
+      .innerJoin(categories, eq(categories.id, products.categoryId))
+      .where(where)
+      .orderBy(...CATALOG_ORDER_BY[sort])
+      .limit(pageSize)
+      .offset((page - 1) * pageSize),
+    db
+      .select({ value: count() })
+      .from(products)
+      .innerJoin(categories, eq(categories.id, products.categoryId))
+      .where(where),
+  ]);
+
+  return { data, total: totals?.value ?? 0 };
+}
+
+// ── Administración ──────────────────────────────────────────────────────────
 
 // Devuelve la fila desnuda. La usan los mutadores para leer el `before` de la
 // bitácora, que debe ser el estado real de la tabla y no una proyección con

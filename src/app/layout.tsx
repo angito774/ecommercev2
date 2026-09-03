@@ -1,7 +1,7 @@
 import { ClerkProvider } from '@clerk/nextjs';
 import { shadcn } from '@clerk/ui/themes';
 import type { Metadata } from 'next';
-import { Geist, Geist_Mono } from 'next/font/google';
+import { Geist, Geist_Mono, Inter, Space_Grotesk } from 'next/font/google';
 
 import { Providers } from '@/components/providers';
 import { Toaster } from '@/components/ui/sonner';
@@ -19,6 +19,19 @@ const geistMono = Geist_Mono({
   subsets: ['latin'],
 });
 
+// Las dos familias del storefront se declaran aquí para que `next/font` las
+// autohospede una sola vez, pero solo pasan a estar en uso dentro del scope
+// `[data-surface="storefront"]` de globals.css: el panel admin sigue con Geist.
+const spaceGrotesk = Space_Grotesk({
+  variable: '--font-display',
+  subsets: ['latin'],
+});
+
+const inter = Inter({
+  variable: '--font-body',
+  subsets: ['latin'],
+});
+
 export const metadata: Metadata = {
   title: { default: APP_NAME, template: `%s | ${APP_NAME}` },
   description: APP_DESCRIPTION,
@@ -30,7 +43,7 @@ export default function RootLayout({ children }: LayoutProps<'/'>) {
       <html
         lang="es"
         suppressHydrationWarning
-        className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+        className={`${geistSans.variable} ${geistMono.variable} ${spaceGrotesk.variable} ${inter.variable} h-full antialiased`}
       >
         <body className="flex min-h-full flex-col">
           <Providers>{children}</Providers>

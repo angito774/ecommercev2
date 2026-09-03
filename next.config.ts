@@ -8,6 +8,13 @@ const nextConfig: NextConfig = {
     // lugar de propagar un ForbiddenError sin capturar.
     authInterrupts: true,
   },
+  images: {
+    // Lista blanca, no comodín: `hostname: '**'` convierte el optimizador en un
+    // proxy abierto a cualquier URL https y su coste de cómputo (spec 004, D-18).
+    // Hoy Unsplash es el único host presente en datos. `ProductMedia` degrada al
+    // arte SVG cuando la carga falla, así que un host fuera de la lista no rompe.
+    remotePatterns: [{ protocol: 'https', hostname: 'images.unsplash.com' }],
+  },
 };
 
 export default nextConfig;

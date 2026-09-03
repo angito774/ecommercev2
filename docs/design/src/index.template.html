@@ -1,0 +1,420 @@
+<!doctype html>
+<html lang="es" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Nexbyte — Tecnología que se adelanta</title>
+<meta name="description" content="Ecommerce de productos tecnológicos. Audio, cómputo, móviles, wearables y componentes con envío en 24h.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="src/styles.css">
+</head>
+<body>
+
+<!-- ═══════════════ SKIP LINK ═══════════════ -->
+<a href="#main" class="skip">Saltar al contenido</a>
+
+<!-- ═══════════════ ANNOUNCEMENT ═══════════════ -->
+<div class="announce" id="announce">
+  <div class="announce-track">
+    <span>Envío gratis en pedidos +59&nbsp;€</span><span class="dot"></span>
+    <span>Devoluciones 30 días</span><span class="dot"></span>
+    <span>Hasta 12 meses sin intereses</span><span class="dot"></span>
+    <span>Garantía oficial 2 años</span><span class="dot"></span>
+    <span>Envío gratis en pedidos +59&nbsp;€</span><span class="dot"></span>
+    <span>Devoluciones 30 días</span><span class="dot"></span>
+    <span>Hasta 12 meses sin intereses</span><span class="dot"></span>
+    <span>Garantía oficial 2 años</span><span class="dot"></span>
+  </div>
+</div>
+
+<!-- ═══════════════ HEADER ═══════════════ -->
+<header class="header" id="header">
+  <div class="wrap header-in">
+    <a href="#" class="brand" aria-label="Nexbyte, inicio">
+      <span class="brand-mark" aria-hidden="true">
+        <svg viewBox="0 0 32 32" width="30" height="30">
+          <defs><linearGradient id="bg1" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0" stop-color="#8B7EFF"/><stop offset="1" stop-color="#22D3EE"/>
+          </linearGradient></defs>
+          <rect x="1" y="1" width="30" height="30" rx="9" fill="url(#bg1)"/>
+          <path d="M10 22V10l12 12V10" stroke="#0A0A0F" stroke-width="2.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </span>
+      <span class="brand-name">Nexbyte</span>
+    </a>
+
+    <nav class="nav" aria-label="Principal">
+      <a href="#ofertas">Ofertas</a>
+      <a href="#categorias">Categorías</a>
+      <a href="#catalogo">Catálogo</a>
+      <a href="#soporte">Soporte</a>
+    </nav>
+
+    <div class="header-actions">
+      <button class="search-trigger" id="searchTrigger" aria-label="Buscar productos">
+        <svg class="ico" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+        <span>Buscar productos</span>
+        <kbd>⌘K</kbd>
+      </button>
+
+      <button class="icon-btn" id="searchTriggerMobile" aria-label="Buscar">
+        <svg class="ico" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+      </button>
+
+      <button class="icon-btn theme-btn" id="themeToggle" aria-label="Cambiar tema" aria-pressed="false">
+        <svg class="ico ico-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4.2"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
+        <svg class="ico ico-moon" viewBox="0 0 24 24"><path d="M20 14.5A8.2 8.2 0 0 1 9.5 4a8.3 8.3 0 1 0 10.5 10.5Z"/></svg>
+      </button>
+
+      <button class="icon-btn cart-btn" id="cartTrigger" aria-label="Abrir carrito">
+        <svg class="ico" viewBox="0 0 24 24"><path d="M4 5h2.2l1.9 10.4a2 2 0 0 0 2 1.6h7.3a2 2 0 0 0 2-1.55L21 8H7"/><circle cx="10.5" cy="20" r="1.2" fill="currentColor" stroke="none"/><circle cx="18" cy="20" r="1.2" fill="currentColor" stroke="none"/></svg>
+        <span class="cart-count" id="cartCount" data-empty="true">0</span>
+      </button>
+
+      <button class="icon-btn menu-btn" id="menuToggle" aria-label="Abrir menú" aria-expanded="false">
+        <svg class="ico" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+      </button>
+    </div>
+  </div>
+</header>
+
+<!-- ═══════════════ MOBILE MENU ═══════════════ -->
+<div class="mobile-menu" id="mobileMenu" hidden>
+  <nav class="mm-nav">
+    <a href="#ofertas" data-mm>Ofertas <span>Hasta −40%</span></a>
+    <a href="#categorias" data-mm>Categorías</a>
+    <a href="#catalogo" data-mm>Catálogo</a>
+    <a href="#soporte" data-mm>Soporte</a>
+  </nav>
+  <div class="mm-foot">
+    <button class="btn btn-primary btn-block" data-mm-close>Ver ofertas del día</button>
+    <p>Envío 24 h · Devoluciones 30 días</p>
+  </div>
+</div>
+
+<main id="main">
+
+<!-- ═══════════════ HERO ═══════════════ -->
+<section class="hero">
+  <div class="orb orb-a" data-parallax="0.12"></div>
+  <div class="orb orb-b" data-parallax="-0.08"></div>
+  <div class="grid-bg" aria-hidden="true"></div>
+
+  <div class="wrap hero-in">
+    <div class="hero-copy">
+      <span class="chip hero-chip" data-reveal>
+        <span class="pulse"></span> Nueva colección · Otoño 2026
+      </span>
+      <h1 class="hero-title">
+        <span class="line" data-reveal-line>Tecnología que</span>
+        <span class="line" data-reveal-line>se <em class="grad-text">adelanta</em> a ti</span>
+      </h1>
+      <p class="lede" data-reveal>
+        Audio, cómputo, móviles y componentes seleccionados uno a uno.
+        Stock real, envío en 24&nbsp;h y garantía oficial de 2 años en todo el catálogo.
+      </p>
+
+      <div class="hero-cta" data-reveal>
+        <a href="#catalogo" class="btn btn-primary" data-magnetic>
+          Explorar catálogo
+          <svg class="ico" viewBox="0 0 24 24" style="width:17px;height:17px"><path d="M5 12h13M13 6l6 6-6 6"/></svg>
+        </a>
+        <a href="#ofertas" class="btn btn-ghost" data-magnetic>Ver ofertas</a>
+      </div>
+
+      <dl class="hero-stats" data-reveal>
+        <div><dt class="tnum" data-count="24">0</dt><dd>h de envío</dd></div>
+        <div><dt class="tnum" data-count="12" data-suffix="k+">0</dt><dd>clientes</dd></div>
+        <div><dt class="tnum" data-count="4.9" data-decimals="1">0</dt><dd>valoración</dd></div>
+      </dl>
+    </div>
+
+    <div class="hero-visual">
+      <div class="hero-card" data-tilt>
+        <div class="hc-glow"></div>
+        <div class="hc-media" data-product-art="headphones"></div>
+        <div class="hc-body">
+          <div class="hc-row">
+            <div>
+              <p class="hc-cat">Audio · ANC adaptativo</p>
+              <h3 class="hc-name">Auralis Pro</h3>
+            </div>
+            <span class="badge-off chip">−24%</span>
+          </div>
+          <div class="hc-row hc-foot">
+            <div class="price"><span class="price-now">249&nbsp;€</span><span class="price-old">329&nbsp;€</span></div>
+            <button class="btn btn-primary btn-sm" data-add="p1">Añadir</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="float-card fc-1" data-float="1">
+        <svg class="ico" viewBox="0 0 24 24" style="color:var(--lime-400)"><path d="m5 13 4 4L19 7"/></svg>
+        <div><strong>En stock</strong><span>Entrega mañana</span></div>
+      </div>
+      <div class="float-card fc-2" data-float="2">
+        <svg class="ico" viewBox="0 0 24 24" style="color:var(--accent-2)"><path d="M12 2 4 6v6c0 5 3.4 8.6 8 10 4.6-1.4 8-5 8-10V6Z"/></svg>
+        <div><strong>2 años</strong><span>Garantía oficial</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="marquee" aria-hidden="true">
+    <div class="marquee-track" id="brandTrack">
+      <span>APEX</span><span>NOVA</span><span>KAIROS</span><span>ZENITH</span><span>ORBIT</span><span>VECTOR</span><span>LUMEN</span><span>TITAN</span>
+      <span>APEX</span><span>NOVA</span><span>KAIROS</span><span>ZENITH</span><span>ORBIT</span><span>VECTOR</span><span>LUMEN</span><span>TITAN</span>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════ OFERTAS ═══════════════ -->
+<section class="section" id="ofertas">
+  <div class="wrap">
+    <div class="sec-head">
+      <div>
+        <span class="eyebrow" data-reveal>Ofertas relámpago</span>
+        <h2 class="h-sec" data-reveal>Termina en <span class="grad-text" id="dealHeadClock">00:00:00</span></h2>
+        <p class="lede" data-reveal>Precios que caducan de verdad. Cuando el contador llega a cero, vuelven a su PVP.</p>
+      </div>
+      <a href="#catalogo" class="btn btn-ghost btn-sm" data-reveal data-magnetic>Ver todas
+        <svg class="ico" viewBox="0 0 24 24" style="width:15px;height:15px"><path d="M5 12h13M13 6l6 6-6 6"/></svg>
+      </a>
+    </div>
+
+    <div class="deal-layout">
+      <!-- deal principal -->
+      <article class="deal-hero" data-reveal>
+        <div class="deal-art" data-product-art="laptop"></div>
+        <div class="deal-info">
+          <span class="chip badge-hot">Oferta del día</span>
+          <h3>Nexbook Air 14″</h3>
+          <p>Chip N3 de 12 núcleos, 18 h de batería y pantalla Liquid 120 Hz en un chasis de 1,1 kg.</p>
+          <div class="countdown" id="countdown" role="timer" aria-live="off">
+            <div class="cd-unit"><span class="cd-val tnum" data-cd="h">08</span><span class="cd-lbl">horas</span></div>
+            <span class="cd-sep">:</span>
+            <div class="cd-unit"><span class="cd-val tnum" data-cd="m">42</span><span class="cd-lbl">min</span></div>
+            <span class="cd-sep">:</span>
+            <div class="cd-unit"><span class="cd-val tnum" data-cd="s">15</span><span class="cd-lbl">seg</span></div>
+          </div>
+          <div class="deal-buy">
+            <div class="price"><span class="price-now">1.099&nbsp;€</span><span class="price-old">1.399&nbsp;€</span></div>
+            <button class="btn btn-primary" data-add="p2" data-magnetic>
+              <svg class="ico" viewBox="0 0 24 24" style="width:17px;height:17px"><path d="M4 5h2.2l1.9 10.4a2 2 0 0 0 2 1.6h7.3a2 2 0 0 0 2-1.55L21 8H7"/></svg>
+              Añadir al carrito
+            </button>
+          </div>
+          <div class="stock">
+            <div class="stock-bar"><i style="--w:23%"></i></div>
+            <span>Quedan <strong>7</strong> de 30 unidades</span>
+          </div>
+        </div>
+      </article>
+
+      <!-- ofertas secundarias -->
+      <div class="deal-side" id="dealSide"></div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════ CATEGORÍAS ═══════════════ -->
+<section class="section section-alt" id="categorias">
+  <div class="wrap">
+    <div class="sec-head">
+      <div>
+        <span class="eyebrow" data-reveal>Explora</span>
+        <h2 class="h-sec" data-reveal>Categorías</h2>
+      </div>
+    </div>
+    <div class="cat-grid" id="catGrid"></div>
+  </div>
+</section>
+
+<!-- ═══════════════ CATÁLOGO ═══════════════ -->
+<section class="section" id="catalogo">
+  <div class="wrap">
+    <div class="sec-head">
+      <div>
+        <span class="eyebrow" data-reveal>Catálogo</span>
+        <h2 class="h-sec" data-reveal>Lo mejor de cada categoría</h2>
+        <p class="lede" data-reveal>Nada de relleno: 10 productos que recomendaríamos a un amigo.</p>
+      </div>
+    </div>
+
+    <div class="filters" id="filters" role="tablist" aria-label="Filtrar por categoría"></div>
+    <div class="product-grid" id="productGrid"></div>
+    <p class="empty-state" id="emptyState" hidden>No hay productos en esta categoría.</p>
+  </div>
+</section>
+
+<!-- ═══════════════ VENTAJAS ═══════════════ -->
+<section class="section section-alt" id="soporte">
+  <div class="wrap">
+    <div class="sec-head">
+      <div>
+        <span class="eyebrow" data-reveal>Por qué Nexbyte</span>
+        <h2 class="h-sec" data-reveal>Comprar tecnología,<br>sin la letra pequeña</h2>
+      </div>
+    </div>
+    <div class="feat-grid">
+      <article class="feat" data-reveal>
+        <span class="feat-ico"><svg class="ico" viewBox="0 0 24 24"><path d="M3 7h11v9H3zM14 10h4l3 3v3h-7z"/><circle cx="7" cy="18" r="1.8"/><circle cx="17.5" cy="18" r="1.8"/></svg></span>
+        <h3>Envío en 24 h</h3>
+        <p>Almacén propio en Madrid y Barcelona. Pides antes de las 18:00 y sale hoy.</p>
+      </article>
+      <article class="feat" data-reveal>
+        <span class="feat-ico"><svg class="ico" viewBox="0 0 24 24"><path d="M12 2 4 6v6c0 5 3.4 8.6 8 10 4.6-1.4 8-5 8-10V6Z"/><path d="m9 12 2 2 4-4"/></svg></span>
+        <h3>Garantía de 2 años</h3>
+        <p>Oficial del fabricante y gestionada por nosotros. Sin reenvíos ni excusas.</p>
+      </article>
+      <article class="feat" data-reveal>
+        <span class="feat-ico"><svg class="ico" viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 9-9"/><path d="M3 4v5h5"/></svg></span>
+        <h3>30 días para devolver</h3>
+        <p>Lo abres, lo pruebas, no te convence. Recogemos en casa sin coste.</p>
+      </article>
+      <article class="feat" data-reveal>
+        <span class="feat-ico"><svg class="ico" viewBox="0 0 24 24"><rect x="2.5" y="5" width="19" height="14" rx="2.5"/><path d="M2.5 10h19M6 15h4"/></svg></span>
+        <h3>Hasta 12 meses sin intereses</h3>
+        <p>Financiación transparente al 0 % TAE, aprobada en menos de un minuto.</p>
+      </article>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════ NEWSLETTER ═══════════════ -->
+<section class="section">
+  <div class="wrap">
+    <div class="news" data-reveal>
+      <div class="news-orb"></div>
+      <div class="news-copy">
+        <span class="eyebrow">Drops semanales</span>
+        <h2 class="h-sec">Entérate antes<br>que el resto</h2>
+        <p class="lede">Un correo los martes con las bajadas de precio reales y los lanzamientos que merecen la pena. Cero spam.</p>
+      </div>
+      <form class="news-form" id="newsForm" novalidate>
+        <label class="sr-only" for="newsEmail">Correo electrónico</label>
+        <div class="news-field">
+          <input type="email" id="newsEmail" placeholder="tu@correo.com" autocomplete="email" required>
+          <button class="btn btn-primary" type="submit">Suscribirme</button>
+        </div>
+        <p class="news-note">Al suscribirte aceptas nuestra política de privacidad.</p>
+      </form>
+    </div>
+  </div>
+</section>
+
+</main>
+
+<!-- ═══════════════ FOOTER ═══════════════ -->
+<footer class="footer">
+  <div class="wrap">
+    <div class="foot-top">
+      <div class="foot-brand">
+        <a href="#" class="brand">
+          <span class="brand-mark" aria-hidden="true">
+            <svg viewBox="0 0 32 32" width="30" height="30">
+              <defs><linearGradient id="bg2" x1="0" y1="0" x2="1" y2="1">
+                <stop offset="0" stop-color="#8B7EFF"/><stop offset="1" stop-color="#22D3EE"/>
+              </linearGradient></defs>
+              <rect x="1" y="1" width="30" height="30" rx="9" fill="url(#bg2)"/>
+              <path d="M10 22V10l12 12V10" stroke="#0A0A0F" stroke-width="2.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </span>
+          <span class="brand-name">Nexbyte</span>
+        </a>
+        <p>Tecnología seleccionada, precios honestos y soporte que responde de verdad.</p>
+        <div class="socials">
+          <a href="#" aria-label="Instagram"><svg class="ico" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="5"/><circle cx="12" cy="12" r="4"/><circle cx="17.4" cy="6.6" r=".9" fill="currentColor" stroke="none"/></svg></a>
+          <a href="#" aria-label="X"><svg class="ico" viewBox="0 0 24 24"><path d="m4 4 16 16M20 4 4 20"/></svg></a>
+          <a href="#" aria-label="YouTube"><svg class="ico" viewBox="0 0 24 24"><rect x="2.5" y="5.5" width="19" height="13" rx="4"/><path d="m10.5 9.5 5 2.5-5 2.5z"/></svg></a>
+        </div>
+      </div>
+      <div class="foot-cols">
+        <div><h4>Tienda</h4><ul><li><a href="#catalogo">Novedades</a></li><li><a href="#ofertas">Ofertas</a></li><li><a href="#categorias">Categorías</a></li><li><a href="#catalogo">Reacondicionados</a></li></ul></div>
+        <div><h4>Ayuda</h4><ul><li><a href="#soporte">Envíos</a></li><li><a href="#soporte">Devoluciones</a></li><li><a href="#soporte">Garantía</a></li><li><a href="#soporte">Contacto</a></li></ul></div>
+        <div><h4>Empresa</h4><ul><li><a href="#">Sobre nosotros</a></li><li><a href="#">Trabaja con nosotros</a></li><li><a href="#">Prensa</a></li><li><a href="#">Blog</a></li></ul></div>
+      </div>
+    </div>
+    <div class="foot-bot">
+      <p>© 2026 Nexbyte S.L. — Todos los derechos reservados.</p>
+      <ul><li><a href="#">Privacidad</a></li><li><a href="#">Cookies</a></li><li><a href="#">Términos</a></li></ul>
+    </div>
+  </div>
+</footer>
+
+<!-- ═══════════════ SEARCH OVERLAY ═══════════════ -->
+<div class="overlay" id="searchOverlay" hidden>
+  <div class="search-backdrop" data-close-search></div>
+  <div class="search-panel" role="dialog" aria-modal="true" aria-label="Buscar productos">
+    <div class="search-bar">
+      <svg class="ico" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+      <input type="search" id="searchInput" placeholder="Busca auriculares, portátiles, GPU…" autocomplete="off" spellcheck="false">
+      <button class="kbd-esc" data-close-search>ESC</button>
+    </div>
+    <div class="search-body">
+      <p class="search-label" id="searchLabel">Sugerencias</p>
+      <ul class="search-results" id="searchResults"></ul>
+      <div class="search-tags" id="searchTags">
+        <span>Populares:</span>
+        <button data-tag="auriculares">auriculares</button>
+        <button data-tag="portátil">portátil</button>
+        <button data-tag="gpu">gpu</button>
+        <button data-tag="smartwatch">smartwatch</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════ CART DRAWER ═══════════════ -->
+<div class="overlay" id="cartOverlay" hidden>
+  <div class="cart-backdrop" data-close-cart></div>
+  <aside class="cart-panel" role="dialog" aria-modal="true" aria-label="Carrito de compra">
+    <header class="cart-head">
+      <h2>Tu carrito <span class="cart-head-n" id="cartHeadN">0</span></h2>
+      <button class="icon-btn" data-close-cart aria-label="Cerrar carrito">
+        <svg class="ico" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg>
+      </button>
+    </header>
+
+    <div class="cart-ship" id="cartShip">
+      <div class="ship-txt"><span id="shipMsg">Te faltan 59 € para el envío gratis</span></div>
+      <div class="ship-bar"><i id="shipFill" style="--w:0%"></i></div>
+    </div>
+
+    <ul class="cart-items" id="cartItems"></ul>
+
+    <div class="cart-empty" id="cartEmpty">
+      <div class="ce-ico">
+        <svg viewBox="0 0 24 24" class="ico" style="width:30px;height:30px"><path d="M4 5h2.2l1.9 10.4a2 2 0 0 0 2 1.6h7.3a2 2 0 0 0 2-1.55L21 8H7"/><circle cx="10.5" cy="20" r="1.2" fill="currentColor" stroke="none"/><circle cx="18" cy="20" r="1.2" fill="currentColor" stroke="none"/></svg>
+      </div>
+      <h3>Tu carrito está vacío</h3>
+      <p>Añade algo del catálogo y aparecerá aquí.</p>
+      <button class="btn btn-ghost btn-sm" data-close-cart>Seguir comprando</button>
+    </div>
+
+    <footer class="cart-foot" id="cartFoot">
+      <div class="cart-line"><span>Subtotal</span><span class="tnum" id="cartSubtotal">0 €</span></div>
+      <div class="cart-line"><span>Envío</span><span class="tnum" id="cartShipping">—</span></div>
+      <div class="cart-line cart-total"><span>Total</span><span class="tnum" id="cartTotal">0 €</span></div>
+      <button class="btn btn-primary btn-block" id="checkoutBtn">
+        Finalizar compra
+        <svg class="ico" viewBox="0 0 24 24" style="width:17px;height:17px"><path d="M5 12h13M13 6l6 6-6 6"/></svg>
+      </button>
+      <p class="cart-secure">
+        <svg class="ico" viewBox="0 0 24 24" style="width:14px;height:14px"><rect x="4.5" y="10.5" width="15" height="10" rx="2.5"/><path d="M8 10.5V7.5a4 4 0 0 1 8 0v3"/></svg>
+        Pago seguro · Visa · Mastercard · PayPal
+      </p>
+    </footer>
+  </aside>
+</div>
+
+<!-- ═══════════════ TOAST ═══════════════ -->
+<div class="toast" id="toast" role="status" aria-live="polite" hidden>
+  <span class="toast-ico"><svg class="ico" viewBox="0 0 24 24" style="width:16px;height:16px"><path d="m5 13 4 4L19 7"/></svg></span>
+  <span id="toastMsg">Añadido al carrito</span>
+</div>
+
+<script type="module" src="src/app.js"></script>
+</body>
+</html>
