@@ -343,6 +343,9 @@ Dashboard con métricas (Recharts: ventas, pedidos, top productos, stock bajo) �
 CRUD de productos y categorías (TanStack Table: paginación, orden, filtros) ·
 gestión de pedidos y cambio de estado · listado de clientes.
 
+Construido a 2026-09-02: categorías (spec 001), accesos y bitácora (spec 002) y
+productos (spec 003). Pendientes: dashboard de métricas, pedidos y clientes.
+
 Gestión de accesos: CRUD de roles, matriz rol × permiso, asignación de roles a
 usuarios · bitácora de auditoría filtrable por actor, entidad, acción y fecha.
 

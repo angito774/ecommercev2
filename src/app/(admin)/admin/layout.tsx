@@ -1,5 +1,5 @@
 import { auth } from '@clerk/nextjs/server';
-import { ScrollText, ShieldCheck, Tags, Users, type LucideIcon } from 'lucide-react';
+import { Package, ScrollText, ShieldCheck, Tags, Users, type LucideIcon } from 'lucide-react';
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 
@@ -15,6 +15,7 @@ type NavItem = {
 };
 
 const NAV_ITEMS: readonly NavItem[] = [
+  { href: '/admin/products', label: 'Productos', icon: Package, permission: 'products.read' },
   { href: '/admin/categories', label: 'Categorías', icon: Tags, permission: 'categories.read' },
   { href: '/admin/users', label: 'Usuarios', icon: Users, permission: 'users.read' },
   { href: '/admin/roles', label: 'Roles', icon: ShieldCheck, permission: 'roles.read' },

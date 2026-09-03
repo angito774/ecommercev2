@@ -437,8 +437,13 @@ hooks ni componentes.
 ### D2 — Otras deudas menores
 
 - **Filtros no persistidos en la URL.** Recargar `/admin/categories` pierde
-  búsqueda, filtro y página, y los enlaces no son compartibles. Retomar cuando la
-  vista de productos de Fase 2 necesite enlaces profundos a un filtro.
+  búsqueda, filtro y página, y los enlaces no son compartibles. Se difería a
+  "cuando la vista de productos de Fase 2 necesite enlaces profundos": esa vista
+  ya existe (spec 003) y no los ha necesitado, pero la deuda pasó de una vista a
+  **cinco** —categorías, usuarios, bitácora, productos y la que venga—, así que la
+  condición de retomarla ya no es la Fase 2 sino el primer caso real de enlace
+  compartido. Cuando llegue, se resuelve una vez en un helper compartido y no
+  cinco veces.
 - **`image_url` como texto libre.** Sin uploader ni validación de que la imagen
   exista. Retomar junto con el blob storage de las imágenes de producto.
   `z.url()` además acepta esquemas `javascript:` y `data:`; hoy no hay superficie

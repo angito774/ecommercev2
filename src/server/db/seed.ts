@@ -89,6 +89,156 @@ async function seedCategories({ db, schema }: SeedDeps): Promise<void> {
 // de descripción, de `resource`/`action` y sobre todo de `is_elevated`, que la capa
 // de autorización lee para exigir `users.assign_elevated_roles`. No borra ninguna
 // fila: solo refresca columnas, conservando `id` y las FKs que ya apuntan a ellas.
+// Los precios se declaran ya en céntimos enteros. Escribirlos como 2199.90 y
+// multiplicar por 100 aquí produce 219989.99999999997: es el punto donde más
+// fácil se cuela un float en todo el spec 003 (§10).
+// El tipo es explícito y no inferido: sin él, TypeScript une los literales de
+// `specs` de las ocho filas y cada clave acaba como `string | undefined`, que no
+// encaja con `Record<string, string>` de la columna.
+type ProductSeedRow = {
+  sku: string;
+  name: string;
+  slug: string;
+  description: string;
+  priceCents: number;
+  stock: number;
+  specs: Record<string, string>;
+  categorySlug: string;
+  isActive: boolean;
+};
+
+const PRODUCT_ROWS: ProductSeedRow[] = [
+  {
+    sku: 'LEN-IP3-15',
+    name: 'Laptop Lenovo IdeaPad 3 15"',
+    slug: 'laptop-lenovo-ideapad-3-15',
+    description: 'Portátil de 15,6" con Ryzen 5, 16 GB de RAM y SSD de 512 GB.',
+    priceCents: 219_900,
+    stock: 12,
+    specs: { Procesador: 'AMD Ryzen 5 5500U', RAM: '16 GB DDR4', Almacenamiento: 'SSD 512 GB' },
+    categorySlug: 'laptops',
+    isActive: true,
+  },
+  {
+    sku: 'APL-MBA-M2',
+    name: 'MacBook Air M2 13"',
+    slug: 'macbook-air-m2-13',
+    description: 'Chip M2 de 8 núcleos, 8 GB de memoria unificada y 256 GB de SSD.',
+    priceCents: 549_900,
+    stock: 4,
+    specs: { Procesador: 'Apple M2', RAM: '8 GB', Pantalla: '13,6" Liquid Retina' },
+    categorySlug: 'laptops',
+    isActive: true,
+  },
+  {
+    sku: 'SAM-A55-256',
+    name: 'Samsung Galaxy A55 5G 256 GB',
+    slug: 'samsung-galaxy-a55-5g-256gb',
+    description: 'Pantalla Super AMOLED de 6,6", cámara de 50 MP y batería de 5000 mAh.',
+    priceCents: 149_900,
+    stock: 20,
+    specs: { Pantalla: '6,6" Super AMOLED', Cámara: '50 MP', Batería: '5000 mAh' },
+    categorySlug: 'smartphones',
+    isActive: true,
+  },
+  {
+    // Sin stock a propósito: el indicador de agotado necesita un caso real.
+    sku: 'LG-27GN800',
+    name: 'Monitor LG UltraGear 27" 165 Hz',
+    slug: 'monitor-lg-ultragear-27-165hz',
+    description: 'IPS QHD de 27" con 165 Hz y 1 ms para juegos.',
+    priceCents: 119_900,
+    stock: 0,
+    specs: { Resolución: '2560x1440', Refresco: '165 Hz', Panel: 'IPS' },
+    categorySlug: 'monitores',
+    isActive: true,
+  },
+  {
+    sku: 'KEY-K2-RGB',
+    name: 'Teclado mecánico Keychron K2 RGB',
+    slug: 'teclado-mecanico-keychron-k2-rgb',
+    description: 'Inalámbrico 75 % con switches Gateron e iluminación RGB.',
+    priceCents: 45_900,
+    stock: 8,
+    specs: { Formato: '75 %', Switches: 'Gateron Brown', Conexión: 'Bluetooth y USB-C' },
+    categorySlug: 'perifericos',
+    isActive: true,
+  },
+  {
+    sku: 'NV-4060TI-8',
+    name: 'Tarjeta gráfica NVIDIA RTX 4060 Ti 8 GB',
+    slug: 'nvidia-rtx-4060-ti-8gb',
+    description: 'GPU de gama media con 8 GB GDDR6 y ray tracing.',
+    priceCents: 189_900,
+    stock: 3,
+    specs: { Memoria: '8 GB GDDR6', Interfaz: 'PCIe 4.0' },
+    categorySlug: 'componentes-de-pc',
+    isActive: true,
+  },
+  {
+    sku: 'SAM-980-1TB',
+    name: 'SSD NVMe Samsung 980 1 TB',
+    slug: 'ssd-nvme-samsung-980-1tb',
+    description: 'Unidad M.2 NVMe con lecturas de hasta 3500 MB/s.',
+    priceCents: 34_900,
+    stock: 30,
+    specs: { Capacidad: '1 TB', Interfaz: 'M.2 NVMe PCIe 3.0' },
+    categorySlug: 'almacenamiento',
+    isActive: true,
+  },
+  {
+    // Descatalogado: el filtro por estado necesita un inactivo que no sea el único
+    // producto de su categoría.
+    sku: 'LOG-MX3S',
+    name: 'Mouse Logitech MX Master 3S',
+    slug: 'mouse-logitech-mx-master-3s',
+    description: 'Ratón ergonómico de 8000 DPI con clics silenciosos.',
+    priceCents: 39_900,
+    stock: 5,
+    specs: { DPI: '8000', Conexión: 'Bluetooth y receptor USB' },
+    categorySlug: 'perifericos',
+    isActive: false,
+  },
+];
+
+async function seedProducts({ db, schema }: SeedDeps): Promise<void> {
+  // Las categorías se resuelven por slug y no por id: el seed no puede suponer
+  // qué uuid le tocó a cada una, y el slug es el identificador estable.
+  const categoryRows = await db
+    .select({ id: schema.categories.id, slug: schema.categories.slug })
+    .from(schema.categories);
+
+  const idBySlug = new Map(categoryRows.map((row) => [row.slug, row.id]));
+
+  const values = [];
+  const missing: string[] = [];
+
+  for (const { categorySlug, ...product } of PRODUCT_ROWS) {
+    const categoryId = idBySlug.get(categorySlug);
+    if (!categoryId) {
+      missing.push(`${product.sku} → ${categorySlug}`);
+      continue;
+    }
+    values.push({ ...product, categoryId });
+  }
+
+  if (missing.length > 0) {
+    // No se lanza: el resto del catálogo sí debe sembrarse. Pero tiene que verse,
+    // porque un producto que falta en silencio parece un fallo de la vista.
+    console.warn(`Productos omitidos por categoría inexistente: ${missing.join(', ')}`);
+  }
+
+  const inserted = await db
+    .insert(schema.products)
+    .values(values)
+    .onConflictDoNothing({ target: schema.products.sku })
+    .returning({ sku: schema.products.sku });
+
+  console.log(
+    `Productos: ${inserted.length} insertados, ${values.length - inserted.length} ya existían.`,
+  );
+}
+
 async function seedPermissions({ db, schema }: SeedDeps): Promise<void> {
   const upserted = await db
     .insert(schema.permissions)
@@ -252,6 +402,7 @@ async function main() {
   const deps = await loadDeps();
 
   await seedCategories(deps);
+  await seedProducts(deps);
   await seedPermissions(deps);
   await seedRoles(deps);
   await seedRolePermissions(deps);

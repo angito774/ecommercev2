@@ -13,6 +13,9 @@ export const AUDIT_ACTIONS = [
   { code: 'category.created', label: 'Categoría creada', entityType: 'category' },
   { code: 'category.updated', label: 'Categoría editada', entityType: 'category' },
   { code: 'category.deactivated', label: 'Categoría desactivada', entityType: 'category' },
+  { code: 'product.created', label: 'Producto creado', entityType: 'product' },
+  { code: 'product.updated', label: 'Producto editado', entityType: 'product' },
+  { code: 'product.deactivated', label: 'Producto desactivado', entityType: 'product' },
   { code: 'user.invited', label: 'Persona invitada', entityType: 'user' },
   { code: 'user.created', label: 'Cuenta creada', entityType: 'user' },
   { code: 'user.roles_changed', label: 'Roles cambiados', entityType: 'user' },
@@ -31,6 +34,7 @@ export function auditActionLabel(code: string): string {
 const ENTITY_TYPE_LABELS: Record<string, string> = {
   user: 'Persona',
   category: 'Categoría',
+  product: 'Producto',
   role: 'Rol',
 };
 
@@ -57,6 +61,7 @@ export const AUDIT_ENTITY_OPTIONS = [
   { value: 'all', label: 'Todo' },
   { value: 'user', label: 'Personas' },
   { value: 'category', label: 'Categorías' },
+  { value: 'product', label: 'Productos' },
 ] as const;
 
 export const AUDIT_ACTION_OPTIONS = [
@@ -67,6 +72,12 @@ export const AUDIT_ACTION_OPTIONS = [
 // Etiquetas de los campos que aparecen en el `changes` de la bitácora. Cae al
 // nombre crudo si un servicio audita un campo nuevo.
 const FIELD_LABELS: Record<string, string> = {
+  sku: 'SKU',
+  priceCents: 'Precio (céntimos)',
+  stock: 'Stock',
+  specs: 'Características',
+  categoryId: 'Categoría',
+  imageUrl: 'Imagen',
   name: 'Nombre',
   slug: 'Identificador',
   description: 'Descripción',

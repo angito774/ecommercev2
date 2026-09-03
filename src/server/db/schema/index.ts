@@ -3,6 +3,7 @@
 export { auditLogs, auditSeverity } from './audit-log';
 export { categories } from './category';
 export { permissions } from './permission';
+export { products } from './product';
 export { rolePermissions } from './role-permission';
 export { roles } from './role';
 export { userRoles } from './user-role';

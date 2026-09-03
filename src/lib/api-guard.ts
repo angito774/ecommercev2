@@ -9,7 +9,7 @@ import {
 } from '@/lib/auth';
 import { ConflictError, NotFoundError, UpstreamError } from '@/lib/errors';
 import { ForbiddenError, type PermissionCode } from '@/lib/permissions';
-import { isUniqueViolation } from '@/lib/utils';
+import { isUniqueViolation, uniqueViolationTarget } from '@/lib/utils';
 import type { users } from '@/server/db/schema';
 
 type User = typeof users.$inferSelect;
@@ -78,8 +78,27 @@ type ErrorResponseOptions = {
   fallback: string;
   // Mensaje del 409 cuando el conflicto lo detecta el constraint unique de Postgres
   // en vez de una regla de negocio. Sin él, una violación unique cae al 500.
-  uniqueViolationMessage?: string;
+  //
+  // Como texto para las tablas con un solo constraint unique (`categories`). Como
+  // mapa `nombre del constraint -> mensaje` para las que tienen varios
+  // (`products`: sku y slug), porque el cliente necesita saber qué campo marcar y
+  // el interceptor de axios solo le deja el mensaje (spec 003, AC9).
+  uniqueViolationMessage?: string | Record<string, string>;
 };
+
+const GENERIC_CONFLICT_MESSAGE = 'Ya existe un registro con esos datos.';
+
+function conflictMessage(
+  option: string | Record<string, string>,
+  error: unknown,
+): string {
+  if (typeof option === 'string') return option;
+
+  const constraint = uniqueViolationTarget(error);
+  // Un 23505 que no sabemos atribuir sigue siendo un conflicto del cliente: cae a
+  // un mensaje genérico, nunca a un 500, que sería culpar al servidor.
+  return (constraint && option[constraint]) || GENERIC_CONFLICT_MESSAGE;
+}
 
 // Única traducción de fallo → status de toda la API de admin. Que viva en un solo
 // sitio es lo que garantiza que 401 sea siempre "sin sesión" y 403 siempre "con
@@ -112,7 +131,8 @@ export function toErrorResponse(error: unknown, options: ErrorResponseOptions): 
   // El conflicto lo detecta el constraint, no un SELECT previo: un pre-check dejaría
   // una carrera entre la lectura y el INSERT.
   if (options.uniqueViolationMessage && isUniqueViolation(error)) {
-    return NextResponse.json({ message: options.uniqueViolationMessage }, { status: 409 });
+    const message = conflictMessage(options.uniqueViolationMessage, error);
+    return NextResponse.json({ message }, { status: 409 });
   }
 
   console.error(options.label, error);
