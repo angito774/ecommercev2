@@ -41,6 +41,8 @@ import { fromCents, toCents } from '../lib/price';
 import { productFormSchema, type ProductFormValues } from '../schemas/product.schema';
 import type { ProductWithCategory } from '../types/product.types';
 
+import { ProductThumbnail } from './product-thumbnail';
+
 type ProductFormDialogProps = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -137,10 +139,12 @@ function ProductForm({
         ]
       : activeCategories;
 
-  const { control, formState, handleSubmit, register, setError, setValue } = useForm({
+  const { control, formState, handleSubmit, register, setError, setValue, watch } = useForm({
     resolver: zodResolver(productFormSchema),
     defaultValues: toFormValues(product),
   });
+
+  const imageUrl = watch('imageUrl');
 
   const specs = useFieldArray({ control, name: 'specs' });
 
@@ -314,14 +318,23 @@ function ProductForm({
 
         <Field data-invalid={Boolean(formState.errors.imageUrl)}>
           <FieldLabel htmlFor="product-image-url">URL de la imagen</FieldLabel>
-          <Input
-            id="product-image-url"
-            inputMode="url"
-            placeholder="https://…"
-            autoComplete="off"
-            aria-invalid={Boolean(formState.errors.imageUrl)}
-            {...register('imageUrl', { setValueAs: emptyToNull })}
-          />
+          <div className="flex items-start gap-3">
+            <ProductThumbnail imageUrl={imageUrl ?? null} alt="Vista previa de la imagen" size={56} />
+            <div className="flex-1">
+              <Input
+                id="product-image-url"
+                inputMode="url"
+                placeholder="https://…"
+                autoComplete="off"
+                aria-invalid={Boolean(formState.errors.imageUrl)}
+                {...register('imageUrl', { setValueAs: emptyToNull })}
+              />
+              <FieldDescription>
+                Si el host no está permitido en la configuración de imágenes, la vista
+                previa se queda en el icono en vez de mostrar la foto.
+              </FieldDescription>
+            </div>
+          </div>
           <FieldError errors={[formState.errors.imageUrl]} />
         </Field>
 

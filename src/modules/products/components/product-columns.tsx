@@ -17,6 +17,8 @@ import {
 import { formatPrice } from '../lib/price';
 import type { ProductWithCategory } from '../types/product.types';
 
+import { ProductThumbnail } from './product-thumbnail';
+
 type ProductColumnsOptions = {
   // Resueltos por el servidor en `meta`: el cliente no deduce permisos, solo
   // decide qué controles pinta. La frontera real es el 403 del handler.
@@ -63,6 +65,15 @@ export function getProductColumns({
   onDeactivate,
 }: ProductColumnsOptions): ColumnDef<ProductWithCategory>[] {
   const columns: ColumnDef<ProductWithCategory>[] = [
+    {
+      id: 'thumbnail',
+      header: () => <span className="sr-only">Imagen</span>,
+      enableSorting: false,
+      size: 56,
+      cell: ({ row }) => (
+        <ProductThumbnail imageUrl={row.original.imageUrl} alt={row.original.name} />
+      ),
+    },
     {
       accessorKey: 'sku',
       header: 'SKU',
