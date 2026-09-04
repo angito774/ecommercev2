@@ -149,62 +149,68 @@ function Slide({
   const hasDiscount = product.discountPercent !== null && product.compareAtPriceCents !== null;
 
   return (
-    <article
-      inert={inert}
-      className="grid w-full shrink-0 grid-cols-1 items-center gap-8 px-[clamp(1.25rem,4vw,2.5rem)] py-[clamp(1.75rem,4.5vw,2.75rem)] lg:grid-cols-[1.1fr_1fr]"
-    >
-      <div className="flex flex-col items-start gap-3.5">
-        <span className="bg-nx-accent-soft text-primary inline-flex items-center gap-1.5 rounded-full py-1.5 pr-3.5 pl-2.5 text-xs font-bold tracking-[0.02em] uppercase">
-          <Sparkles className="size-3.5" aria-hidden />
-          {hasDiscount ? 'La mejor oferta' : 'Destacado'}
-        </span>
-
-        <h2 className="max-w-[20ch] text-[clamp(1.4rem,2.7vw,2rem)] leading-[1.1] font-semibold tracking-[-0.02em]">
-          {product.name}
-        </h2>
-
-        <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-          <span className="font-nx-display text-[clamp(1.4rem,2.6vw,1.85rem)] font-bold tabular-nums">
-            {formatPrice(product.priceCents)}
+    // El `article` se queda a ancho completo por la mecánica del carrusel
+    // (`translateX(-index * 100%)` asume slides de 100%); el contenido de verdad se
+    // acota dentro con el mismo `max-w-[1240px]` que usa cada sección de la
+    // portada, para que el slider no sea la única pieza que llega borde a borde en
+    // pantallas anchas.
+    <article inert={inert} className="w-full shrink-0 px-[clamp(1rem,4vw,2rem)] py-[clamp(1.1rem,2.8vw,1.75rem)]">
+      <div className="mx-auto grid w-full max-w-[1240px] grid-cols-1 items-center gap-6 sm:grid-cols-[1.3fr_1fr]">
+        <div className="flex flex-col items-start gap-3">
+          <span className="bg-nx-accent-soft text-primary inline-flex items-center gap-1.5 rounded-full py-1.5 pr-3.5 pl-2.5 text-xs font-bold tracking-[0.02em] uppercase">
+            <Sparkles className="size-3.5" aria-hidden />
+            {hasDiscount ? 'La mejor oferta' : 'Destacado'}
           </span>
-          {hasDiscount && product.compareAtPriceCents !== null ? (
-            <>
-              <span className="text-nx-faint text-base line-through tabular-nums">
-                {formatPrice(product.compareAtPriceCents)}
-              </span>
-              <span className="bg-nx-sale rounded-full px-2.5 py-1 text-xs font-bold text-white">
-                −{product.discountPercent} %
-              </span>
-            </>
+
+          <h2 className="max-w-[20ch] text-[clamp(1.2rem,2.1vw,1.6rem)] leading-[1.15] font-semibold tracking-[-0.02em]">
+            {product.name}
+          </h2>
+
+          <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+            <span className="font-nx-display text-[clamp(1.2rem,2vw,1.45rem)] font-bold tabular-nums">
+              {formatPrice(product.priceCents)}
+            </span>
+            {hasDiscount && product.compareAtPriceCents !== null ? (
+              <>
+                <span className="text-nx-faint text-sm line-through tabular-nums">
+                  {formatPrice(product.compareAtPriceCents)}
+                </span>
+                <span className="bg-nx-sale rounded-full px-2.5 py-1 text-xs font-bold text-white">
+                  −{product.discountPercent} %
+                </span>
+              </>
+            ) : null}
+          </div>
+
+          <div className="mt-1 flex flex-wrap items-center gap-3">
+            <button
+              type="button"
+              onClick={onCta}
+              className="bg-primary text-primary-foreground nx-shadow-accent inline-flex h-10 items-center gap-2 rounded-full px-4.5 text-sm font-semibold"
+            >
+              {hasDiscount ? 'Ver oferta' : 'Ver producto'}
+              <ArrowRight className="size-4" aria-hidden />
+            </button>
+            <AddToCartButton product={product} variant="full" />
+          </div>
+        </div>
+
+        {/* `mx-auto` centra el marco de la imagen dentro de su columna, y el ancho
+            máximo evita que una foto 700x400 de proveedor domine el slide entero. */}
+        <div className="nx-art-surface nx-shadow-md relative mx-auto aspect-[4/3] w-full max-w-[280px] overflow-hidden rounded-[20px] sm:max-w-[300px]">
+          <ProductMedia
+            imageUrl={product.imageUrl}
+            alt={product.name}
+            categorySlug={product.categorySlug}
+            priority
+            sizes="300px"
+          />
+          {product.stockLevel !== 'in' ? (
+            <span className="absolute bottom-2.5 left-2.5 rounded-full bg-[rgb(10_10_15_/_62%)] px-2.5 py-1 text-[11px] font-semibold text-white backdrop-blur">
+              {STOCK_LABELS[product.stockLevel]}
+            </span>
           ) : null}
         </div>
-
-        <div className="mt-1 flex flex-wrap items-center gap-3">
-          <button
-            type="button"
-            onClick={onCta}
-            className="bg-primary text-primary-foreground nx-shadow-accent inline-flex h-11 items-center gap-2 rounded-full px-5 text-sm font-semibold"
-          >
-            {hasDiscount ? 'Ver oferta' : 'Ver producto'}
-            <ArrowRight className="size-4" aria-hidden />
-          </button>
-          <AddToCartButton product={product} variant="full" />
-        </div>
-      </div>
-
-      <div className="nx-art-surface nx-shadow-md relative aspect-[4/3] overflow-hidden rounded-[24px]">
-        <ProductMedia
-          imageUrl={product.imageUrl}
-          alt={product.name}
-          categorySlug={product.categorySlug}
-          priority
-          sizes="(max-width: 1024px) 90vw, 560px"
-        />
-        {product.stockLevel !== 'in' ? (
-          <span className="absolute bottom-3 left-3 rounded-full bg-[rgb(10_10_15_/_62%)] px-3 py-1.5 text-xs font-semibold text-white backdrop-blur">
-            {STOCK_LABELS[product.stockLevel]}
-          </span>
-        ) : null}
       </div>
     </article>
   );

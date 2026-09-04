@@ -40,13 +40,19 @@ export function ProductThumbnail({ imageUrl, alt, size = 40 }: ProductThumbnailP
   }
 
   return (
-    <div className="relative shrink-0 overflow-hidden rounded-md border" style={{ width: size, height: size }}>
+    // `bg-muted` y `object-contain`: igual que en la tienda, la foto entera queda
+    // visible en vez de recortada, sobre el mismo fondo neutro del estado sin
+    // imagen — a este tamaño el recorte de `cover` cortaba producto de verdad.
+    <div
+      className="bg-muted relative shrink-0 overflow-hidden rounded-md border"
+      style={{ width: size, height: size }}
+    >
       <Image
         src={imageUrl}
         alt={alt}
         fill
         sizes={`${size}px`}
-        className="object-cover"
+        className="object-contain"
         onError={() => setFailed(true)}
       />
     </div>

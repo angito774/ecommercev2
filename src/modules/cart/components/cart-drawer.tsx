@@ -11,7 +11,7 @@ import {
   SheetTitle,
 } from '@/components/ui/sheet';
 import { formatPrice } from '@/modules/products/lib/price';
-import { CategoryArt } from '@/modules/storefront/components/category-art';
+import { ProductMedia } from '@/modules/storefront/components/product-media';
 import { useUiStore } from '@/modules/storefront/store/ui.store';
 
 import { FREE_SHIPPING_THRESHOLD_CENTS, SHIPPING_COST_CENTS } from '../constants';
@@ -146,8 +146,13 @@ function CartLineRow({ line }: { line: CartLine }) {
 
   return (
     <li className="border-border grid grid-cols-[74px_1fr] gap-3.5 border-b pb-3 last:border-b-0">
-      <div className="nx-art-surface grid aspect-square place-items-center rounded-xl p-2">
-        <CategoryArt categorySlug={line.categorySlug} />
+      <div className="nx-art-surface relative grid aspect-square place-items-center overflow-hidden rounded-xl p-2">
+        <ProductMedia
+          imageUrl={line.imageUrl}
+          alt={line.name}
+          categorySlug={line.categorySlug}
+          sizes="74px"
+        />
       </div>
 
       <div className="min-w-0">
