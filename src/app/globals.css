@@ -447,6 +447,18 @@ body:has([data-surface='storefront']) :is([data-slot='dialog-title'], [data-slot
   }
 }
 
+/* Barra de progreso del punto activo del carrusel de destacados. Se aplica solo
+   por JS y solo cuando NO hay reduced-motion (featured-slider.tsx), así que no
+   hace falta neutralizarla aparte en la media query de abajo. */
+@keyframes nx-slider-fill {
+  from {
+    width: 0%;
+  }
+  to {
+    width: 100%;
+  }
+}
+
 .nx-pulse::after {
   content: '';
   position: absolute;

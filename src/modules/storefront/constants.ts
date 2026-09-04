@@ -56,3 +56,13 @@ export const STOCK_LABELS = {
   low: 'Últimas unidades',
   in: 'En stock',
 } as const;
+
+// Máximo de slides del carrusel de la portada: ofertas primero, completado con
+// destacados. Con 12 productos en `catalog.data` (CATALOG_PAGE_SIZE) siempre hay
+// de sobra para llegar a este número aunque haya que descartar duplicados.
+export const FEATURED_SLIDER_SIZE = 5;
+
+// Cada cuánto avanza solo el carrusel. También fija la duración de la barra de
+// progreso del punto activo, así que ambas cosas quedan sincronizadas por
+// construcción en vez de por dos números que alguien puede desalinear.
+export const FEATURED_SLIDER_AUTOPLAY_MS = 4500;
