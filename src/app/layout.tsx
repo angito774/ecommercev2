@@ -1,7 +1,7 @@
 import { ClerkProvider } from '@clerk/nextjs';
 import { shadcn } from '@clerk/ui/themes';
 import type { Metadata } from 'next';
-import { Geist, Geist_Mono, Inter, Space_Grotesk } from 'next/font/google';
+import { Geist_Mono, Inter, Roboto, Space_Grotesk } from 'next/font/google';
 
 import { Providers } from '@/components/providers';
 import { Toaster } from '@/components/ui/sonner';
@@ -9,9 +9,16 @@ import { APP_DESCRIPTION, APP_NAME } from '@/lib/constants';
 
 import './globals.css';
 
-const geistSans = Geist({
-  variable: '--font-geist-sans',
+// Google Sans no está en Google Fonts: es propietaria de Google y no se
+// distribuye para uso público, así que no se puede cargar de forma legítima con
+// `next/font/google` ni de ninguna otra (decidido con el usuario). Roboto es la
+// fuente pública real de Google —la de Android y Material Design— y la que pasa
+// a usar el panel admin. `weight` explícito porque, a diferencia de Geist, Roboto
+// no es una fuente variable en Google Fonts.
+const robotoSans = Roboto({
+  variable: '--font-roboto',
   subsets: ['latin'],
+  weight: ['400', '500', '700'],
 });
 
 const geistMono = Geist_Mono({
@@ -43,7 +50,7 @@ export default function RootLayout({ children }: LayoutProps<'/'>) {
       <html
         lang="es"
         suppressHydrationWarning
-        className={`${geistSans.variable} ${geistMono.variable} ${spaceGrotesk.variable} ${inter.variable} h-full antialiased`}
+        className={`${robotoSans.variable} ${geistMono.variable} ${spaceGrotesk.variable} ${inter.variable} h-full antialiased`}
       >
         <body className="flex min-h-full flex-col">
           <Providers>{children}</Providers>
