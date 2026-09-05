@@ -52,6 +52,10 @@ export const CATALOG_PAGE_SIZE = 12;
 // Cuántos resultados muestra el overlay de búsqueda.
 export const CATALOG_SEARCH_LIMIT = 6;
 
+// Cuántos productos de la misma categoría acompañan a la ficha. La consulta pide
+// uno más y descarta el producto actual (spec 005, D-4).
+export const RELATED_PRODUCTS_SIZE = 4;
+
 // Alineado con el `s-maxage=60` de los endpoints públicos: no tiene sentido que el
 // cliente considere rancio un dato que el borde todavía sirve como fresco.
 export const CATALOG_STALE_TIME_MS = 60 * 1000;

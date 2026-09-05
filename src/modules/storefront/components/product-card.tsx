@@ -1,3 +1,5 @@
+import Link from 'next/link';
+
 import { formatPrice } from '@/modules/products/lib/price';
 import type { CatalogProduct } from '@/modules/products/types/catalog.types';
 
@@ -31,7 +33,9 @@ export function ProductCard({ product, priority }: ProductCardProps) {
           className="transition-transform duration-500 group-hover:scale-[1.07]"
         />
 
-        <div className="absolute top-3 left-3 z-[2] flex gap-1.5">
+        {/* `pointer-events-none`: son etiquetas, no controles, y sin esto taparían
+            el enlace extendido justo en la esquina donde se pintan. */}
+        <div className="pointer-events-none absolute top-3 left-3 z-[2] flex gap-1.5">
           {/* El badge y el precio tachado son la misma condición: o están los dos
               o no está ninguno, nunca un descuento sin referencia (AC13). */}
           {hasDiscount ? (
@@ -51,7 +55,19 @@ export function ProductCard({ product, priority }: ProductCardProps) {
         <p className="text-nx-faint text-[11px] tracking-[0.09em] uppercase">
           {product.categoryName}
         </p>
-        <h3 className="text-[16.5px] leading-snug tracking-[-0.025em]">{product.name}</h3>
+        {/* Enlace extendido: el `<a>` envuelve solo el nombre —una única parada de
+            tabulación con su texto como nombre accesible— y el pseudoelemento cubre
+            la tarjeta entera para conservar el área de clic. Envolver la tarjeta en
+            `<Link>` metería el botón de añadir dentro de un ancla: HTML inválido y
+            un clic que navegaría además de añadir (spec 005, D-7; AC13, AC14). */}
+        <h3 className="text-[16.5px] leading-snug tracking-[-0.025em]">
+          <Link
+            href={`/products/${product.slug}`}
+            className="after:absolute after:inset-0 after:z-[1] after:content-['']"
+          >
+            {product.name}
+          </Link>
+        </h3>
 
         {stockLevel === 'low' ? (
           <p className="text-nx-sale text-xs font-medium">{STOCK_LABELS.low}</p>
@@ -68,7 +84,11 @@ export function ProductCard({ product, priority }: ProductCardProps) {
               </span>
             ) : null}
           </div>
-          <AddToCartButton product={product} />
+          {/* Elevado por encima del pseudoelemento del enlace: si no, el clic en el
+              botón lo interceptaría el ancla y navegaría en vez de añadir (AC13). */}
+          <div className="relative z-[2]">
+            <AddToCartButton product={product} />
+          </div>
         </div>
       </div>
     </article>

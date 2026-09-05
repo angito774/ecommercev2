@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import { Suspense } from 'react';
 
 import { APP_NAME } from '@/lib/constants';
 import { CATALOG_PAGE_SIZE } from '@/modules/products/constants';
@@ -9,7 +10,9 @@ import { CategoryMarquee } from '@/modules/storefront/components/category-marque
 import { DealsSection } from '@/modules/storefront/components/deals-section';
 import { FeaturedSlider } from '@/modules/storefront/components/featured-slider';
 import { FeaturesSection } from '@/modules/storefront/components/features-section';
+import { HashScroll } from '@/modules/storefront/components/hash-scroll';
 import { Hero } from '@/modules/storefront/components/hero';
+import { HomeSkeleton } from '@/modules/storefront/components/home-skeleton';
 import { FEATURED_SLIDER_SIZE } from '@/modules/storefront/constants';
 import * as productRepository from '@/server/repositories/product.repository';
 import { getPublicCategories } from '@/server/services/catalog.service';
@@ -51,7 +54,19 @@ export const metadata: Metadata = {
   },
 };
 
-export default async function HomePage() {
+// El boundary de carga es este `<Suspense>` y no un `loading.tsx` del segmento:
+// aquel envolvería también a `/products/[slug]`, cuyo shell listo de inmediato
+// impedía que `notFound()` cambiara la línea de estado (§12.2). Aquí el boundary
+// queda encerrado en la portada, que es la única ruta que lo necesita.
+export default function HomePage() {
+  return (
+    <Suspense fallback={<HomeSkeleton />}>
+      <HomeContent />
+    </Suspense>
+  );
+}
+
+async function HomeContent() {
   // Lectura inicial por repositorio desde un Server Component: es la flecha que
   // docs/SETUP.md §4 reserva a la lectura inicial y al SEO. Sin ella la portada
   // llegaría vacía al rastreador y con un salto de layout (spec 004, D-5).
@@ -98,6 +113,9 @@ export default async function HomePage() {
 
   return (
     <>
+      {/* Dentro del contenido resuelto, no en el fallback: el scroll al hash solo
+          puede acertar cuando las secciones ancladas ya están en el DOM (§12.7). */}
+      <HashScroll />
       {/* Justo debajo del header (que pinta el layout) y antes del hero: lo primero
           que ve cualquier visitante, aprobado como preview antes de construirse. */}
       <FeaturedSlider products={featuredSlides} />

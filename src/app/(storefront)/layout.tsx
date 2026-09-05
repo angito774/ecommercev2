@@ -1,8 +1,9 @@
-import { Show, SignInButton, SignUpButton, UserButton } from '@clerk/nextjs';
+import { Show } from '@clerk/nextjs';
 import Link from 'next/link';
 import { Suspense, type ReactNode } from 'react';
 
 import { Button } from '@/components/ui/button';
+import { AccountMenu } from '@/modules/storefront/components/account-menu';
 import { AnnouncementBar } from '@/modules/storefront/components/announcement-bar';
 import { MotionProvider } from '@/modules/storefront/components/motion-provider';
 import { StorefrontFooter } from '@/modules/storefront/components/storefront-footer';
@@ -11,28 +12,26 @@ import { StorefrontOverlays } from '@/modules/storefront/components/storefront-o
 import { getPublicCategoriesForChrome } from '@/server/services/catalog.service';
 
 // El bloque de sesión se renderiza aquí, en el servidor, y baja al header como
-// slot: así `UserButton` no entra en el bundle del header y el visitante con sesión
+// slot: así el header no importa Clerk directamente y el visitante con sesión
 // sigue viendo su avatar y el acceso al panel (spec 004, D-15 y AC19).
 function AuthSlot() {
   return (
     <>
       <Show when="signed-out">
-        <SignInButton mode="modal">
-          <Button variant="ghost" size="sm" className="h-11 rounded-full px-4">
-            Iniciar sesión
-          </Button>
-        </SignInButton>
-        <SignUpButton mode="modal">
-          <Button size="sm" className="hidden h-11 rounded-full px-4 sm:inline-flex">
-            Crear cuenta
-          </Button>
-        </SignUpButton>
+        {/* Sin modal: el pedido es que "ingresar"/"crear cuenta" lleven a su
+            propia vista, no que la abran encima de la página actual. */}
+        <Button variant="ghost" size="sm" asChild className="h-11 rounded-full px-4">
+          <Link href="/sign-in">Iniciar sesión</Link>
+        </Button>
+        <Button size="sm" asChild className="hidden h-11 rounded-full px-4 sm:inline-flex">
+          <Link href="/sign-up">Crear cuenta</Link>
+        </Button>
       </Show>
       <Show when="signed-in">
         <Button variant="ghost" size="sm" asChild className="hidden h-11 rounded-full px-4 lg:inline-flex">
           <Link href="/admin/products">Administración</Link>
         </Button>
-        <UserButton />
+        <AccountMenu />
       </Show>
     </>
   );

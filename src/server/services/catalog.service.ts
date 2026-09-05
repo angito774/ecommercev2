@@ -1,6 +1,7 @@
 import { cache } from 'react';
 
 import * as categoryRepository from '@/server/repositories/category.repository';
+import * as productRepository from '@/server/repositories/product.repository';
 
 // El layout del storefront (footer) y la portada (marquee, rejilla y filtros del
 // catálogo) necesitan exactamente la misma lista. Next no deduplica entre layout y
@@ -11,6 +12,13 @@ import * as categoryRepository from '@/server/repositories/category.repository';
 // la primera y no toca la base. Es el mismo mecanismo que ya usa
 // `getEffectivePermissions()` en la capa de autorización.
 export const getPublicCategories = cache(() => categoryRepository.findPublicWithCounts());
+
+// La ficha de producto se lee dos veces por visita: una en `generateMetadata` y
+// otra en el render de la página. Sin esta memoización serían dos viajes a Neon
+// por cada visita, que es el error fácil de esta feature (spec 005, §10).
+export const getPublicProductBySlug = cache((slug: string) =>
+  productRepository.findPublicBySlug(slug),
+);
 
 // Variante que NO puede lanzar, para el layout del storefront.
 //

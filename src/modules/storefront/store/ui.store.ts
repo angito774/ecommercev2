@@ -15,6 +15,14 @@ type UiState = {
   // marquee, la rejilla de categorías y el buscador— y todos tienen que poder
   // cambiarlo sin que el estado suba hasta la portada.
   categoryFilter: string;
+  // Término de búsqueda aplicado al catálogo, o cadena vacía. Lo escribe el ítem
+  // de reserva del buscador («Ver … en el catálogo») y lo limpia el chip de la
+  // rejilla: sin él, «navegar al catálogo con el filtro aplicado» no sería cierto
+  // y el visitante que busca «ssd» aterrizaría en el catálogo completo (D-10).
+  //
+  // Es estado de UI, no datos de servidor: los resultados siguen viniendo de
+  // TanStack Query, que recibe este término como parámetro (SETUP §4, regla 6).
+  catalogQuery: string;
   // Pestillos de montaje: pasan a true la primera vez que se abre cada overlay y ya
   // no vuelven atrás. Viven en el store, y no en un ref del componente, porque
   // derivarlos durante el render obligaría a leer y escribir una referencia
@@ -40,6 +48,7 @@ type UiState = {
   setCartOpen: (open: boolean) => void;
   setMenuOpen: (open: boolean) => void;
   setCategoryFilter: (slug: string) => void;
+  setCatalogQuery: (query: string) => void;
 };
 
 export const useUiStore = create<UiState>((set) => ({
@@ -47,12 +56,14 @@ export const useUiStore = create<UiState>((set) => ({
   cartOpen: false,
   menuOpen: false,
   categoryFilter: 'all',
+  catalogQuery: '',
   searchMounted: false,
   cartMounted: false,
   menuMounted: false,
   searchTrigger: null,
   setSearchTrigger: (searchTrigger) => set({ searchTrigger }),
   setCategoryFilter: (categoryFilter) => set({ categoryFilter }),
+  setCatalogQuery: (catalogQuery) => set({ catalogQuery }),
   // Abrir un overlay cierra los otros dos: dos capas modales a la vez dejan la
   // trampa de foco peleándose consigo misma y `Esc` cerrando la equivocada. El
   // pestillo de montaje solo se arma al abrir, nunca se desarma al cerrar.

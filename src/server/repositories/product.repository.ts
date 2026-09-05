@@ -1,6 +1,10 @@
 import { and, asc, count, desc, eq, ilike, or, sql, type SQL } from 'drizzle-orm';
 
-import type { CatalogProduct, StockLevel } from '@/modules/products/types/catalog.types';
+import type {
+  CatalogProduct,
+  CatalogProductDetail,
+  StockLevel,
+} from '@/modules/products/types/catalog.types';
 import { db, type Reader, type Tx } from '@/server/db';
 import { categories, products } from '@/server/db/schema';
 
@@ -230,6 +234,30 @@ export async function findPublicMany(params: CatalogListParams): Promise<Catalog
   ]);
 
   return { data, total: totals?.value ?? 0 };
+}
+
+// Ficha de producto. Comparte con `findPublicMany()` el filtro invariante y las
+// derivaciones (`DISCOUNT_PERCENT`, `STOCK_LEVEL`), así que la página y el listado
+// no pueden discrepar en el descuento ni en la disponibilidad. El `slug` es el
+// único parámetro: nada de fuera puede desactivar `is_active` (spec 005, §6.3).
+//
+// Añade `specs` a `CATALOG_COLUMNS` y nada más: el resto de la fila —`sku`,
+// `stock`, `isActive`, `categoryId`— sigue sin salir del servidor (AC6).
+export async function findPublicBySlug(slug: string): Promise<CatalogProductDetail | null> {
+  const [product] = await db
+    .select({ ...CATALOG_COLUMNS, specs: products.specs })
+    .from(products)
+    .innerJoin(categories, eq(categories.id, products.categoryId))
+    .where(
+      and(
+        eq(products.slug, slug),
+        eq(products.isActive, true),
+        eq(categories.isActive, true),
+      ),
+    )
+    .limit(1);
+
+  return product ?? null;
 }
 
 // ── Administración ──────────────────────────────────────────────────────────

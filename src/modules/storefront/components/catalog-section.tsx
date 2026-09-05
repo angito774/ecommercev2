@@ -1,6 +1,6 @@
 'use client';
 
-import { PackageOpen, RefreshCw, TriangleAlert } from 'lucide-react';
+import { PackageOpen, RefreshCw, TriangleAlert, X } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -23,13 +23,27 @@ type CatalogSectionProps = {
 export function CatalogSection({ categories, initialData }: CatalogSectionProps) {
   const category = useUiStore((state) => state.categoryFilter);
   const setCategoryFilter = useUiStore((state) => state.setCategoryFilter);
+  // El término lo pone el ítem de reserva del buscador. Vive en el store y no aquí
+  // porque quien lo aplica está en otro punto del árbol —el overlay— y puede
+  // aplicarlo desde otra página (spec 005, D-10).
+  const catalogQuery = useUiStore((state) => state.catalogQuery);
+  const setCatalogQuery = useUiStore((state) => state.setCatalogQuery);
 
-  const params = { category, sort: 'featured', page: 1, pageSize: CATALOG_PAGE_SIZE } as const;
+  // `undefined` y no cadena vacía: `q: ''` sería una clave de caché distinta de la
+  // del catálogo sin filtro y provocaría una petición extra por el mismo resultado.
+  const params = {
+    q: catalogQuery || undefined,
+    category,
+    sort: 'featured',
+    page: 1,
+    pageSize: CATALOG_PAGE_SIZE,
+  } as const;
 
   const query = useCatalogProducts(params, {
-    // Solo el filtro inicial tiene datos del servidor. Pasárselos a cualquier otro
-    // sería sembrar la caché con la respuesta de otra consulta.
-    initialData: category === 'all' ? initialData : undefined,
+    // Solo el filtro inicial tiene datos del servidor: sin categoría y sin término.
+    // Pasárselos a cualquier otra combinación sería sembrar la caché con la
+    // respuesta de otra consulta.
+    initialData: category === 'all' && catalogQuery === '' ? initialData : undefined,
   });
 
   const products = query.data?.data ?? [];
@@ -66,6 +80,23 @@ export function CatalogSection({ categories, initialData }: CatalogSectionProps)
           ))}
         </div>
 
+        {/* El término aplicado se ve y se puede quitar. Sin este chip, la rejilla
+            mostraría un subconjunto del catálogo sin decir por qué (AC18). */}
+        {catalogQuery ? (
+          <div className="mb-7 flex items-center gap-2 text-sm">
+            <span className="text-muted-foreground">Resultados de</span>
+            <button
+              type="button"
+              onClick={() => setCatalogQuery('')}
+              className="border-nx-line bg-card hover:text-foreground text-muted-foreground inline-flex h-11 items-center gap-2 rounded-full border pr-3 pl-4 font-medium transition-colors"
+              aria-label={`Quitar el filtro «${catalogQuery}»`}
+            >
+              «{catalogQuery}»
+              <X className="size-4" aria-hidden />
+            </button>
+          </div>
+        ) : null}
+
         <CatalogBody
           isPending={query.isPending}
           isError={query.isError}
@@ -73,6 +104,7 @@ export function CatalogSection({ categories, initialData }: CatalogSectionProps)
           onRetry={() => void query.refetch()}
           products={products}
           isFetching={query.isFetching}
+          term={catalogQuery}
         />
       </div>
     </section>
@@ -86,6 +118,7 @@ function CatalogBody({
   onRetry,
   products,
   isFetching,
+  term,
 }: {
   isPending: boolean;
   isError: boolean;
@@ -93,6 +126,9 @@ function CatalogBody({
   onRetry: () => void;
   products: CatalogProductListResponse['data'];
   isFetching: boolean;
+  // Término aplicado, para que el estado vacío lo nombre en vez de dar un mensaje
+  // genérico que no explica por qué no hay nada (AC17).
+  term: string;
 }) {
   if (isPending) {
     return (
@@ -126,7 +162,9 @@ function CatalogBody({
     return (
       <div className="border-border bg-card flex flex-col items-center gap-3 rounded-[22px] border p-14 text-center">
         <PackageOpen className="text-nx-faint size-8" aria-hidden />
-        <h3 className="text-lg font-semibold">No hay productos en esta categoría</h3>
+        <h3 className="text-lg font-semibold">
+          {term ? `No hay productos que coincidan con «${term}»` : 'No hay productos en esta categoría'}
+        </h3>
         <p className="text-muted-foreground text-sm">Prueba con otro filtro del catálogo.</p>
       </div>
     );

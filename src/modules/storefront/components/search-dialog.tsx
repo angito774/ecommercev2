@@ -1,11 +1,12 @@
 'use client';
 
+import { ArrowRight } from 'lucide-react';
+import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 
 import {
   Command,
   CommandDialog,
-  CommandEmpty,
   CommandGroup,
   CommandInput,
   CommandItem,
@@ -15,6 +16,7 @@ import { useDebounce } from '@/hooks/use-debounce';
 import { CATALOG_SEARCH_LIMIT, SEARCH_DEBOUNCE_MS } from '@/modules/products/constants';
 import { useCatalogProducts } from '@/modules/products/hooks/use-catalog-products';
 import { formatPrice } from '@/modules/products/lib/price';
+import type { CatalogProduct } from '@/modules/products/types/catalog.types';
 
 import { useUiStore } from '../store/ui.store';
 import { CategoryArt } from './category-art';
@@ -24,9 +26,11 @@ import { CategoryArt } from './category-art';
 // foco y devolución del foco al disparador al cerrar— que es justo lo que pide
 // AC10 (spec 004, D-12).
 export function SearchDialog() {
+  const router = useRouter();
   const open = useUiStore((state) => state.searchOpen);
   const setSearchOpen = useUiStore((state) => state.setSearchOpen);
   const setCategoryFilter = useUiStore((state) => state.setCategoryFilter);
+  const setCatalogQuery = useUiStore((state) => state.setCatalogQuery);
 
   // Cierre del overlay, por `Esc`, por clic fuera o por elegir un resultado.
   //
@@ -58,16 +62,29 @@ export function SearchDialog() {
 
   const results = debouncedTerm.length > 0 ? (query.data?.data ?? []) : [];
 
-  const onSelect = (categorySlug: string) => {
-    // Sin ficha de producto todavía (§3), así que el resultado lleva al catálogo
-    // filtrado por su categoría, que es lo más cerca que se puede dejar al
-    // visitante del producto que buscaba.
-    setCategoryFilter(categorySlug);
-    // Por el mismo camino que `Esc` y el clic fuera, para que elegir un resultado
-    // tampoco deje el foco en el `<body>`.
+  // Cierra por el mismo camino que `Esc` y el clic fuera, para que elegir un
+  // resultado tampoco deje el foco en el `<body>`.
+  const close = () => {
     handleOpenChange(false);
     setTerm('');
-    document.getElementById('catalogo')?.scrollIntoView({ behavior: 'smooth' });
+  };
+
+  // Elegir un resultado lleva a *ese* producto. Nunca añade al carrito: buscar es
+  // una pregunta, no una compra (AC15).
+  const onSelectProduct = (product: CatalogProduct) => {
+    close();
+    router.push(`/products/${product.slug}`);
+  };
+
+  // Ítem de reserva. Aplica el término al catálogo y navega con el router, no con
+  // un `<a>`: la recarga completa perdería el estado que se acaba de poner (D-10).
+  const onSeeAllInCatalog = () => {
+    setCatalogQuery(debouncedTerm);
+    // El término manda sobre la categoría que hubiera puesta antes; si no, la
+    // rejilla cruzaría dos filtros que el visitante no pidió a la vez.
+    setCategoryFilter('all');
+    close();
+    router.push('/#catalogo');
   };
 
   return (
@@ -100,14 +117,20 @@ export function SearchDialog() {
           </div>
         ) : (
           <>
-            <CommandEmpty>No hay productos que coincidan con «{debouncedTerm}».</CommandEmpty>
-            {results.length > 0 ? (
+            {/* Sin `CommandEmpty`: el ítem de reserva se renderiza siempre que hay
+                término (D-11), así que cmdk nunca vería la lista vacía y el mensaje
+                no llegaría a mostrarse. */}
+            {results.length === 0 ? (
+              <div className="text-nx-faint p-6 text-center text-sm">
+                No hay productos que coincidan con «{debouncedTerm}».
+              </div>
+            ) : (
               <CommandGroup heading="Productos">
                 {results.map((product) => (
                   <CommandItem
                     key={product.id}
                     value={product.id}
-                    onSelect={() => onSelect(product.categorySlug)}
+                    onSelect={() => onSelectProduct(product)}
                     className="gap-3"
                   >
                     <span className="nx-art-surface grid size-11 shrink-0 place-items-center rounded-lg p-1.5">
@@ -127,7 +150,20 @@ export function SearchDialog() {
                   </CommandItem>
                 ))}
               </CommandGroup>
-            ) : null}
+            )}
+
+            {/* Se ofrece también con 0 resultados: sin ningún ítem seleccionable,
+                `Enter` no haría nada y el overlay parecería roto. Con él, el
+                visitante llega al estado vacío del catálogo, que nombra el término
+                y ofrece los filtros de categoría (D-11, AC17). */}
+            <CommandGroup>
+              <CommandItem value="ver-en-catalogo" onSelect={onSeeAllInCatalog} className="gap-3">
+                <ArrowRight className="text-primary size-4 shrink-0" aria-hidden />
+                <span className="min-w-0 flex-1 truncate text-[14.5px]">
+                  Ver «{debouncedTerm}» en el catálogo
+                </span>
+              </CommandItem>
+            </CommandGroup>
           </>
         )}
         </CommandList>

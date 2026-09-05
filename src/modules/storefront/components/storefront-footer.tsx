@@ -13,9 +13,9 @@ import { CategoryJumpLink } from './category-jump-link';
 const FOOTER_LINK_CLASS =
   'text-muted-foreground hover:text-primary inline-flex min-h-11 items-center text-[14.5px] transition-colors';
 
-// Ningún enlace inventado. Solo anclas de esta misma página y rutas que existen de
-// verdad (`/sign-in`, `/admin/...`): el commit 685d9c0 ya retiró una vez los
-// enlaces que llevaban a "no encontrada" y no se vuelven a introducir.
+// Ningún enlace inventado. Solo anclas de la portada y rutas que existen de verdad
+// (`/sign-in`, `/admin/...`): el commit 685d9c0 ya retiró una vez los enlaces que
+// llevaban a "no encontrada" y no se vuelven a introducir.
 export function StorefrontFooter({ categories }: { categories: CatalogCategory[] }) {
   const year = new Date().getFullYear();
 
@@ -100,17 +100,10 @@ function FooterColumn({ title, children }: { title: string; children: React.Reac
   );
 }
 
+// Todos los destinos del pie son ahora rutas —`/#seccion`, `/sign-in`, `/admin/...`—
+// y todos pasan por `Link`. Ya no hay anclas relativas al documento actual: desde la
+// ficha de producto no existiría la sección a la que apuntaban (spec 005, D-8).
 function FooterLink({ href, children }: { href: string; children: React.ReactNode }) {
-  // Las anclas de la propia página no pasan por el router: `Link` haría una
-  // navegación innecesaria para un salto dentro del documento.
-  if (href.startsWith('#')) {
-    return (
-      <a href={href} className={FOOTER_LINK_CLASS}>
-        {children}
-      </a>
-    );
-  }
-
   return (
     <Link href={href} className={FOOTER_LINK_CLASS}>
       {children}

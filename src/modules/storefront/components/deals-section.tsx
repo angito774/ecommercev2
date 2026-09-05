@@ -1,4 +1,5 @@
 import { ArrowRight } from 'lucide-react';
+import Link from 'next/link';
 
 import { Button } from '@/components/ui/button';
 import { formatPrice } from '@/modules/products/lib/price';
@@ -45,7 +46,7 @@ export function DealsSection({ deals }: { deals: CatalogProduct[] }) {
 
         <div className="grid items-start gap-5 lg:grid-cols-[1.28fr_1fr]">
           <Reveal>
-            <article className="border-border bg-card nx-shadow-md grid overflow-hidden rounded-[30px] border sm:grid-cols-2">
+            <article className="border-border bg-card nx-shadow-md relative grid overflow-hidden rounded-[30px] border sm:grid-cols-2">
               <div className="nx-art-surface relative grid min-h-[340px] place-items-center p-7">
                 <ProductMedia
                   imageUrl={highlight.imageUrl}
@@ -60,7 +61,16 @@ export function DealsSection({ deals }: { deals: CatalogProduct[] }) {
                 <span className="bg-nx-hot w-fit rounded-full px-3 py-1 text-xs font-semibold text-[#0A0A0F]">
                   La mejor oferta
                 </span>
-                <h3 className="text-[clamp(1.5rem,2.6vw,2rem)] font-semibold">{highlight.name}</h3>
+                {/* Mismo enlace extendido que `ProductCard`: el ancla envuelve solo
+                    el nombre y su pseudoelemento cubre la tarjeta (D-7). */}
+                <h3 className="text-[clamp(1.5rem,2.6vw,2rem)] font-semibold">
+                  <Link
+                    href={`/products/${highlight.slug}`}
+                    className="after:absolute after:inset-0 after:z-[1] after:content-['']"
+                  >
+                    {highlight.name}
+                  </Link>
+                </h3>
                 {highlight.description ? (
                   <p className="text-muted-foreground text-sm leading-relaxed">
                     {highlight.description}
@@ -91,7 +101,9 @@ export function DealsSection({ deals }: { deals: CatalogProduct[] }) {
                       </>
                     ) : null}
                   </div>
-                  <AddToCartButton product={highlight} variant="full" />
+                  <div className="relative z-[2]">
+                    <AddToCartButton product={highlight} variant="full" />
+                  </div>
                 </div>
 
                 <StockSignal level={highlight.stockLevel} />
@@ -102,7 +114,7 @@ export function DealsSection({ deals }: { deals: CatalogProduct[] }) {
           <div className="grid gap-5">
             {secondary.map((deal, index) => (
               <Reveal key={deal.id} delay={0.06 * (index + 1)}>
-                <article className="border-border bg-card hover:border-nx-line hover:nx-shadow-md grid grid-cols-[118px_1fr] items-center gap-4 rounded-[22px] border p-3.5 transition-[border-color,box-shadow]">
+                <article className="border-border bg-card hover:border-nx-line hover:nx-shadow-md relative grid grid-cols-[118px_1fr] items-center gap-4 rounded-[22px] border p-3.5 transition-[border-color,box-shadow]">
                   <div className="nx-art-surface relative grid aspect-square place-items-center rounded-2xl p-3">
                     <ProductMedia
                       imageUrl={deal.imageUrl}
@@ -114,7 +126,7 @@ export function DealsSection({ deals }: { deals: CatalogProduct[] }) {
                     {/* AC13 pide los dos indicadores en toda tarjeta con descuento,
                         también en las secundarias. */}
                     {deal.discountPercent !== null && deal.compareAtPriceCents !== null ? (
-                      <span className="bg-nx-sale absolute top-1.5 left-1.5 rounded-full px-2 py-0.5 text-[11px] font-semibold text-white">
+                      <span className="bg-nx-sale pointer-events-none absolute top-1.5 left-1.5 z-[2] rounded-full px-2 py-0.5 text-[11px] font-semibold text-white">
                         −{deal.discountPercent} %
                       </span>
                     ) : null}
@@ -124,7 +136,14 @@ export function DealsSection({ deals }: { deals: CatalogProduct[] }) {
                     <p className="text-nx-faint text-[11px] tracking-[0.09em] uppercase">
                       {deal.categoryName}
                     </p>
-                    <h3 className="mt-1.5 mb-2.5 text-[17px] font-semibold">{deal.name}</h3>
+                    <h3 className="mt-1.5 mb-2.5 text-[17px] font-semibold">
+                      <Link
+                        href={`/products/${deal.slug}`}
+                        className="after:absolute after:inset-0 after:z-[1] after:content-['']"
+                      >
+                        {deal.name}
+                      </Link>
+                    </h3>
                     <div className="flex flex-wrap items-center justify-between gap-2.5">
                       <div className="flex items-baseline gap-2">
                         <span className="font-nx-display text-[17px] font-semibold">
@@ -136,7 +155,9 @@ export function DealsSection({ deals }: { deals: CatalogProduct[] }) {
                           </span>
                         ) : null}
                       </div>
-                      <AddToCartButton product={deal} />
+                      <div className="relative z-[2]">
+                        <AddToCartButton product={deal} />
+                      </div>
                     </div>
                   </div>
                 </article>

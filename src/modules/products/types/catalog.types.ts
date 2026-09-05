@@ -25,6 +25,14 @@ export type CatalogProduct = Pick<
   // al de la respuesta fetcheada.
 };
 
+// Proyección de la ficha: el listado más el único campo que la página necesita y
+// la rejilla no. `sku`, `stock`, `isActive` y `categoryId` siguen fuera (spec 005,
+// D-6): que la vista sea más grande no cambia lo que es operación interna.
+// `specs` llega por `Pick` del tipo inferido de Drizzle, no reescrito a mano
+// (CLAUDE.md regla 5): es `Record<string, string> | null`, y `null` significa que
+// el producto no tiene ficha técnica, así que la sección no se renderiza (AC7).
+export type CatalogProductDetail = CatalogProduct & Pick<Product, 'specs'>;
+
 export type CatalogProductListMeta = {
   page: number;
   pageSize: number;

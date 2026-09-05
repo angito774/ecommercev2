@@ -1,5 +1,7 @@
 'use client';
 
+import Link from 'next/link';
+
 import { Button } from '@/components/ui/button';
 import {
   Sheet,
@@ -28,7 +30,7 @@ export function MobileMenu() {
 
         <nav className="flex flex-col px-4" aria-label="Principal">
           {STOREFRONT_NAV.map((item) => (
-            <a
+            <Link
               key={item.href}
               href={item.href}
               // El menú se cierra al elegir: dejarlo abierto taparía justo la
@@ -37,7 +39,7 @@ export function MobileMenu() {
               className="font-nx-display border-border border-b py-4 text-[30px] font-semibold tracking-[-0.035em]"
             >
               {item.label}
-            </a>
+            </Link>
           ))}
         </nav>
 
@@ -47,7 +49,7 @@ export function MobileMenu() {
             className="nx-shadow-accent h-12 w-full rounded-full"
             onClick={() => setMenuOpen(false)}
           >
-            <a href="#catalogo">Ver el catálogo</a>
+            <Link href="/#catalogo">Ver el catálogo</Link>
           </Button>
           <p className="text-nx-faint mt-3.5 text-center text-[13px]">
             Envío en 24 h · Devoluciones en 30 días

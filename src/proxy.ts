@@ -9,7 +9,14 @@ export default clerkMiddleware();
 
 export const config = {
   matcher: [
-    '/((?!_next|[^?]*\.(?:html?|css|js(?!on)|jpe?g|webp|png|gif|svg|ttf|woff2?|ico|csv|docx?|xlsx?|zip|webmanifest)).*)',
+    // El punto va escapado como `\\.` porque esto es una cadena, no un literal de
+    // expresión regular: con `\.` la barra se pierde al parsear la cadena y el
+    // patrón acaba siendo `.`, que casa con cualquier carácter. Así, la exclusión
+    // de estáticos se disparaba con cualquier ruta que *contuviera* una de las
+    // extensiones — `/products/teclado-mecanico-...` contiene «ico» dentro de
+    // «mecanico» — y esas páginas quedaban fuera del proxy: `auth()` no encontraba
+    // `clerkMiddleware()` y el render terminaba en 500.
+    '/((?!_next|[^?]*\\.(?:html?|css|js(?!on)|jpe?g|webp|png|gif|svg|ttf|woff2?|ico|csv|docx?|xlsx?|zip|webmanifest)).*)',
     '/(api|trpc)(.*)',
     '/__clerk/:path*',
   ],

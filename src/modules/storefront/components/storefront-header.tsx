@@ -98,14 +98,17 @@ export function StorefrontHeader({ authSlot }: StorefrontHeaderProps) {
         </Link>
 
         <nav aria-label="Principal" className="ml-3 hidden items-center gap-1 lg:flex">
+          {/* `Link` y no `<a>`: desde la ficha esto es una navegación de cliente a
+              la portada, que conserva el estado del catálogo; en la propia portada
+              sigue siendo un salto dentro del documento (spec 005, D-8). */}
           {STOREFRONT_NAV.map((item) => (
-            <a
+            <Link
               key={item.href}
               href={item.href}
               className="text-muted-foreground hover:text-foreground hover:bg-secondary inline-flex min-h-11 items-center rounded-full px-3.5 text-sm font-medium transition-colors"
             >
               {item.label}
-            </a>
+            </Link>
           ))}
         </nav>
 

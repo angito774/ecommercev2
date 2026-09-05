@@ -18,5 +18,11 @@ export const catalogQuerySchema = z.object({
   pageSize: z.coerce.number().int().min(1).max(48).default(12),
 });
 
+// Parámetro de ruta de `GET /api/products/[slug]`. Reutiliza el patrón del slug de
+// producto (`^[a-z0-9]+(?:-[a-z0-9]+)*$`, 2–180) en vez de escribir otra expresión
+// regular: eso rechaza mayúsculas, espacios, `%`, `_` y `../` antes de que exista
+// una consulta (AC4).
+export const catalogSlugParamSchema = productSlugSchema;
+
 export type CatalogQueryParams = z.output<typeof catalogQuerySchema>;
 export type CatalogQueryInput = z.input<typeof catalogQuerySchema>;

@@ -160,3 +160,12 @@ export const selectItemCount = (state: CartState): number =>
 
 export const selectSubtotalCents = (state: CartState): number =>
   state.lines.reduce((total, line) => total + line.priceCents * line.quantity, 0);
+
+// Factoría y no una función de dos argumentos: `useCartStore(selector)` solo
+// acepta un selector de un parámetro, así que cada consumidor cierra sobre su
+// propio `productId` antes de pasarlo. El valor devuelto sigue siendo un
+// primitivo, así que la regla `rerender-derived-state` se mantiene igual.
+export const selectQuantityForProduct =
+  (productId: string) =>
+  (state: CartState): number =>
+    state.lines.find((line) => line.productId === productId)?.quantity ?? 0;

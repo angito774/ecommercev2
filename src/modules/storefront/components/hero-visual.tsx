@@ -2,6 +2,7 @@
 
 import { ShieldCheck, Truck } from 'lucide-react';
 import { motion, useMotionTemplate, useMotionValue, useSpring, useReducedMotion } from 'motion/react';
+import Link from 'next/link';
 import type { PointerEvent } from 'react';
 
 import { formatPrice } from '@/modules/products/lib/price';
@@ -62,7 +63,16 @@ export function HeroVisual({ product }: { product: CatalogProduct }) {
           <div className="flex items-center justify-between gap-4">
             <div className="min-w-0">
               <p className="text-nx-faint mb-1 truncate text-xs">{product.categoryName}</p>
-              <h2 className="truncate text-[22px] font-semibold">{product.name}</h2>
+              {/* Enlace extendido, el mismo patrón de `ProductCard`: el ancla es
+                  solo el nombre y su pseudoelemento cubre la tarjeta (D-7). */}
+              <h2 className="truncate text-[22px] font-semibold">
+                <Link
+                  href={`/products/${product.slug}`}
+                  className="after:absolute after:inset-0 after:z-[1] after:content-['']"
+                >
+                  {product.name}
+                </Link>
+              </h2>
             </div>
             {hasDiscount ? (
               <span className="bg-nx-sale shrink-0 rounded-full px-3 py-1 text-xs font-semibold text-white">
@@ -82,7 +92,9 @@ export function HeroVisual({ product }: { product: CatalogProduct }) {
                 </span>
               ) : null}
             </div>
-            <AddToCartButton product={product} />
+            <div className="relative z-[2]">
+              <AddToCartButton product={product} />
+            </div>
           </div>
         </div>
       </motion.div>
@@ -117,7 +129,9 @@ function FloatCard({
   return (
     <div
       aria-hidden
-      className={`nx-glass-panel nx-shadow-md absolute z-[2] flex items-center gap-2.5 rounded-2xl border px-4 py-3 ${className}`}
+      // `pointer-events-none` además de `aria-hidden`: solapan el borde de la
+      // tarjeta y, sin esto, interceptarían el enlace extendido a la ficha.
+      className={`nx-glass-panel nx-shadow-md pointer-events-none absolute z-[2] flex items-center gap-2.5 rounded-2xl border px-4 py-3 ${className}`}
     >
       <span className="text-primary shrink-0">{icon}</span>
       <span>{children}</span>

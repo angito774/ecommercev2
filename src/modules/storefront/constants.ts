@@ -33,14 +33,20 @@ export function getCategoryIcon(slug: string): LucideIcon {
   return CATEGORY_ICONS[slug] ?? DEFAULT_CATEGORY_ICON;
 }
 
-// Navegación por anclas. Sin rutas: `/products` y la ficha de producto no existen
-// todavía (spec 004, §3) y un enlace a "no encontrada" es peor que no tenerlo.
-// La comparten el header, el menú móvil y el footer.
+// Anclas relativas a la raíz, no al documento actual. Con la ficha de producto ya
+// en pie, `#catalogo` no existe en todas las páginas del storefront y esos enlaces
+// se volvían mudos desde la ficha. `/#catalogo` sigue siendo navegación
+// *same-document* en la portada —el navegador desplaza, no recarga (AC20)— y desde
+// la ficha `next/link` lo resuelve como navegación de cliente, que es lo que
+// conserva el estado del catálogo (spec 005, D-8).
+//
+// Sigue sin haber ruta `/products`: el catálogo vive en la sección de la portada.
+// La navegación la comparten el header, el menú móvil y el footer.
 export const STOREFRONT_NAV = [
-  { href: '#ofertas', label: 'Ofertas' },
-  { href: '#categorias', label: 'Categorías' },
-  { href: '#catalogo', label: 'Catálogo' },
-  { href: '#ventajas', label: 'Ventajas' },
+  { href: '/#ofertas', label: 'Ofertas' },
+  { href: '/#categorias', label: 'Categorías' },
+  { href: '/#catalogo', label: 'Catálogo' },
+  { href: '/#ventajas', label: 'Ventajas' },
 ] as const;
 
 export const ANNOUNCEMENTS = [

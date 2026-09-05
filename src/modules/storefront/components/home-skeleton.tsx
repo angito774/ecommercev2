@@ -1,13 +1,11 @@
 import { Skeleton } from '@/components/ui/skeleton';
 
-// Con `loading.tsx` Next envuelve el segmento en un Suspense y envía la cabecera, el
-// pie y la barra de avisos —que no dependen del catálogo— antes de que Neon
-// responda. Sin él, el visitante no recibe un solo byte hasta que terminan las
-// lecturas del servidor.
-//
-// El esqueleto imita la silueta real de la portada (hero a dos columnas y rejilla)
-// para que al llegar el contenido no haya salto de layout.
-export default function StorefrontLoading() {
+// Silueta real de la portada (hero a dos columnas y rejilla) para que al llegar el
+// contenido no haya salto de layout. Es el fallback del `<Suspense>` que la propia
+// portada abre alrededor de sus lecturas: como componente y no como `loading.tsx`,
+// porque un `loading.tsx` en el segmento `(storefront)` envolvería también la ficha
+// de producto y le impediría responder con un 404 real (§12.2).
+export function HomeSkeleton() {
   return (
     <div className="mx-auto w-full max-w-[1240px] px-[clamp(1rem,4vw,2rem)] py-[clamp(2rem,6vw,4rem)]">
       <div className="grid items-center gap-[clamp(2rem,5vw,4rem)] lg:grid-cols-[1.02fr_0.98fr]">

@@ -276,10 +276,12 @@
 
 /* Los overlays de Radix (Dialog, Sheet, Command) se portan a document.body por
    el portal, fuera del div con data-surface. Sin esto heredarían la paleta
-   neutra del admin y el buscador se vería de otro color que la tienda. */
-body:has([data-surface='storefront']) [data-slot='dialog-overlay'],
+   neutra del admin y el buscador se vería de otro color que la tienda.
+   Solo el *-content, nunca el *-overlay: el overlay no lee ninguna de estas
+   variables (su velo es `bg-black/10` a secas), y colarlo aquí le pinta
+   `background-color: var(--background)` opaco encima de toda la página,
+   tapando el contenido de atrás como si hubiera navegado a otra pantalla. */
 body:has([data-surface='storefront']) [data-slot='dialog-content'],
-body:has([data-surface='storefront']) [data-slot='sheet-overlay'],
 body:has([data-surface='storefront']) [data-slot='sheet-content'] {
   --background: #fafafc;
   --foreground: #0b0b12;
