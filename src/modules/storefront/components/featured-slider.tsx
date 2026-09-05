@@ -1,16 +1,41 @@
 'use client';
 
 import { ArrowLeft, ArrowRight, Sparkles } from 'lucide-react';
-import { useReducedMotion } from 'motion/react';
-import { useCallback, useEffect, useState } from 'react';
+import Link from 'next/link';
+import { useCallback, useEffect, useState, useSyncExternalStore } from 'react';
 
 import { formatPrice } from '@/modules/products/lib/price';
 import type { CatalogProduct } from '@/modules/products/types/catalog.types';
 
 import { FEATURED_SLIDER_AUTOPLAY_MS, STOCK_LABELS } from '../constants';
-import { useUiStore } from '../store/ui.store';
 import { AddToCartButton } from './add-to-cart-button';
 import { ProductMedia } from './product-media';
+
+const REDUCED_MOTION_QUERY = '(prefers-reduced-motion: reduce)';
+
+function subscribeToReducedMotion(onChange: () => void) {
+  const query = window.matchMedia(REDUCED_MOTION_QUERY);
+  query.addEventListener('change', onChange);
+  return () => query.removeEventListener('change', onChange);
+}
+
+function getReducedMotionSnapshot() {
+  return window.matchMedia(REDUCED_MOTION_QUERY).matches;
+}
+
+// `useSyncExternalStore`, no `useReducedMotion()` de Motion: ese hook resuelve
+// `matchMedia` de forma síncrona en el primer render del cliente, mientras que
+// en el servidor no puede conocer la preferencia. Usar su valor crudo para
+// decidir `transition`/`animation` inline hacía que el primer render del
+// cliente no coincidiera con el HTML del servidor cuando el sistema operativo
+// tiene activado el movimiento reducido, y React descartaba el nodo al
+// hidratar. `useSyncExternalStore` resuelve exactamente este caso: obliga al
+// primer render del cliente a usar `getServerSnapshot` (`false`, igual que el
+// servidor) y solo aplica la preferencia real en un render posterior, ya fuera
+// de la hidratación.
+function useReducedMotion() {
+  return useSyncExternalStore(subscribeToReducedMotion, getReducedMotionSnapshot, () => false);
+}
 
 type FeaturedSliderProps = {
   // Ya viene deduplicado y acotado a `FEATURED_SLIDER_SIZE` desde `page.tsx`: este
@@ -23,7 +48,6 @@ export function FeaturedSlider({ products }: FeaturedSliderProps) {
   const [index, setIndex] = useState(0);
   const [paused, setPaused] = useState(false);
   const reduced = useReducedMotion();
-  const setCategoryFilter = useUiStore((state) => state.setCategoryFilter);
 
   const goTo = useCallback(
     (next: number) => setIndex(((next % count) + count) % count),
@@ -42,11 +66,6 @@ export function FeaturedSlider({ products }: FeaturedSliderProps) {
   // AC14 del mismo espíritu: si no hay nada que destacar, la sección desaparece en
   // vez de quedar vacía o con relleno inventado.
   if (count === 0) return null;
-
-  const jumpToCatalog = (categorySlug: string) => {
-    setCategoryFilter(categorySlug);
-    document.getElementById('catalogo')?.scrollIntoView({ behavior: reduced ? 'auto' : 'smooth' });
-  };
 
   return (
     <section
@@ -76,7 +95,6 @@ export function FeaturedSlider({ products }: FeaturedSliderProps) {
             // desliza), así que `inert` les quita el foco y la lectura de pantalla
             // en vez de dejar controles invisibles pero alcanzables con Tab.
             inert={slideIndex !== index}
-            onCta={() => jumpToCatalog(product.categorySlug)}
           />
         ))}
       </div>
@@ -137,15 +155,7 @@ export function FeaturedSlider({ products }: FeaturedSliderProps) {
   );
 }
 
-function Slide({
-  product,
-  inert,
-  onCta,
-}: {
-  product: CatalogProduct;
-  inert: boolean;
-  onCta: () => void;
-}) {
+function Slide({ product, inert }: { product: CatalogProduct; inert: boolean }) {
   const hasDiscount = product.discountPercent !== null && product.compareAtPriceCents !== null;
 
   return (
@@ -183,14 +193,16 @@ function Slide({
           </div>
 
           <div className="mt-1 flex flex-wrap items-center gap-3">
-            <button
-              type="button"
-              onClick={onCta}
+            {/* El CTA lleva a la ficha del producto del slide, no al catálogo
+                filtrado por su categoría: quien pulsa "Ver oferta" pregunta por
+                *este* producto (spec 005, D-9). */}
+            <Link
+              href={`/products/${product.slug}`}
               className="bg-primary text-primary-foreground nx-shadow-accent inline-flex h-10 items-center gap-2 rounded-full px-4.5 text-sm font-semibold"
             >
               {hasDiscount ? 'Ver oferta' : 'Ver producto'}
               <ArrowRight className="size-4" aria-hidden />
-            </button>
+            </Link>
             <AddToCartButton product={product} variant="full" />
           </div>
         </div>

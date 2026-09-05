@@ -1,6 +1,6 @@
 'use client';
 
-import { motion, useReducedMotion } from 'motion/react';
+import { motion } from 'motion/react';
 import type { ReactNode } from 'react';
 
 type RevealProps = {
@@ -14,24 +14,17 @@ type RevealProps = {
 // Pass-through: el hijo se renderiza tal cual —puede seguir siendo un Server
 // Component— y este envoltorio solo aporta el `div` animado. Es el `div`
 // contenedor y nunca un `<svg>`, por la regla `rendering-animate-svg-wrapper`.
+//
+// Sin rama por `useReducedMotion()`: ese hook resuelve `matchMedia` de forma
+// síncrona en el primer render del cliente (no en un efecto), mientras que en
+// el servidor vale `null`. Ramificar el árbol con ese valor hacía que el primer
+// render del cliente no coincidiera con el HTML del servidor cuando el sistema
+// operativo tiene activado el movimiento reducido, y React descartaba el
+// subárbol entero al hidratar. `reducedMotion="user"` en `MotionProvider` ya
+// desactiva las transformaciones para todo `motion.*` sin que cada componente
+// tenga que comprobarlo, y la media query de `globals.css` sobre `[data-reveal]`
+// cubre el resto sin depender de JavaScript.
 export function Reveal({ children, className, delay = 0 }: RevealProps) {
-  const reduced = useReducedMotion();
-
-  // `data-reveal` va en las DOS ramas y es la parte que de verdad cumple AC16.
-  // `useReducedMotion()` devuelve false en el servidor, así que el HTML se emite
-  // igualmente con `opacity:0; transform:translateY(18px)` inline; solo al hidratar
-  // se sabe la preferencia real. Si el usuario la tiene activa y algo impide la
-  // hidratación, ese estilo inline dejaría el contenido invisible para siempre.
-  // La media query de globals.css lo neutraliza a través de este atributo, sin
-  // depender de que corra JavaScript.
-  if (reduced) {
-    return (
-      <div data-reveal className={className}>
-        {children}
-      </div>
-    );
-  }
-
   return (
     <motion.div
       data-reveal
