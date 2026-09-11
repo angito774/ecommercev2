@@ -1,4 +1,17 @@
-import { and, asc, count, desc, eq, exists, ilike, inArray, ne, or, type SQL } from 'drizzle-orm';
+import {
+  and,
+  asc,
+  count,
+  desc,
+  eq,
+  exists,
+  ilike,
+  inArray,
+  isNull,
+  ne,
+  or,
+  type SQL,
+} from 'drizzle-orm';
 import { z } from 'zod';
 
 import {
@@ -255,6 +268,36 @@ export async function setActive(tx: Tx, id: string, isActive: boolean): Promise<
     .returning();
 
   return updated ?? null;
+}
+
+// UPDATE condicional, no read-then-write: dos pestañas pulsando «Agregar tarjeta» a
+// la vez pasarían las dos una comprobación en memoria y la segunda pisaría el
+// Customer de la primera, dejando tarjetas huérfanas en el Customer perdido. Aquí la
+// carrera la resuelve el motor y quien pierde reutiliza el `cus_…` que ya está
+// guardado (spec 009, D-15).
+//
+// Devuelve el `cus_…` vigente, sea el recién fijado o el que ya había; `null` solo
+// si la fila no existe.
+export async function attachStripeCustomer(
+  tx: Tx,
+  userId: string,
+  customerId: string,
+): Promise<string | null> {
+  const [updated] = await tx
+    .update(users)
+    .set({ stripeCustomerId: customerId, updatedAt: new Date() })
+    .where(and(eq(users.id, userId), isNull(users.stripeCustomerId)))
+    .returning({ stripeCustomerId: users.stripeCustomerId });
+
+  if (updated?.stripeCustomerId) return updated.stripeCustomerId;
+
+  const [current] = await tx
+    .select({ stripeCustomerId: users.stripeCustomerId })
+    .from(users)
+    .where(eq(users.id, userId))
+    .limit(1);
+
+  return current?.stripeCustomerId ?? null;
 }
 
 export async function upsertFromClerk(tx: Tx, values: UpsertUserValues): Promise<User> {

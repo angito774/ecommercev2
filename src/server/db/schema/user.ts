@@ -25,6 +25,14 @@ export const users = pgTable(
     firstName: varchar('first_name', { length: USER_TEXT_LENGTHS.firstName }),
     lastName: varchar('last_name', { length: USER_TEXT_LENGTHS.lastName }),
     imageUrl: varchar('image_url', { length: USER_TEXT_LENGTHS.imageUrl }),
+    // Nullable: la mayoría de los usuarios nunca guardará una tarjeta, y crear un
+    // Customer en Stripe por cada alta de Clerk llenaría el Dashboard de basura. Se
+    // fija la primera vez que alguien guarda una tarjeta (spec 009, D-6).
+    //
+    // `unique` para que dos filas no puedan apuntar al mismo `cus_…`. Fuera de
+    // `USER_TEXT_LENGTHS` a propósito: ese objeto existe porque el webhook de Clerk
+    // tiene que recortar sus valores antes del INSERT, y este no viene de Clerk.
+    stripeCustomerId: varchar('stripe_customer_id', { length: 255 }).unique(),
     isActive: boolean('is_active').notNull().default(true),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true })

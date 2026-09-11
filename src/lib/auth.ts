@@ -76,9 +76,28 @@ export const getEffectivePermissions = cache(async (): Promise<ReadonlySet<Permi
 // Solo comprueba que exista sesión y fila espejo: NO mira `is_active`, porque un
 // usuario desactivado debe recibir 403 y no 401 (AC13). Esa frontera la pone
 // `requirePermission()`, que sí resuelve el set vacío para un usuario inactivo.
+//
+// Por eso no basta a solas: un endpoint sin permiso RBAC detrás se queda sin nadie
+// que ponga esa frontera. Para esos, `requireActiveUser()`.
 export async function requireAuth(): Promise<User> {
   const user = await getCurrentUser();
   if (!user) throw new UnauthorizedError();
+  return user;
+}
+
+const DEACTIVATED_ACCOUNT_MESSAGE =
+  'Tu cuenta está desactivada y no puede realizar esta operación.';
+
+// Para las operaciones de cliente que no cuelgan de ningún código de permiso —hoy,
+// el checkout (spec 007, D-12)—. Sin `requirePermission()` detrás, desactivar a un
+// usuario desde el panel no le impedía nada mientras su sesión de Clerk siguiera
+// viva: podía seguir pagando. El bloqueo administrativo tiene que alcanzar también
+// a la única operación que mueve dinero.
+//
+// 403 y no 401: hay sesión válida, lo que falta es la cuenta habilitada.
+export async function requireActiveUser(): Promise<User> {
+  const user = await requireAuth();
+  if (!user.isActive) throw new ForbiddenError(null, DEACTIVATED_ACCOUNT_MESSAGE);
   return user;
 }
 

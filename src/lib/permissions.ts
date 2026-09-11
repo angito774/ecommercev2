@@ -228,10 +228,17 @@ export function isRoleSlug(value: string): value is RoleSlug {
 // autobloqueo del actor, o tocar un rol elevado sin la elevación— lo usan para
 // dejar constancia del ámbito y pasan su propio mensaje, porque "no tienes permiso"
 // sería mentira y dejaría al usuario sin saber qué hizo mal.
+//
+// `null` = el rechazo no cuelga de ningún permiso: la cuenta está desactivada y no
+// habría código que concederle. Es el caso de las operaciones de cliente sin RBAC
+// detrás (`requireActiveUser()`), no un permiso desconocido.
 export class ForbiddenError extends Error {
-  readonly permission: PermissionCode;
+  readonly permission: PermissionCode | null;
 
-  constructor(permission: PermissionCode, message = 'No tienes permiso para realizar esta acción.') {
+  constructor(
+    permission: PermissionCode | null,
+    message = 'No tienes permiso para realizar esta acción.',
+  ) {
     super(message);
     this.name = 'ForbiddenError';
     this.permission = permission;

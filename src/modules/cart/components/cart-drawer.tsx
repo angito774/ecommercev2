@@ -1,6 +1,8 @@
 'use client';
 
 import { Minus, Plus, ShoppingBag, Trash2 } from 'lucide-react';
+import { motion } from 'motion/react';
+import Link from 'next/link';
 
 import { Button } from '@/components/ui/button';
 import {
@@ -11,6 +13,7 @@ import {
   SheetTitle,
 } from '@/components/ui/sheet';
 import { formatPrice } from '@/modules/products/lib/price';
+import { PaymentIcons } from '@/modules/storefront/components/payment-icons';
 import { ProductMedia } from '@/modules/storefront/components/product-media';
 import { useUiStore } from '@/modules/storefront/store/ui.store';
 
@@ -56,9 +59,7 @@ export function CartDrawer() {
               <ShoppingBag className="size-7" aria-hidden />
             </span>
             <h3 className="text-lg font-semibold">Tu carrito está vacío</h3>
-            <p className="text-nx-faint mb-3 text-sm">
-              Añade algo del catálogo y aparecerá aquí.
-            </p>
+            <p className="text-nx-faint mb-3 text-sm">Añade algo del catálogo y aparecerá aquí.</p>
             <Button
               variant="outline"
               onClick={() => setCartOpen(false)}
@@ -98,6 +99,12 @@ export function CartDrawer() {
                   style={{ width: `${progress}%` }}
                 />
               </div>
+
+              {/* Texto fijo, sin cálculo detrás: no hay modelo de cobertura
+                  logística y así está documentado (spec 012, §5). */}
+              <p className="text-nx-faint mt-2.5 text-[11.5px]">
+                Envío estimado: 1–2 días hábiles a Lima
+              </p>
             </div>
 
             <ul className="flex-1 space-y-3 overflow-y-auto p-4.5">
@@ -124,14 +131,31 @@ export function CartDrawer() {
                 </div>
               </dl>
 
-              {/* Sin checkout todavía: el flujo de pago es un spec propio (§11). El
-                  botón se deshabilita en lugar de fingir que lleva a alguna parte. */}
-              <Button disabled className="mt-4 h-12 w-full rounded-full">
-                Finalizar compra
+              {/* Enlace, no botón con `router.push()`: el destino es una URL real y
+                  debe poder abrirse en otra pestaña. Cerrar el drawer al navegar
+                  evita que quede abierto encima del checkout. */}
+              <Button asChild className="mt-4 h-12 w-full rounded-full">
+                <Link href="/checkout" onClick={() => setCartOpen(false)}>
+                  Finalizar compra
+                </Link>
               </Button>
+
+              {/* Salida sin abandonar el carrito: cerrar el panel deja las líneas
+                  intactas, solo devuelve al catálogo (AC7). */}
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={() => setCartOpen(false)}
+                className="text-muted-foreground mt-1.5 h-11 w-full rounded-full"
+              >
+                Seguir comprando
+              </Button>
+
               <p className="text-nx-faint mt-2.5 text-center text-[11.5px]">
-                El pago estará disponible próximamente.
+                Pago seguro con Stripe. Sin sesión iniciada te pediremos entrar antes.
               </p>
+
+              <PaymentIcons className="mt-3 justify-center" />
             </div>
           </>
         )}
@@ -145,13 +169,24 @@ function CartLineRow({ line }: { line: CartLine }) {
   const remove = useCartStore((state) => state.remove);
 
   return (
-    <li className="border-border grid grid-cols-[74px_1fr] gap-3.5 border-b pb-3 last:border-b-0">
-      <div className="nx-art-surface relative grid aspect-square place-items-center overflow-hidden rounded-xl p-2">
+    // Entra con un desplazamiento corto y la clave es el `productId`, no el índice:
+    // al quitar una línea del medio, animar por índice haría entrar de nuevo a todas
+    // las de abajo. `MotionProvider` ya neutraliza el movimiento bajo
+    // `prefers-reduced-motion` (AC13).
+    <motion.li
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
+      className="border-border grid grid-cols-[90px_1fr] gap-3.5 border-b pb-3 last:border-b-0"
+    >
+      <div className="nx-art-surface relative grid aspect-square place-items-center overflow-hidden rounded-2xl p-2">
+        {/* El `sizes` acompaña al ancho real de la columna: con `74px` el navegador
+            seguiría pidiendo la variante pequeña y la miniatura se vería blanda. */}
         <ProductMedia
           imageUrl={line.imageUrl}
           alt={line.name}
           categorySlug={line.categorySlug}
-          sizes="74px"
+          sizes="90px"
         />
       </div>
 
@@ -162,6 +197,11 @@ function CartLineRow({ line }: { line: CartLine }) {
               {line.name}
             </p>
             <p className="text-nx-faint mt-1 text-[11.5px]">{line.categoryName}</p>
+            {/* De qué se compone el total de la derecha: sin esta línea, dos
+                unidades de 500 se leen como un producto de 1000 (AC6). */}
+            <p className="text-muted-foreground mt-1 text-[12.5px] tabular-nums">
+              {formatPrice(line.priceCents)} × {line.quantity}
+            </p>
           </div>
           <Button
             type="button"
@@ -207,6 +247,6 @@ function CartLineRow({ line }: { line: CartLine }) {
           </span>
         </div>
       </div>
-    </li>
+    </motion.li>
   );
 }

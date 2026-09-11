@@ -160,7 +160,7 @@ solo enruta y compone; la lógica vive en `modules/` (cliente) y `server/` (dato
     │   └── not-found.tsx
     │
     ├── modules/                 FEATURES por dominio (lado cliente)
-    │   └── <dominio>/           products | categories | cart | orders | customers | dashboard | roles | audit
+    │   └── <dominio>/           products | categories | cart | orders | payments | customers | dashboard | roles | audit
     │       ├── components/      UI específica del dominio
     │       ├── hooks/           TanStack Query: useProducts, useCreateProduct
     │       ├── services/        llamadas axios tipadas (product.service.ts)
@@ -327,8 +327,28 @@ Columnas:
 | `products` | SKU, nombre, slug, precio, stock, specs | N—1 `categories` |
 | `product_images` | galería | N—1 `products` |
 | `carts` / `cart_items` | carrito persistido | N—1 `users`, `products` |
-| `orders` | cabecera: total, estado, dirección | N—1 `users` |
+| `orders` | cabecera: totales, estado, referencias de Stripe, dirección | N—1 `users` |
 | `order_items` | detalle con precio congelado | N—1 `orders`, `products` |
+| `payment_methods` | tarjetas guardadas del cliente: `pm_…` (unique), marca, `last4` y caducidad | N—1 `users` |
+
+Construido a 2026-09-07: `orders` y `order_items` (spec 007, migración `0004`).
+`orders` guarda `subtotal_cents`, `shipping_cents` y `amount_total_cents` como
+snapshot del importe cobrado, más `stripe_checkout_session_id` (unique) y
+`stripe_payment_intent_id`. `order_items` congela nombre, imagen y precio: un
+pedido pasado nunca relee `products`. `carts` / `cart_items` siguen pendientes —
+el carrito vive en `localStorage` (Zustand) y el servidor solo recibe
+`(productId, quantity)`.
+
+Construido a 2026-09-09: `payment_methods` y `users.stripe_customer_id` (spec 009,
+migración `0005`). De la tarjeta se guardan **solo** `brand`, `last4`, `exp_month` y
+`exp_year`: ningún dígito más del PAN, ningún CVC y ninguna dirección de
+facturación, porque Stripe no expone el IIN en una petición estándar y guardar más
+del número nos metería en un alcance PCI del que hoy estamos fuera (spec 009, D-3).
+El `unique` sobre `stripe_payment_method_id` es la idempotencia del webhook, y la
+fila no se actualiza nunca: se inserta al guardar y se borra al eliminar, porque el
+`detach` de Stripe es permanente e irreversible. El `cus_…` vive en `users` y no en
+`payment_methods`: el Customer es del usuario, y hay que poder leerlo cuando
+todavía no tiene ninguna tarjeta.
 
 ---
 
@@ -336,7 +356,56 @@ Columnas:
 
 ### Cliente (storefront)
 Catálogo con filtros y búsqueda · ficha de producto · carrito · checkout ·
-historial y detalle de pedidos · perfil (Clerk).
+historial y detalle de pedidos · tarjetas guardadas · perfil (Clerk).
+
+Construido a 2026-09-09: catálogo y búsqueda (spec 004), ficha de producto
+(spec 005), perfil (spec 006), **checkout con Stripe** (spec 007), **Mis
+compras** (spec 008) y **Mis tarjetas** (spec 009). El pago usa
+Stripe Checkout alojado en modo `payment`: `POST /api/checkout` relee precio y
+stock de `products` —el request solo transporta `(productId, quantity)`— y
+`POST /api/webhooks/stripe` es el **único** lugar donde una orden pasa a `paid`,
+descuenta stock y escribe `order.paid` en `audit_logs`, todo en la misma
+transacción e idempotente por `UPDATE … WHERE status = 'pending'`. El cliente
+Stripe vive en `src/lib/stripe.ts` con `import 'server-only'`.
+
+El historial del cliente vive dentro de `/account#compras` (spec 008), no en una
+ruta propia: `GET /api/orders` devuelve los pedidos del usuario de la sesión con
+sus líneas, filtrados por rango de fechas y agrupados por día en el navegador, y
+`GET /api/orders/[id]/receipt` resuelve la boleta alojada de Stripe
+(`Charge.receipt_url`) en cada apertura, porque esos enlaces caducan a los 30
+días. Ninguno de los dos lleva código de permiso RBAC: la autorización es la
+propiedad de la fila —el filtro por `user_id` va dentro del `WHERE`— sobre
+`requireActiveUser()`, igual que `POST /api/checkout`. Pendientes del historial
+de cliente: solo las rutas `/orders` y `/orders/[id]` con enlace permanente y
+compartible por pedido, que se retoman cuando haga falta esa URL.
+
+Las tarjetas guardadas viven dentro de `/account#tarjetas` (spec 009), cuarta
+entrada de `ACCOUNT_SECTIONS`. El alta es la misma página alojada de Stripe que el
+pago, pero con la Checkout Session en `mode: 'setup'` y `currency` obligatoria
+—el SDK la exige en ese modo cuando no se fija `payment_method_types`—: ningún
+dígito de la tarjeta entra en nuestro dominio. `POST /api/payment-methods/setup`
+resuelve el Stripe Customer del usuario (`users.stripe_customer_id`, creado la
+primera vez con `UPDATE … WHERE stripe_customer_id IS NULL` para que dos pestañas
+no creen dos) y devuelve la URL. La fila la escribe **solo**
+`POST /api/webhooks/stripe`, ramificando el `checkout.session.completed` que ya se
+procesa por `session.mode === 'setup'`: no hay ningún evento nuevo que registrar en
+el Dashboard. `GET /api/payment-methods` y `DELETE /api/payment-methods/[id]`
+completan el listado y la baja (`detach` en Stripe + borrado físico). Los tres, como
+`POST /api/checkout` y `GET /api/orders`, van sin código de permiso RBAC: la
+autorización es la propiedad de la fila —el `user_id` dentro del `WHERE`— sobre
+`requireActiveUser()`.
+
+Antes de desplegar hay que registrar el endpoint de producción en el Dashboard
+de Stripe (`checkout.session.completed`, `async_payment_succeeded`,
+`async_payment_failed`, `expired`) y poner su `whsec_…` en
+`STRIPE_WEBHOOK_SIGNING_SECRET`; en local lo cubre `stripe listen`.
+
+`STRIPE_SECRET_KEY` necesita, además de lo que ya usaba el checkout, permisos de
+**Customers (read y write)** y **Payment Methods (read y write)**: sin ellos la API
+responde `403 more_permissions_required` y el alta de tarjeta devuelve `502`.
+Comprobado el 2026-09-09 contra la clave restringida (`rk_test_…`) de `.env.local`,
+a la que hoy le faltan los cuatro; `checkout_session_write` y `setup_intent_read` sí
+los tiene. Se editan en el Dashboard, en la propia clave.
 
 ### Administración
 Dashboard con métricas (Recharts: ventas, pedidos, top productos, stock bajo) ·
@@ -344,7 +413,10 @@ CRUD de productos y categorías (TanStack Table: paginación, orden, filtros) ·
 gestión de pedidos y cambio de estado · listado de clientes.
 
 Construido a 2026-09-02: categorías (spec 001), accesos y bitácora (spec 002) y
-productos (spec 003). Pendientes: dashboard de métricas, pedidos y clientes.
+productos (spec 003). Pendientes: dashboard de métricas, pedidos y clientes. El
+panel de pedidos (`/admin/orders`, permisos `orders.read` y
+`orders.update_status`) es lo siguiente: desde el spec 007 hay pedidos pagados
+en la base que todavía no se pueden consultar desde la aplicación.
 
 Gestión de accesos: CRUD de roles, matriz rol × permiso, asignación de roles a
 usuarios · bitácora de auditoría filtrable por actor, entidad, acción y fecha.
@@ -389,6 +461,14 @@ Las dos comprobaciones de permiso son distintas a propósito y **no se unifican*
   que `toErrorResponse()` traduce al `403` con `{ message }` del contrato.
   `forbidden()` aquí no serviría: señaliza a través del router de Next y no produce
   el JSON que espera el interceptor.
+
+Un recurso **sin código de permiso** —una operación de cliente, no administrativa,
+como `POST /api/checkout`— usa `requireActiveUser()` en vez de `requireAuth()`.
+`requireAuth()` no mira `is_active` a propósito: esa frontera la pone
+`requirePermission()`, que resuelve el conjunto vacío para un usuario inactivo. Sin
+permiso detrás no queda nadie que la ponga, y un usuario desactivado desde el panel
+seguiría operando mientras su sesión de Clerk siguiera viva. `requireActiveUser()`
+lanza `ForbiddenError` con `permission: null` → `403` con `{ message }`.
 
 Verificado en este repo con una página sonda: `forbidden()` devuelve `403` y
 renderiza el boundary, tanto en `next dev` como en el build de producción. El HTML

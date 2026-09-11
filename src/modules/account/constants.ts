@@ -4,6 +4,9 @@ export const ACCOUNT_SECTIONS = [
   { id: 'perfil', label: 'Mi perfil' },
   { id: 'favoritos', label: 'Mis favoritos' },
   { id: 'compras', label: 'Mis compras' },
+  // Al final para no mover los anclas existentes: un `#compras` compartido por correo
+  // debe seguir llevando al mismo sitio (spec 009, D-1).
+  { id: 'tarjetas', label: 'Mis tarjetas' },
 ] as const;
 
 export type AccountSectionId = (typeof ACCOUNT_SECTIONS)[number]['id'];

@@ -1,4 +1,4 @@
-import { and, asc, count, desc, eq, ilike, or, sql, type SQL } from 'drizzle-orm';
+import { and, asc, count, desc, eq, ilike, inArray, or, sql, type SQL } from 'drizzle-orm';
 
 import type {
   CatalogProduct,
@@ -268,6 +268,52 @@ export async function findPublicBySlug(slug: string): Promise<CatalogProductDeta
 export async function findById(id: string, reader: Reader = db): Promise<Product | null> {
   const [product] = await reader.select().from(products).where(eq(products.id, id)).limit(1);
   return product ?? null;
+}
+
+// Una sola consulta para todas las líneas del carrito, en vez de un `findById` por
+// línea: el checkout necesita el precio y el stock reales de hasta 50 productos y un
+// N+1 dentro de la transacción multiplicaría los viajes a Neon. Devuelve filas
+// desnudas —incluidos `stock` e `isActive`— porque el llamador es servidor y esa
+// información es la que decide el 409 (D-9).
+export async function findManyByIds(ids: string[], reader: Reader = db): Promise<Product[]> {
+  if (ids.length === 0) return [];
+  return reader.select().from(products).where(inArray(products.id, ids));
+}
+
+export type StockDecrement = {
+  productId: string;
+  quantity: number;
+};
+
+export type StockAfterDecrement = {
+  productId: string;
+  name: string;
+  stock: number;
+};
+
+// Sin clamp a propósito: `GREATEST(stock - qty, 0)` borraría la evidencia de la
+// sobreventa. Un negativo no rompe la tienda —`STOCK_LEVEL` mapea `<= 0` a `'out'`—
+// y el `RETURNING` deja que el servicio audite el caso como `order.oversold` (D-10).
+//
+// Un UPDATE por línea. Con el tope de 50 líneas y dentro de una transacción ya
+// abierta es aceptable; si creciera, se sustituye por `UPDATE … FROM (VALUES …)`.
+export async function decrementStock(
+  tx: Tx,
+  lines: readonly StockDecrement[],
+): Promise<StockAfterDecrement[]> {
+  const results: StockAfterDecrement[] = [];
+
+  for (const line of lines) {
+    const [updated] = await tx
+      .update(products)
+      .set({ stock: sql`${products.stock} - ${line.quantity}` })
+      .where(eq(products.id, line.productId))
+      .returning({ productId: products.id, name: products.name, stock: products.stock });
+
+    if (updated) results.push(updated);
+  }
+
+  return results;
 }
 
 export async function findByIdWithCategory(id: string): Promise<ProductWithCategory | null> {
