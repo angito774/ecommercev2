@@ -7,13 +7,22 @@ import type { CatalogProduct } from '@/modules/products/types/catalog.types';
 
 import { STOCK_LABELS } from '../constants';
 import { AddToCartButton } from './add-to-cart-button';
+import { CountdownTimer } from './countdown-timer';
 import { ProductMedia } from './product-media';
 import { Reveal } from './reveal';
 import { Eyebrow } from './section-heading';
 
-// Sin cuenta atrás. No existe `discount_ends_at` en el modelo, así que un contador
-// sería decoración que miente; la urgencia real la da `stockLevel`, derivado del
-// stock que ya mantiene el admin (spec 004, D-6).
+// Con cuenta atrás desde el spec 013, que REVIERTE la decisión del spec 004, D-6
+// («sin contador, porque no existe `discount_ends_at` y sería decoración que
+// miente»). El motivo del cambio es una petición explícita del usuario
+// (2026-09-10): quiere la sección tal como la propuso el documento 010, con el
+// contador incluido.
+//
+// La objeción de aquel spec sigue en pie y por eso el elemento se declara
+// decorativo en tres sitios —spec 013 §5, este comentario y la cabecera de
+// `countdown-timer.tsx`— en vez de disimularse: el contador apunta a las 23:59 de
+// hoy porque no hay ninguna fecha de caducidad en la base, no porque la haya. La
+// urgencia que sí es dato real la sigue dando `stockLevel`, y se pinta debajo.
 export function DealsSection({ deals }: { deals: CatalogProduct[] }) {
   // AC14: si nadie tiene precio anterior, la sección entera desaparece. No se
   // renderiza vacía ni con datos de relleno.
@@ -23,7 +32,12 @@ export function DealsSection({ deals }: { deals: CatalogProduct[] }) {
   const secondary = rest.slice(0, 2);
 
   return (
-    <section id="ofertas" className="scroll-mt-24 py-[clamp(3.75rem,8.5vw,7.25rem)]">
+    // El margen de anclaje sale de `--nx-header-h`: con el header de dos filas, un
+    // `scroll-mt-24` fijo dejaba el título de la sección por debajo de la cabecera.
+    <section
+      id="ofertas"
+      className="scroll-mt-[calc(var(--nx-header-h)+1.5rem)] py-[clamp(3.75rem,8.5vw,7.25rem)]"
+    >
       <div className="mx-auto w-full max-w-[1240px] px-[clamp(1rem,4vw,2rem)]">
         <div className="mb-[clamp(2rem,4vw,3.25rem)] flex flex-wrap items-end justify-between gap-6">
           <div>
@@ -36,12 +50,15 @@ export function DealsSection({ deals }: { deals: CatalogProduct[] }) {
               tenían, no sobre uno inventado.
             </p>
           </div>
-          <Button asChild variant="outline" size="sm" className="border-nx-line h-11 rounded-full px-5">
-            <a href="#catalogo">
-              Ver todo el catálogo
-              <ArrowRight className="size-4" aria-hidden />
-            </a>
-          </Button>
+          <div className="flex flex-wrap items-center gap-4">
+            <CountdownTimer />
+            <Button asChild variant="outline" size="sm" className="border-nx-line h-11 rounded-full px-5">
+              <a href="#catalogo">
+                Ver todo el catálogo
+                <ArrowRight className="size-4" aria-hidden />
+              </a>
+            </Button>
+          </div>
         </div>
 
         <div className="grid items-start gap-5 lg:grid-cols-[1.28fr_1fr]">

@@ -61,6 +61,13 @@
   --color-nx-faint: var(--nx-faint);
   --color-nx-line: var(--nx-border-strong);
   --color-nx-accent-2: var(--nx-accent-2);
+  /* Se expone como utilidad —y no solo como variable CSS— porque es el único
+     acento de la paleta que se aleja de `--primary` hacia el lado seguro del
+     contraste en los dos temas: es más oscuro que el morado en claro y más
+     claro en oscuro. Cualquier mezcla con él sobre `--primary` sube el ratio
+     contra `--nx-on-accent` en vez de bajarlo, que es justo lo que necesita el
+     degradado del `PromoBanner`. */
+  --color-nx-accent-hover: var(--nx-accent-hover);
   --color-nx-accent-soft: var(--nx-accent-soft);
   --color-nx-on-accent: var(--nx-on-accent);
   --color-nx-glass: var(--nx-glass);
@@ -199,7 +206,7 @@
   --nx-sale: #ff4d6d;
   --nx-new: #b8f04a;
   --nx-hot: #ffb020;
-  --nx-ok: #4f8b00;
+  --nx-ok: #417000;
   --nx-orb-1: rgb(109 94 248 / 28%);
   --nx-orb-2: rgb(34 211 238 / 24%);
   --nx-grid-line: rgb(11 11 18 / 4.5%);
@@ -212,6 +219,20 @@
   --nx-shadow-lg: 0 30px 72px -24px rgb(11 11 18 / 26%);
   --nx-shadow-accent: 0 14px 40px -14px rgb(109 94 248 / 45%);
 
+  /* Separación del botón flotante «Subir» respecto al borde inferior. Es una
+     variable y no un `bottom-6` en el componente porque la barra inferior de
+     móvil del spec 013 tendrá que empujarlo hacia arriba: así solo redefine
+     esta variable en su breakpoint y no reabre un componente ya revisado. */
+  --nx-fab-bottom: 1.5rem;
+
+  /* Altura real del header pegajoso: una sola fila de 4rem bajo 1024 px y, a
+     partir de ahí, esa fila más la de navegación (2.75rem) y su borde superior
+     de 1 px. Es una variable porque la consumen el `sticky` del sidebar del
+     catálogo y el `scroll-mt` de las secciones ancladas: con el número copiado
+     en cada sitio, cualquier ajuste del header deja unas cuantas descalibradas
+     y el contenido acaba medio tapado al saltar por un ancla. */
+  --nx-header-h: 4rem;
+
   background-color: var(--background);
   color: var(--foreground);
   font-family: var(--font-body), ui-sans-serif, system-ui, sans-serif;
@@ -221,12 +242,33 @@
   overflow-x: hidden;
 }
 
+/* Bajo 48rem (`md`) vive la barra inferior de móvil: 3.5rem de alto más el inset
+   seguro del dispositivo. El botón «Subir» se apoya sobre ella en vez de quedar
+   medio tapado. Es la redefinición para la que el spec 011 dejó preparada la
+   variable, así que `scroll-to-top.tsx` no se reabre. */
+@media (max-width: 47.999rem) {
+  [data-surface='storefront'] {
+    --nx-fab-bottom: calc(3.5rem + env(safe-area-inset-bottom) + 1rem);
+  }
+}
+
+/* 64rem es el breakpoint `lg` de Tailwind, el mismo en el que `storefront-header`
+   despliega la segunda fila. */
+@media (min-width: 64rem) {
+  [data-surface='storefront'] {
+    --nx-header-h: 6.8125rem;
+  }
+}
+
 /* Foco visible en los controles que no son de shadcn —chips de filtro, disparador
    de búsqueda, enlaces del marquee y del footer—, que no heredan el anillo de
    `Button`. Solo `:focus-visible`, para no marcarlos al hacer clic con el ratón. */
 [data-surface='storefront'] :is(a, button):focus-visible {
   outline: 2px solid var(--ring);
-  outline-offset: 3px;
+  /* 4 px y no 3: con el radio de 22 px de las tarjetas y los controles en
+     píldora, a 3 px el anillo llegaba a rozar el borde del propio control en
+     las esquinas y se leía como parte del diseño, no como foco. */
+  outline-offset: 4px;
   border-radius: 6px;
 }
 
@@ -306,7 +348,7 @@ body:has([data-surface='storefront']) [data-slot='sheet-content'] {
   --nx-art-body-2: #4c4c68;
   --nx-art-detail: #6d5ef8;
   --nx-art-glass: #b9b9ce;
-  --nx-ok: #4f8b00;
+  --nx-ok: #417000;
   --nx-sale: #ff4d6d;
   background-color: var(--background);
   color: var(--foreground);
@@ -407,6 +449,57 @@ body:has([data-surface='storefront']) :is([data-slot='dialog-title'], [data-slot
   box-shadow: var(--nx-shadow-accent);
 }
 
+/* Elevación al hover, compartida por la tarjeta de producto y —cuando lleguen—
+   las de categoría y las de método de entrega. La transformación vive solo en
+   `@media (hover: hover)`: en táctil el `:hover` se queda pegado tras el toque
+   y la tarjeta se quedaría levantada hasta tocar en otro sitio. */
+.nx-hover-lift {
+  transition:
+    transform 300ms cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 300ms cubic-bezier(0.22, 1, 0.36, 1),
+    border-color 300ms ease;
+}
+
+@media (hover: hover) {
+  .nx-hover-lift:hover {
+    transform: translateY(-4px);
+    box-shadow: var(--nx-shadow-lg);
+  }
+}
+
+/* Shimmer de los esqueletos de carga. Va por selector de atributo y no editando
+   `src/components/ui/skeleton.tsx` (CLAUDE.md §6 prohíbe tocar a mano los
+   componentes de shadcn): alcanza de golpe a todos los `<Skeleton>` de la
+   tienda y deja el panel admin —que no lleva `data-surface`— con su
+   `animate-pulse` original.
+
+   Es `background-image` sobre un `::after` a propósito: el pseudoelemento
+   obligaría a `overflow: hidden` en cada esqueleto y a `position: relative`,
+   que no todos tienen. Con el gradiente de fondo, la única propiedad animada es
+   `background-position`, que no fuerza layout. */
+[data-surface='storefront'] [data-slot='skeleton'] {
+  background-color: var(--nx-inset);
+  background-image: linear-gradient(
+    90deg,
+    transparent 0%,
+    var(--nx-sunken) 45%,
+    var(--nx-sunken) 55%,
+    transparent 100%
+  );
+  background-repeat: no-repeat;
+  background-size: 220% 100%;
+  animation: nx-shimmer 1.6s ease-in-out infinite;
+}
+
+@keyframes nx-shimmer {
+  from {
+    background-position: 140% 0;
+  }
+  to {
+    background-position: -40% 0;
+  }
+}
+
 .nx-fade-x {
   mask-image: linear-gradient(90deg, transparent, #000 12%, #000 88%, transparent);
   -webkit-mask-image: linear-gradient(90deg, transparent, #000 12%, #000 88%, transparent);
@@ -488,6 +581,23 @@ body:has([data-surface='storefront']) :is([data-slot='dialog-title'], [data-slot
      su estado inicial, que es peor que no tenerlo. Se retira del todo. */
   .nx-pulse::after {
     display: none;
+  }
+
+  /* El esqueleto se queda como un bloque plano: sin el barrido, el gradiente
+     congelado dejaría una banda oscura fija —va de `--nx-inset` a `--nx-sunken`,
+     que es más oscuro en los dos temas— y parecería contenido real. */
+  [data-surface='storefront'] [data-slot='skeleton'] {
+    animation: none;
+    background-image: none;
+  }
+
+  /* La sombra al hover sí se conserva —no es movimiento—; lo que desaparece es
+     el desplazamiento y su transición. */
+  .nx-hover-lift {
+    transition: none;
+  }
+  .nx-hover-lift:hover {
+    transform: none;
   }
 
   /* `Reveal` emite `opacity:0; transform:translateY(18px)` como estilo inline desde

@@ -12,13 +12,18 @@ type AccountSectionProps = {
 };
 
 // Envoltura sin conocimiento de qué sección envuelve: recibe su `id` y su copy y
-// solo aporta el ancla, el encabezado y el espaciado. `scroll-mt-24` es lo que evita
-// que el header pegajoso tape el título al saltar desde el rail (AC10).
+// solo aporta el ancla, el encabezado y el espaciado. El margen de anclaje sale de
+// `--nx-header-h` y no de un número fijo: el header pegajoso cambia de alto en `lg`
+// y así el título nunca queda tapado al saltar desde el rail (AC10).
 export function AccountSection({ id, eyebrow, title, children }: AccountSectionProps) {
   const headingId = `${id}-titulo`;
 
   return (
-    <section id={id} aria-labelledby={headingId} className="scroll-mt-24">
+    <section
+      id={id}
+      aria-labelledby={headingId}
+      className="scroll-mt-[calc(var(--nx-header-h)+1.5rem)]"
+    >
       <div className="mb-[clamp(1.25rem,2.5vw,1.75rem)]">
         <Eyebrow>{eyebrow}</Eyebrow>
         <h2

@@ -32,7 +32,7 @@ export function FeaturesSection() {
   return (
     <section
       id="ventajas"
-      className="border-border bg-nx-inset scroll-mt-24 border-y py-[clamp(3.75rem,8.5vw,7.25rem)]"
+      className="border-border bg-nx-inset scroll-mt-[calc(var(--nx-header-h)+1.5rem)] border-y py-[clamp(3.75rem,8.5vw,7.25rem)]"
     >
       <div className="mx-auto w-full max-w-[1240px] px-[clamp(1rem,4vw,2rem)]">
         <div className="mb-[clamp(2rem,4vw,3.25rem)]">

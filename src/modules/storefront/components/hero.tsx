@@ -1,8 +1,10 @@
 import { ArrowRight } from 'lucide-react';
+import Image from 'next/image';
 
 import { Button } from '@/components/ui/button';
 import type { CatalogProduct } from '@/modules/products/types/catalog.types';
 
+import { HERO_BANNER } from '../constants';
 import { HeroVisual } from './hero-visual';
 import { Reveal } from './reveal';
 
@@ -20,8 +22,37 @@ type HeroProps = {
 export function Hero({ featured, categoryCount, productCount }: HeroProps) {
   return (
     <section className="relative overflow-hidden pt-[clamp(1.5rem,6vw,4rem)]">
-      <div className="nx-orb nx-orb-a pointer-events-none absolute -top-[14%] -left-[8%] z-0 aspect-square w-[min(560px,72vw)]" />
-      <div className="nx-orb nx-orb-b pointer-events-none absolute top-[14%] -right-[10%] z-0 aspect-square w-[min(480px,62vw)]" />
+      {/* Sin `HERO_BANNER` no se emite nada: el hero queda exactamente en los orbes
+          de siempre, sin ramas muertas en el DOM (AC3). */}
+      {HERO_BANNER ? (
+        <div className="pointer-events-none absolute inset-0 z-0" aria-hidden>
+          <Image
+            src={HERO_BANNER}
+            alt=""
+            fill
+            // Candidato a LCP de la portada: sin `priority` el navegador lo
+            // descubriría tarde y empeoraría justo la métrica que el spec 004 cuidó
+            // con `HeroVisual` (§10).
+            priority
+            sizes="100vw"
+            className="object-cover"
+          />
+          {/* El contraste del texto lo garantiza el overlay y no un color fijo:
+              `--background` es blanco en claro y #0a0a0f en oscuro, así que el
+              degradado tapa la foto bajo la columna de texto en los dos temas y la
+              deja asomar por el lado del visual. */}
+          <div className="from-background via-background/92 to-background/55 lg:to-background/25 absolute inset-0 bg-gradient-to-r" />
+        </div>
+      ) : null}
+
+      {/* Con banner los orbes se atenúan: a plena opacidad compiten con la foto y
+          el bloque entero se vuelve ruido de color. */}
+      <div
+        className={`nx-orb nx-orb-a pointer-events-none absolute -top-[14%] -left-[8%] z-0 aspect-square w-[min(560px,72vw)] ${HERO_BANNER ? 'opacity-40' : ''}`}
+      />
+      <div
+        className={`nx-orb nx-orb-b pointer-events-none absolute top-[14%] -right-[10%] z-0 aspect-square w-[min(480px,62vw)] ${HERO_BANNER ? 'opacity-40' : ''}`}
+      />
       <div className="nx-grid-bg pointer-events-none absolute inset-0 z-0" aria-hidden />
 
       <div className="relative z-[1] mx-auto grid w-full max-w-[1240px] items-center gap-[clamp(2rem,5vw,4rem)] px-[clamp(1rem,4vw,2rem)] py-[clamp(1.5rem,4vw,3rem)] pb-[clamp(3rem,7vw,5.5rem)] lg:grid-cols-[1.02fr_0.98fr]">

@@ -13,7 +13,11 @@ export function AnnouncementBar() {
   ];
 
   return (
-    <div className="bg-foreground text-background flex h-9 items-center overflow-hidden">
+    // Violeta de marca en vez del negro/blanco invertido: la barra deja de leerse
+    // como un aviso de sistema y pasa a ser la primera aparición del color de la
+    // tienda. La pareja se invierte sola con el tema (#6d5ef8 sobre blanco en
+    // claro, #8b7eff sobre casi negro en oscuro), así que no hay color literal.
+    <div className="bg-primary text-primary-foreground flex h-9 items-center overflow-hidden">
       {/* La pista se duplica y la animación traslada un −50 %: al llegar al final,
           la segunda copia está exactamente donde estaba la primera y el bucle no
           tiene costura. `aria-hidden` en la copia para no leerlo dos veces. */}

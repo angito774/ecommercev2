@@ -1,6 +1,7 @@
 import { notFound } from 'next/navigation';
 
 import { catalogSlugParamSchema } from '@/modules/products/schemas/catalog.schema';
+import { ScrollProgress } from '@/modules/storefront/components/scroll-progress';
 import { getPublicProductBySlug } from '@/server/services/catalog.service';
 
 // La comprobación de existencia vive en el layout y no solo en `page.tsx` porque es
@@ -24,5 +25,13 @@ export default async function ProductDetailLayout({
   const product = await getPublicProductBySlug(parsed.data);
   if (!product) notFound();
 
-  return children;
+  // La barra de progreso vive en este layout y no en el de la tienda: es la ficha
+  // la única vista larga de lectura continua. En la portada, que ya tiene el
+  // marquee y el carrusel moviéndose, sería una tercera cosa animada compitiendo.
+  return (
+    <>
+      <ScrollProgress />
+      {children}
+    </>
+  );
 }

@@ -9,8 +9,11 @@ type ProductBreadcrumbProps = {
   productName: string;
 };
 
+// Píldora: el área de clic ya medía 44 px de alto, pero no se veía. Con el fondo al
+// hover el objetivo táctil deja de ser invisible y la ruta se lee como navegación y
+// no como texto suelto (spec 012, D-5).
 const LINK_CLASS =
-  'text-muted-foreground hover:text-foreground inline-flex min-h-11 items-center transition-colors';
+  'text-muted-foreground hover:bg-secondary hover:text-foreground inline-flex min-h-11 items-center rounded-full px-2.5 transition-colors';
 
 // Server Component salvo por `CategoryJumpLink`, que es cliente solo para dejar el
 // filtro puesto al llegar al catálogo. El último escalón no es enlace: enlazar a la
@@ -22,7 +25,9 @@ export function ProductBreadcrumb({
 }: ProductBreadcrumbProps) {
   return (
     <nav aria-label="Ruta de navegación" className="text-[13.5px]">
-      <ol className="flex flex-wrap items-center gap-x-1.5">
+      {/* `-ml-2.5` compensa el padding de la primera píldora: sin él la ruta
+          entera quedaría desalineada respecto al título de la ficha. */}
+      <ol className="-ml-2.5 flex flex-wrap items-center gap-x-0.5">
         <li>
           <Link href="/" className={LINK_CLASS}>
             Inicio
@@ -35,7 +40,7 @@ export function ProductBreadcrumb({
           </CategoryJumpLink>
         </li>
         <Separator />
-        <li className="text-foreground inline-flex min-h-11 min-w-0 items-center font-medium">
+        <li className="text-foreground inline-flex min-h-11 min-w-0 items-center px-2.5 font-medium">
           <span aria-current="page" className="truncate">
             {productName}
           </span>

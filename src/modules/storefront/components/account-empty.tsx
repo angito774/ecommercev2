@@ -1,5 +1,6 @@
 import type { LucideIcon } from 'lucide-react';
 import Link from 'next/link';
+import type { ReactNode } from 'react';
 
 import { Button } from '@/components/ui/button';
 
@@ -9,6 +10,10 @@ type AccountEmptyProps = {
   body: string;
   ctaHref: string;
   ctaLabel: string;
+  // Opcional y decorativa: la pinta sobre el texto quien la pasa. Los usos que no la
+  // pasan —el historial vacío y el de un periodo sin pedidos— quedan exactamente
+  // igual que antes (spec 013, T11).
+  illustration?: ReactNode;
 };
 
 // Una pantalla vacía es un sitio donde dirigir, no donde disculparse: por eso el CTA
@@ -17,12 +22,21 @@ type AccountEmptyProps = {
 // Reutiliza el cuadro suave con icono de `FeaturesSection` en vez de abrir un
 // lenguaje visual nuevo para dos bloques que desaparecen cuando lleguen favoritos y
 // pedidos de verdad.
-export function AccountEmpty({ icon: Icon, title, body, ctaHref, ctaLabel }: AccountEmptyProps) {
+export function AccountEmpty({
+  icon: Icon,
+  title,
+  body,
+  ctaHref,
+  ctaLabel,
+  illustration,
+}: AccountEmptyProps) {
   return (
     <div className="border-border bg-card flex flex-col items-start gap-4 rounded-[22px] border p-[clamp(1.5rem,4vw,2.5rem)]">
       <span className="bg-nx-accent-soft text-primary grid size-11 place-items-center rounded-xl">
         <Icon className="size-5" aria-hidden />
       </span>
+
+      {illustration}
 
       <div className="space-y-2">
         <h3 className="text-[17px] font-semibold tracking-[-0.025em]">{title}</h3>

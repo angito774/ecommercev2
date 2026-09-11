@@ -8,7 +8,10 @@ import { ACCOUNT_SECTIONS } from '@/modules/account/constants';
 // pantalla lo que el scroll ya resuelve (AC12).
 export function AccountNav() {
   return (
-    <nav aria-label="Secciones de mi cuenta" className="sticky top-24 hidden lg:block">
+    <nav
+      aria-label="Secciones de mi cuenta"
+      className="sticky top-[calc(var(--nx-header-h)+1rem)] hidden lg:block"
+    >
       <ul className="flex flex-col gap-1">
         {ACCOUNT_SECTIONS.map((section) => (
           <li key={section.id}>

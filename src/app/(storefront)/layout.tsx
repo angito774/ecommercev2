@@ -5,6 +5,7 @@ import { Suspense, type ReactNode } from 'react';
 import { Button } from '@/components/ui/button';
 import { AccountMenu } from '@/modules/storefront/components/account-menu';
 import { AnnouncementBar } from '@/modules/storefront/components/announcement-bar';
+import { MobileBottomNav } from '@/modules/storefront/components/mobile-bottom-nav';
 import { MotionProvider } from '@/modules/storefront/components/motion-provider';
 import { StorefrontFooter } from '@/modules/storefront/components/storefront-footer';
 import { StorefrontHeader } from '@/modules/storefront/components/storefront-header';
@@ -59,7 +60,16 @@ export default function StorefrontLayout({ children }: { children: ReactNode }) 
     // `data-surface` es lo que activa la paleta Nexbyte. Todo lo que cuelgue de
     // aquí la hereda; el panel de administración, que no lleva el atributo, se
     // queda con la neutra de shadcn (AC18).
-    <div data-surface="storefront" className="flex min-h-full flex-1 flex-col">
+    // El hueco de la barra inferior va en este contenedor y no en el `<main>`, como
+    // proponía el spec: el footer se renderiza DESPUÉS de `<main>`, así que un
+    // `padding-bottom` allí solo separaría el contenido del pie y dejaría igual de
+    // tapada la banda de beneficios al llegar al final del documento. Aquí envuelve
+    // a los dos. La altura es la misma de `MobileBottomNav` (3.5rem) más el inset
+    // seguro del dispositivo.
+    <div
+      data-surface="storefront"
+      className="flex min-h-full flex-1 flex-col pb-[calc(3.5rem+env(safe-area-inset-bottom))] md:pb-0"
+    >
       <MotionProvider>
         {/* Primer elemento enfocable del documento: con Tab desde la barra de
             direcciones se salta la navegación entera (AC17 / pauta 2.4.1). */}
@@ -83,6 +93,9 @@ export default function StorefrontLayout({ children }: { children: ReactNode }) 
           <FooterSlot />
         </Suspense>
         <StorefrontOverlays />
+        {/* Fuera de `StorefrontOverlays`: aquello monta lo que está detrás de un
+            clic y puede diferirse, y esta barra se ve desde el primer píxel. */}
+        <MobileBottomNav />
       </MotionProvider>
     </div>
   );

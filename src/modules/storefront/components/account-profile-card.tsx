@@ -1,4 +1,4 @@
-import { User as UserIcon } from 'lucide-react';
+import { User as UserIcon, Zap } from 'lucide-react';
 import type { ReactNode } from 'react';
 
 import type { AccountProfile } from '@/modules/account/types/account.types';
@@ -21,7 +21,15 @@ function formatDate(iso: string): string {
 // Lista de definición con líneas finas — el mismo dispositivo que `ProductSpecList`
 // usa para la ficha técnica. Es la ficha del cliente igual que aquella es la del
 // producto, así que reutiliza el lenguaje en vez de inventar un tercero (D-8).
-export function AccountProfileCard({ profile }: { profile: AccountProfile }) {
+type AccountProfileCardProps = {
+  profile: AccountProfile;
+  // Sale de `users.stripe_customer_id` (migración 0005), no de un dato inventado: lo
+  // resuelve la page con el repositorio y baja como booleano, para que este
+  // componente no conozca ningún identificador de Stripe.
+  hasStripeCustomer: boolean;
+};
+
+export function AccountProfileCard({ profile, hasStripeCustomer }: AccountProfileCardProps) {
   // Sin nombre el título cae al correo, y sin ninguno de los dos a un texto neutro:
   // en ningún caso se pinta `null` (AC3).
   const displayName = profile.fullName ?? profile.email ?? 'Mi cuenta';
@@ -87,6 +95,16 @@ export function AccountProfileCard({ profile }: { profile: AccountProfile }) {
           <p className="text-muted-foreground text-sm">
             Tus datos los guarda y los edita Clerk, nuestro proveedor de identidad.
           </p>
+          {/* «Pago exprés activo» y no «Cliente verificado»: tener un Stripe Customer
+              no verifica a nadie, y «Verificado» ya se usa dos filas más abajo para
+              el correo. Dos badges con el mismo lenguaje y significados distintos
+              serían peores que ninguno (spec 013, §8). */}
+          {hasStripeCustomer ? (
+            <span className="bg-nx-accent-soft text-primary mt-1.5 inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold">
+              <Zap className="size-3.5" aria-hidden />
+              Pago exprés activo
+            </span>
+          ) : null}
         </div>
       </div>
 

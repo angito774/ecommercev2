@@ -4,6 +4,7 @@ import { Suspense } from 'react';
 import { APP_NAME } from '@/lib/constants';
 import { CATALOG_PAGE_SIZE } from '@/modules/products/constants';
 import type { CatalogProduct, CatalogProductListResponse } from '@/modules/products/types/catalog.types';
+import { BrandsShowcase } from '@/modules/storefront/components/brands-showcase';
 import { CatalogSection } from '@/modules/storefront/components/catalog-section';
 import { CategoriesSection } from '@/modules/storefront/components/categories-section';
 import { CategoryMarquee } from '@/modules/storefront/components/category-marquee';
@@ -13,6 +14,7 @@ import { FeaturesSection } from '@/modules/storefront/components/features-sectio
 import { HashScroll } from '@/modules/storefront/components/hash-scroll';
 import { Hero } from '@/modules/storefront/components/hero';
 import { HomeSkeleton } from '@/modules/storefront/components/home-skeleton';
+import { PromoBanner } from '@/modules/storefront/components/promo-banner';
 import { FEATURED_SLIDER_SIZE } from '@/modules/storefront/constants';
 import * as productRepository from '@/server/repositories/product.repository';
 import { getPublicCategories } from '@/server/services/catalog.service';
@@ -128,7 +130,12 @@ async function HomeContent() {
       {/* Se renderiza a sí misma como `null` si no hay ningún producto con precio
           anterior, así que la portada no queda con un hueco vacío (AC14). */}
       <DealsSection deals={discounted.data} />
+      {/* Los dos bloques nuevos del spec 013 se sirven de lo que ya está leído: el
+          banner no consulta nada y el showcase reutiliza `categories`. El
+          `Promise.all` de arriba sigue siendo la única tanda de consultas a Neon. */}
+      <PromoBanner />
       <CategoriesSection categories={categories} />
+      <BrandsShowcase categories={categories} />
       <CatalogSection categories={categories} initialData={initialCatalog} />
       <FeaturesSection />
     </>

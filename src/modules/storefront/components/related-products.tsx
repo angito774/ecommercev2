@@ -1,5 +1,6 @@
 import type { CatalogProduct } from '@/modules/products/types/catalog.types';
 
+import { CarouselTrack } from './carousel-track';
 import { ProductCard } from './product-card';
 import { Eyebrow } from './section-heading';
 
@@ -31,14 +32,16 @@ export function RelatedProducts({ products, categoryName }: RelatedProductsProps
           </h2>
         </div>
 
-        {/* Sin `<Reveal>`: envolver cada tarjeta añadiría un div entre la celda de
-            la rejilla y el `article`, y las tarjetas dejarían de estirarse a la
-            misma altura. La rejilla es idéntica a la del catálogo (D-15). */}
-        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4 xl:gap-5">
+        {/* `CarouselTrack` es un pass-through cliente: este archivo sigue siendo
+            Server Component y las tarjetas —con su arte SVG de categoría— siguen
+            saliendo en el HTML inicial, que es lo que sostiene el SEO de la ficha
+            (spec 012, §8). Sigue sin haber `<Reveal>` por lo de siempre: un div
+            intermedio rompería el estirado de las tarjetas a la misma altura. */}
+        <CarouselTrack label={categoryName}>
           {products.map((product) => (
             <ProductCard key={product.id} product={product} />
           ))}
-        </div>
+        </CarouselTrack>
       </div>
     </section>
   );

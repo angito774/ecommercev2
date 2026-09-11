@@ -22,7 +22,7 @@ const ANCHOR_IDS = new Set(STOREFRONT_NAV.map((item) => item.href.replace(/^\/#/
 //
 // Sin `behavior: 'smooth'`: en una carga directa con hash el navegador ya ha
 // desplazado y esta llamada es idempotente; animarla convertiría ese caso en un
-// barrido visible. El `scroll-mt-24` de cada sección lo respetan los dos caminos.
+// barrido visible. El `scroll-margin-top` de cada sección lo respetan los dos caminos.
 export function HashScroll() {
   useEffect(() => {
     const id = window.location.hash.slice(1);

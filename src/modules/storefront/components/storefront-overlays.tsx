@@ -3,6 +3,7 @@
 import dynamic from 'next/dynamic';
 
 import { useUiStore } from '../store/ui.store';
+import { ScrollToTop } from './scroll-to-top';
 
 // Los tres overlays están detrás de un clic o de un atajo, así que no tienen por
 // qué pesar en el chunk que mide el LCP de la portada. `next/dynamic` los saca del
@@ -35,6 +36,10 @@ export function StorefrontOverlays() {
       {searchMounted ? <SearchDialog /> : null}
       {cartMounted ? <CartDrawer /> : null}
       {menuMounted ? <MobileMenu /> : null}
+      {/* Import estático y no `next/dynamic`: el botón tiene que estar escuchando
+          el scroll desde el primer píxel, así que diferirlo no ahorraría nada —
+          habría que cargarlo igual al hidratar. */}
+      <ScrollToTop />
     </>
   );
 }

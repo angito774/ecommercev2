@@ -2,25 +2,20 @@
 
 import { ArrowLeft, ArrowRight, Sparkles } from 'lucide-react';
 import Link from 'next/link';
-import { useCallback, useEffect, useState, useSyncExternalStore } from 'react';
+import { type PointerEvent, useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 
 import { formatPrice } from '@/modules/products/lib/price';
 import type { CatalogProduct } from '@/modules/products/types/catalog.types';
 
 import { FEATURED_SLIDER_AUTOPLAY_MS, STOCK_LABELS } from '../constants';
+import { prefersReducedMotion, REDUCED_MOTION_QUERY } from '../lib/motion';
 import { AddToCartButton } from './add-to-cart-button';
 import { ProductMedia } from './product-media';
-
-const REDUCED_MOTION_QUERY = '(prefers-reduced-motion: reduce)';
 
 function subscribeToReducedMotion(onChange: () => void) {
   const query = window.matchMedia(REDUCED_MOTION_QUERY);
   query.addEventListener('change', onChange);
   return () => query.removeEventListener('change', onChange);
-}
-
-function getReducedMotionSnapshot() {
-  return window.matchMedia(REDUCED_MOTION_QUERY).matches;
 }
 
 // `useSyncExternalStore`, no `useReducedMotion()` de Motion: ese hook resuelve
@@ -34,8 +29,12 @@ function getReducedMotionSnapshot() {
 // servidor) y solo aplica la preferencia real en un render posterior, ya fuera
 // de la hidratación.
 function useReducedMotion() {
-  return useSyncExternalStore(subscribeToReducedMotion, getReducedMotionSnapshot, () => false);
+  return useSyncExternalStore(subscribeToReducedMotion, prefersReducedMotion, () => false);
 }
+
+// Desplazamiento horizontal mínimo para contar como swipe. Por debajo, el gesto se
+// trata como un toque y el clic sobre el enlace del slide sigue su curso.
+const SWIPE_THRESHOLD_PX = 50;
 
 type FeaturedSliderProps = {
   // Ya viene deduplicado y acotado a `FEATURED_SLIDER_SIZE` desde `page.tsx`: este
@@ -53,6 +52,33 @@ export function FeaturedSlider({ products }: FeaturedSliderProps) {
     (next: number) => setIndex(((next % count) + count) % count),
     [count],
   );
+
+  // Pointer Events sobre el track existente, sin librería de gestos: AC17 prohíbe
+  // dependencias nuevas y el `drag` de Motion obligaría a convertir el track en
+  // `motion.div` y a reconciliar su transform con el `translateX` por índice que ya
+  // está revisado (spec 013, §8).
+  //
+  // En un ref y no en estado: la X de partida no se pinta, así que guardarla en
+  // estado provocaría un render por cada gesto sin cambiar nada en pantalla. Se lee
+  // y se escribe solo desde manejadores, nunca durante el render.
+  const swipeStartX = useRef<number | null>(null);
+
+  const onPointerDown = (event: PointerEvent<HTMLDivElement>) => {
+    swipeStartX.current = event.clientX;
+  };
+
+  const onPointerUp = (event: PointerEvent<HTMLDivElement>) => {
+    const start = swipeStartX.current;
+    swipeStartX.current = null;
+
+    if (start === null) return;
+
+    const delta = event.clientX - start;
+    if (Math.abs(delta) < SWIPE_THRESHOLD_PX) return;
+
+    // El mismo `goTo` que las flechas: un solo camino para cambiar de slide.
+    goTo(index + (delta < 0 ? 1 : -1));
+  };
 
   // Autoplay en `setInterval`, no en Motion: es un avance por temporizador, sin
   // estado continuo de puntero ni scroll que justifique la librería (spec 004,
@@ -81,7 +107,16 @@ export function FeaturedSlider({ products }: FeaturedSliderProps) {
       <div className="nx-orb nx-orb-b pointer-events-none absolute -right-[6%] -bottom-[70%] z-0 aspect-square w-[min(380px,52vw)]" />
 
       <div
-        className="relative z-[1] flex"
+        onPointerDown={onPointerDown}
+        onPointerUp={onPointerUp}
+        // Si el puntero se cancela —el navegador se queda el gesto para desplazar la
+        // página— el punto de partida se descarta y no se cambia de slide.
+        onPointerCancel={() => {
+          swipeStartX.current = null;
+        }}
+        // `touch-action: pan-y`: el navegador conserva el scroll vertical de la
+        // página y solo el horizontal llega como gesto nuestro (AC11).
+        className="relative z-[1] flex touch-pan-y"
         style={{
           transform: `translateX(-${index * 100}%)`,
           transition: reduced ? 'none' : 'transform 550ms cubic-bezier(.22,1,.36,1)',
