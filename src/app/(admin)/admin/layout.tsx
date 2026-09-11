@@ -1,3 +1,4 @@
+import { UserButton } from '@clerk/nextjs';
 import { auth } from '@clerk/nextjs/server';
 import { Package, ScrollText, ShieldCheck, Tags, Users, type LucideIcon } from 'lucide-react';
 import Link from 'next/link';
@@ -38,11 +39,17 @@ export default async function AdminLayout({ children }: LayoutProps<'/admin'>) {
 
   return (
     <div className="flex flex-1 flex-col md:flex-row">
-      <aside className="bg-muted/30 border-b md:w-56 md:shrink-0 md:border-r md:border-b-0">
-        <div className="flex h-14 items-center px-4">
-          <Link href="/" className="font-semibold tracking-tight">
+      {/* `h-screen` sin restar nada: el layout admin cuelga directo del `<body>`,
+          no hay header global encima que consuma viewport. `sticky` mantiene la
+          navegación a la vista mientras el `<main>` desplaza. */}
+      <aside className="bg-muted/30 border-b md:sticky md:top-0 md:flex md:h-screen md:w-56 md:shrink-0 md:flex-col md:overflow-y-auto md:border-r md:border-b-0">
+        <div className="flex h-14 items-center gap-2 px-4">
+          <Link href="/" className="truncate font-semibold tracking-tight">
             {APP_NAME}
           </Link>
+          <div className="ml-auto flex items-center">
+            <UserButton />
+          </div>
         </div>
         <nav className="flex gap-1 px-2 pb-3 md:flex-col md:pb-0">
           {navItems.map(({ href, label, icon: Icon }) => (
