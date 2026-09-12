@@ -1,13 +1,14 @@
 'use client';
 
 import { ShieldCheck, Truck } from 'lucide-react';
-import { motion, useMotionTemplate, useMotionValue, useSpring, useReducedMotion } from 'motion/react';
+import { motion, useMotionTemplate, useMotionValue, useSpring } from 'motion/react';
 import Link from 'next/link';
 import type { PointerEvent } from 'react';
 
 import { formatPrice } from '@/modules/products/lib/price';
 import type { CatalogProduct } from '@/modules/products/types/catalog.types';
 
+import { prefersReducedMotion } from '../lib/motion';
 import { AddToCartButton } from './add-to-cart-button';
 import { ProductMedia } from './product-media';
 
@@ -15,14 +16,15 @@ import { ProductMedia } from './product-media';
 // caso que el spec reserva a Motion: lo que se puede hacer con `@keyframes` se hace
 // en CSS, y aquí hace falta estado continuo (spec 004, D-4).
 export function HeroVisual({ product }: { product: CatalogProduct }) {
-  const reduced = useReducedMotion();
-
   const rotateX = useSpring(useMotionValue(0), { stiffness: 220, damping: 22 });
   const rotateY = useSpring(useMotionValue(0), { stiffness: 220, damping: 22 });
   const transform = useMotionTemplate`perspective(1200px) rotateX(${rotateX}deg) rotateY(${rotateY}deg)`;
 
   const onPointerMove = (event: PointerEvent<HTMLDivElement>) => {
-    if (reduced) return;
+    // La preferencia se consulta aquí y no en el render: `matchMedia` no existe en
+    // el servidor y `useReducedMotion()` sí resuelve en el primer render del
+    // cliente, así que ramificar el `style` con su valor rompía la hidratación.
+    if (prefersReducedMotion()) return;
     const bounds = event.currentTarget.getBoundingClientRect();
     const px = (event.clientX - bounds.left) / bounds.width - 0.5;
     const py = (event.clientY - bounds.top) / bounds.height - 0.5;
@@ -45,7 +47,7 @@ export function HeroVisual({ product }: { product: CatalogProduct }) {
         // `transform` sobre el div contenedor, nunca sobre el `<svg>` del arte:
         // muchos navegadores no aceleran por hardware las transformaciones
         // aplicadas a un SVG (regla `rendering-animate-svg-wrapper`).
-        style={reduced ? undefined : { transform }}
+        style={{ transform }}
         className="border-border bg-card nx-shadow-lg relative overflow-hidden rounded-[30px] border p-3.5"
       >
         <div className="nx-art-surface relative grid aspect-[4/3] place-items-center overflow-hidden rounded-[22px]">
