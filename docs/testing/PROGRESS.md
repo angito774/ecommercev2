@@ -16,7 +16,7 @@ tests creados + `npm run typecheck && npm run lint && npm run test` en verde.
 - [x] 10. `payments`
 - [x] 11. `products/lib` (price)
 - [x] 12. `products/schemas`
-- [ ] 13. `products/repository-helper` (escapeLikePattern)
+- [x] 13. `products/repository-helper` (escapeLikePattern)
 - [ ] 14. `roles`
 - [ ] 15. `storefront`
 - [ ] 16. `users`

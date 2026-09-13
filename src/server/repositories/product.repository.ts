@@ -172,7 +172,7 @@ const CATALOG_ORDER_BY = {
 // viajando como parámetro— pero sí un resultado incorrecto que el visitante puede
 // provocar. La barra invertida es a su vez el carácter de escape, así que va
 // primero o se escaparía a sí misma dos veces.
-function escapeLikePattern(value: string): string {
+export function escapeLikePattern(value: string): string {
   return value.replace(/[\\%_]/g, (char) => `\\${char}`);
 }
 
