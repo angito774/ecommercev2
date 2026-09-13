@@ -20,14 +20,14 @@ const publicMetadataSchema = z
   .object({ roleSlugs: z.array(z.string().refine(isRoleSlug)).optional() })
   .catch({});
 
-function readRoleSlugs(publicMetadata: unknown): RoleSlug[] {
+export function readRoleSlugs(publicMetadata: unknown): RoleSlug[] {
   return publicMetadataSchema.parse(publicMetadata).roleSlugs ?? [];
 }
 
 // Solo el correo primario. Sin fallback al primero de la lista: ese email es la
 // clave con la que el seed busca al `super_admin`, y un correo secundario —que Clerk
 // no exige verificar— no debe poder atraer un rol elevado.
-function readPrimaryEmail(data: UserEventData): string | null {
+export function readPrimaryEmail(data: UserEventData): string | null {
   const primary = data.email_addresses.find(
     (address) => address.id === data.primary_email_address_id,
   );
@@ -35,7 +35,7 @@ function readPrimaryEmail(data: UserEventData): string | null {
   return primary?.email_address ?? null;
 }
 
-function toUpsertValues(data: UserEventData): userRepository.UpsertUserValues | null {
+export function toUpsertValues(data: UserEventData): userRepository.UpsertUserValues | null {
   const email = readPrimaryEmail(data);
   // Una cuenta sin correo (alta solo con teléfono) no se puede reflejar: queda sin
   // fila y, por tanto, sin permisos. Mismo default seguro que el upsert JIT.

@@ -20,8 +20,14 @@ tests creados + `npm run typecheck && npm run lint && npm run test` en verde.
 - [x] 14. `roles`
 - [x] 15. `storefront`
 - [x] 16. `users`
-- [ ] 17. `server/services` (user-access.service, user-sync.service)
+- [x] 17. `server/services` (user-access.service, user-sync.service)
 
 ## Bloqueado
 
 (vacío — se documenta aquí cualquier decisión que detenga el trabajo)
+
+## COMPLETADO (2026-09-13 17:28 UTC)
+
+Las 17 unidades de la suite de unit testing están completas. `npm run
+typecheck && npm run lint && npm run test && npm run build` en verde de punta
+a punta.

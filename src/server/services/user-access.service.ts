@@ -32,7 +32,7 @@ const USER_NOT_FOUND_MESSAGE = 'Usuario no encontrado';
 // Traducción de la regla "solo un super administrador otorga o revoca
 // admin/super_admin" sin un solo literal de rol: la clasificación es el dato
 // `roles.is_elevated` y la autorización es el código de permiso (CLAUDE.md regla 10).
-function assertMayTouch(roles: readonly RoleRef[], granted: ReadonlySet<PermissionCode>): void {
+export function assertMayTouch(roles: readonly RoleRef[], granted: ReadonlySet<PermissionCode>): void {
   if (!roles.some((role) => role.isElevated)) return;
   if (can(granted, 'users.assign_elevated_roles')) return;
 
@@ -54,7 +54,7 @@ async function resolveRoles(roleSlugs: RoleSlug[]): Promise<RoleRef[]> {
   return resolved;
 }
 
-function sameSlugs(before: readonly RoleSlug[], after: readonly RoleSlug[]): boolean {
+export function sameSlugs(before: readonly RoleSlug[], after: readonly RoleSlug[]): boolean {
   if (before.length !== after.length) return false;
   const set = new Set(before);
   return after.every((slug) => set.has(slug));
@@ -66,7 +66,7 @@ function sameSlugs(before: readonly RoleSlug[], after: readonly RoleSlug[]): boo
 // que queda: se traduce a 409 y todo lo demás a 502.
 type ClerkFailure = { status?: unknown; errors?: unknown };
 
-function clerkStatusOf(error: unknown): number | null {
+export function clerkStatusOf(error: unknown): number | null {
   if (typeof error !== 'object' || error === null) return null;
   const { status } = error as ClerkFailure;
   return typeof status === 'number' ? status : null;
