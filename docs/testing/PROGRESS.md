@@ -19,7 +19,7 @@ tests creados + `npm run typecheck && npm run lint && npm run test` en verde.
 - [x] 13. `products/repository-helper` (escapeLikePattern)
 - [x] 14. `roles`
 - [x] 15. `storefront`
-- [ ] 16. `users`
+- [x] 16. `users`
 - [ ] 17. `server/services` (user-access.service, user-sync.service)
 
 ## Bloqueado
