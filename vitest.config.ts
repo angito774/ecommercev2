@@ -8,6 +8,7 @@ export default defineConfig({
   plugins: [tsconfigPaths()],
   test: {
     environment: 'node',
+    setupFiles: ['./vitest.setup.ts'],
     include: ['src/**/*.test.ts'],
     exclude: ['node_modules', '.next'],
     coverage: {

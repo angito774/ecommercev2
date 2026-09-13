@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { slugify } from './utils';
+import { cn, isUniqueViolation, slugify, uniqueViolationTarget } from './utils';
 
 // Prueba de ejemplo para validar el setup de Vitest (config, alias @/, tsconfig).
 // Sirve de plantilla de convención para el resto del inventario en
@@ -24,5 +24,94 @@ describe('slugify', () => {
 
   it('returns an empty string when there are no valid characters', () => {
     expect(slugify('!!!')).toBe('');
+  });
+});
+
+describe('cn', () => {
+  it('joins plain class names with a space', () => {
+    expect(cn('flex', 'items-center')).toBe('flex items-center');
+  });
+
+  it('lets a later conflicting Tailwind class win over an earlier one', () => {
+    expect(cn('p-2', 'p-4')).toBe('p-4');
+  });
+
+  it('drops falsy values from conditional class expressions', () => {
+    expect(cn('flex', false && 'hidden', undefined, null, '')).toBe('flex');
+  });
+
+  it('returns an empty string when given no classes', () => {
+    expect(cn()).toBe('');
+  });
+
+  it('flattens arrays and objects of class names', () => {
+    expect(cn(['text-sm', 'gap-2'], { hidden: false, italic: true })).toBe(
+      'text-sm gap-2 italic',
+    );
+  });
+
+  it('lets a later conflicting class from an object win over an array class', () => {
+    // `flex` y `block` comparten el mismo grupo de Tailwind (display): gana el que
+    // llega después sin importar si viene de un array o de un objeto.
+    expect(cn(['flex', 'gap-2'], { block: true })).toBe('gap-2 block');
+  });
+});
+
+describe('isUniqueViolation', () => {
+  it('returns true for a Postgres unique violation (code 23505)', () => {
+    expect(isUniqueViolation({ code: '23505' })).toBe(true);
+  });
+
+  it('returns false for a different Postgres error code', () => {
+    expect(isUniqueViolation({ code: '23503' })).toBe(false);
+  });
+
+  it('finds the violation nested inside a chain of `cause`', () => {
+    const pgError = { code: '23505' };
+    const drizzleError = { cause: { cause: pgError } };
+    expect(isUniqueViolation(drizzleError)).toBe(true);
+  });
+
+  it('returns false when the cause chain exceeds the max depth (5 levels)', () => {
+    const pgError = { code: '23505' };
+    const deeplyWrapped = { cause: { cause: { cause: { cause: { cause: pgError } } } } };
+    expect(isUniqueViolation(deeplyWrapped)).toBe(false);
+  });
+
+  it('returns false for null', () => {
+    expect(isUniqueViolation(null)).toBe(false);
+  });
+
+  it('returns false for a non-object error such as a string', () => {
+    expect(isUniqueViolation('boom')).toBe(false);
+  });
+
+  it('returns false for a plain Error without a Postgres code', () => {
+    expect(isUniqueViolation(new Error('boom'))).toBe(false);
+  });
+});
+
+describe('uniqueViolationTarget', () => {
+  it('returns the constraint name when the violation exposes one', () => {
+    expect(uniqueViolationTarget({ code: '23505', constraint: 'products_sku_unique' })).toBe(
+      'products_sku_unique',
+    );
+  });
+
+  it('finds the constraint nested inside a chain of `cause`', () => {
+    const pgError = { code: '23505', constraint: 'categories_slug_unique' };
+    expect(uniqueViolationTarget({ cause: pgError })).toBe('categories_slug_unique');
+  });
+
+  it('returns null when there is no unique violation at all', () => {
+    expect(uniqueViolationTarget({ code: '23503' })).toBeNull();
+  });
+
+  it('returns null when the violation does not expose a constraint name', () => {
+    expect(uniqueViolationTarget({ code: '23505' })).toBeNull();
+  });
+
+  it('returns null when the constraint is not a string', () => {
+    expect(uniqueViolationTarget({ code: '23505', constraint: 42 })).toBeNull();
   });
 });
