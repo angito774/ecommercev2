@@ -19,9 +19,16 @@ type DeleteCardDialogProps = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   card: SavedCard | null;
+  /** Se avisa solo de la baja confirmada; qué hacer con ella lo decide la sección. */
+  onDeleted: () => void;
 };
 
-export function DeleteCardDialog({ open, onOpenChange, card }: DeleteCardDialogProps) {
+export function DeleteCardDialog({
+  open,
+  onOpenChange,
+  card,
+  onDeleted,
+}: DeleteCardDialogProps) {
   const deleteMutation = useDeleteSavedCard();
 
   async function handleConfirm() {
@@ -29,6 +36,7 @@ export function DeleteCardDialog({ open, onOpenChange, card }: DeleteCardDialogP
 
     try {
       await deleteMutation.mutateAsync(card.id);
+      onDeleted();
       onOpenChange(false);
     } catch {
       // El toast de error lo emite el hook; el diálogo permanece abierto para que se

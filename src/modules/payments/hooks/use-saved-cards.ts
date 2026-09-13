@@ -1,7 +1,7 @@
 'use client';
 
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 
 import {
   CARD_SETUP_FRESHNESS_MS,
@@ -36,6 +36,11 @@ export function useSavedCards({ poll = false }: UseSavedCardsOptions = {}) {
   // En estado y no en un ref: agotar la ventana es información que la UI pinta, así
   // que tiene que provocar un render.
   const [attempts, setAttempts] = useState(0);
+  // El query param sobrevive a cualquier acción posterior del cliente, así que por sí
+  // solo no distingue «el webhook todavía no ha llegado» de «la lista está vacía
+  // porque el cliente acaba de eliminar la tarjeta». Esto cierra la ventana a mano
+  // cuando ya no tiene sentido esperar nada.
+  const [closed, setClosed] = useState(false);
   const queryClient = useQueryClient();
 
   const query = useQuery({
@@ -44,9 +49,10 @@ export function useSavedCards({ poll = false }: UseSavedCardsOptions = {}) {
     staleTime: SAVED_CARDS_STALE_TIME_MS,
   });
 
+  const open = poll && !closed;
   const arrived = hasFreshCard(query.data?.data);
   const spent = attempts >= CARD_SETUP_MAX_POLLS;
-  const waiting = poll && !arrived && !spent;
+  const waiting = open && !arrived && !spent;
 
   useEffect(() => {
     if (!waiting) return;
@@ -66,6 +72,8 @@ export function useSavedCards({ poll = false }: UseSavedCardsOptions = {}) {
     /** La tarjeta recién guardada todavía no aparece y quedan intentos. */
     waiting,
     /** Se agotaron los intentos sin verla: hace falta un aviso accionable (AC13). */
-    exhausted: poll && spent && !arrived,
+    exhausted: open && spent && !arrived,
+    /** Cierra la ventana de espera de forma definitiva para este montaje. */
+    stopWaiting: useCallback(() => setClosed(true), []),
   };
 }

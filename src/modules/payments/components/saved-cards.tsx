@@ -27,7 +27,7 @@ export function SavedCards({ justAdded }: SavedCardsProps) {
   const [target, setTarget] = useState<SavedCard | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
 
-  const { query, waiting, exhausted } = useSavedCards({ poll: justAdded });
+  const { query, waiting, exhausted, stopWaiting } = useSavedCards({ poll: justAdded });
   const cards = query.data?.data;
 
   function handleDelete(card: SavedCard) {
@@ -80,7 +80,15 @@ export function SavedCards({ justAdded }: SavedCardsProps) {
         onDelete={handleDelete}
       />
 
-      <DeleteCardDialog open={dialogOpen} onOpenChange={setDialogOpen} card={target} />
+      {/* Eliminar es una acción deliberada: a partir de ahí la lista vacía es el
+          resultado que el cliente pidió, no un webhook que no ha llegado, y seguir
+          avisando de una espera contradiría lo que acaba de hacer. */}
+      <DeleteCardDialog
+        open={dialogOpen}
+        onOpenChange={setDialogOpen}
+        card={target}
+        onDeleted={stopWaiting}
+      />
     </div>
   );
 }
