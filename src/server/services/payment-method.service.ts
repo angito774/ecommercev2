@@ -22,7 +22,7 @@ const AUDIT_ENTITY = 'payment_method';
 const BRAND_MAX_LENGTH = 32;
 const LAST4_LENGTH = 4;
 
-function readSetupIntentId(session: Stripe.Checkout.Session): string | null {
+export function readSetupIntentId(session: Stripe.Checkout.Session): string | null {
   const { setup_intent: setupIntent } = session;
   if (!setupIntent) return null;
   return typeof setupIntent === 'string' ? setupIntent : setupIntent.id;
@@ -32,7 +32,7 @@ function readSetupIntentId(session: Stripe.Checkout.Session): string | null {
 // `card.brand` es el respaldo cuando no viene. En minúscula porque el rótulo visible
 // lo resuelve `CARD_BRAND_LABELS` en el navegador y la base guarda la clave, no el
 // texto (D-11).
-function readBrand(card: Stripe.PaymentMethod.Card): string {
+export function readBrand(card: Stripe.PaymentMethod.Card): string {
   return (card.display_brand ?? card.brand).toLowerCase().slice(0, BRAND_MAX_LENGTH);
 }
 

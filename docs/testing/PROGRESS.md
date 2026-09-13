@@ -13,7 +13,7 @@ tests creados + `npm run typecheck && npm run lint && npm run test` en verde.
 - [x] 7. `orders/constants` (mensajes)
 - [x] 8. `orders/schemas`
 - [x] 9. `orders/server-services` (checkout.service, order-fulfillment.service — mocks Stripe/Drizzle)
-- [ ] 10. `payments`
+- [x] 10. `payments`
 - [ ] 11. `products/lib` (price)
 - [ ] 12. `products/schemas`
 - [ ] 13. `products/repository-helper` (escapeLikePattern)
