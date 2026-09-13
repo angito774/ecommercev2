@@ -6,7 +6,7 @@ tests creados + `npm run typecheck && npm run lint && npm run test` en verde.
 
 - [x] 1. `src/lib` (utils, permissions, audit, api-guard)
 - [x] 2. `account`
-- [ ] 3. `audit`
+- [x] 3. `audit`
 - [ ] 4. `cart`
 - [ ] 5. `categories`
 - [ ] 6. `orders/lib` (totals, order-history-range, group-orders-by-day)
