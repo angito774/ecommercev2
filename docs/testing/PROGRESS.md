@@ -5,7 +5,7 @@ Checklist de avance para la creación de la suite de unit tests, siguiendo
 tests creados + `npm run typecheck && npm run lint && npm run test` en verde.
 
 - [x] 1. `src/lib` (utils, permissions, audit, api-guard)
-- [ ] 2. `account`
+- [x] 2. `account`
 - [ ] 3. `audit`
 - [ ] 4. `cart`
 - [ ] 5. `categories`
