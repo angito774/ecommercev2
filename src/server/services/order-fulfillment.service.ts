@@ -10,18 +10,18 @@ const AUDIT_SOURCE = 'stripe.webhook';
 
 // Solo identificadores de la transacción: nunca el payload del evento, ni datos de
 // tarjeta, ni la dirección del cliente (docs/SETUP.md §5.2, regla dura 3).
-function auditMetadata(session: Stripe.Checkout.Session, eventId: string) {
+export function auditMetadata(session: Stripe.Checkout.Session, eventId: string) {
   return { source: AUDIT_SOURCE, stripeEventId: eventId, stripeSessionId: session.id };
 }
 
 // El `orderId` viaja en `metadata` desde que Stripe crea la sesión, así que existe
 // aunque el UPDATE que escribe `stripe_checkout_session_id` no hubiera llegado
 // todavía (D-6). Un evento sin él no es nuestro: se ignora.
-function readOrderId(session: Stripe.Checkout.Session): string | null {
+export function readOrderId(session: Stripe.Checkout.Session): string | null {
   return session.metadata?.orderId ?? null;
 }
 
-function readPaymentIntentId(session: Stripe.Checkout.Session): string | null {
+export function readPaymentIntentId(session: Stripe.Checkout.Session): string | null {
   const { payment_intent: paymentIntent } = session;
   if (!paymentIntent) return null;
   return typeof paymentIntent === 'string' ? paymentIntent : paymentIntent.id;
@@ -29,7 +29,7 @@ function readPaymentIntentId(session: Stripe.Checkout.Session): string | null {
 
 // Se guarda tal cual llega, sin normalizar en columnas: inventar un esquema de
 // direcciones antes de saber quién lo consulta sería adivinar (D-19).
-function readShippingAddress(
+export function readShippingAddress(
   session: Stripe.Checkout.Session,
 ): Record<string, unknown> | null {
   const details = session.collected_information?.shipping_details;

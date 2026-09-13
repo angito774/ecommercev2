@@ -28,7 +28,7 @@ const SHIPPING_DISPLAY_NAME = 'Envío estándar';
 const ALLOWED_SHIPPING_COUNTRIES: Stripe.Checkout.SessionCreateParams.ShippingAddressCollection.AllowedCountry[] =
   ['PE'];
 
-type PreparedOrder = {
+export type PreparedOrder = {
   orderId: string;
   currency: string;
   shippingCents: number;
@@ -39,7 +39,7 @@ type PreparedOrder = {
 // congeladas. El carrito del cliente solo aporta `productId` y `quantity`: es el
 // único momento del flujo en que todavía se puede decir que no sin haber cobrado
 // (D-9, AC3, AC4).
-function buildOrderItems(
+export function buildOrderItems(
   input: CheckoutInput,
   catalog: Awaited<ReturnType<typeof productRepository.findManyByIds>>,
 ): Array<Pick<NewOrderItem, 'productId' | 'nameSnapshot' | 'imageUrlSnapshot' | 'priceCentsSnapshot' | 'quantity'>> {
@@ -97,7 +97,7 @@ async function prepareOrder(user: User, input: CheckoutInput): Promise<PreparedO
   });
 }
 
-function toLineItems(order: PreparedOrder): Stripe.Checkout.SessionCreateParams.LineItem[] {
+export function toLineItems(order: PreparedOrder): Stripe.Checkout.SessionCreateParams.LineItem[] {
   return order.items.map((item) => ({
     quantity: item.quantity,
     price_data: {
@@ -117,7 +117,7 @@ function toLineItems(order: PreparedOrder): Stripe.Checkout.SessionCreateParams.
 
 // El envío viaja como `shipping_options`, no como una línea más: así Stripe lo
 // presenta como envío y no como un producto llamado «Envío» (D-8).
-function toShippingOptions(
+export function toShippingOptions(
   order: PreparedOrder,
 ): Stripe.Checkout.SessionCreateParams.ShippingOption[] {
   return [
