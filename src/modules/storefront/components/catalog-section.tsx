@@ -107,10 +107,10 @@ export function CatalogSection({ categories, initialData }: CatalogSectionProps)
     <section
       ref={sectionRef}
       id="catalogo"
-      // Sobre `--nx-header-h`: el header de dos filas mide 109 px en escritorio y un
-      // `scroll-mt-24` fijo dejaba el encabezado del catálogo bajo la cabecera al
-      // llegar por el ancla o al paginar.
-      className="scroll-mt-[calc(var(--nx-header-h)+1.5rem)] py-[clamp(3.75rem,8.5vw,7.25rem)]"
+      // El alto del header lo descuenta el `scroll-padding-top` de `html`
+      // (`globals.css`), que sale de `--nx-header-h`. Aquí solo queda el respiro: si
+      // este margen volviera a sumar la variable, el hueco sería el doble del header.
+      className="scroll-mt-6 py-[clamp(3.75rem,8.5vw,7.25rem)]"
     >
       <div className="mx-auto w-full max-w-[1240px] px-[clamp(1rem,4vw,2rem)]">
         <div className="mb-[clamp(2rem,4vw,3.25rem)]">

@@ -1,6 +1,6 @@
 'use client';
 
-import { Menu, Search, ShoppingBag } from 'lucide-react';
+import { Menu, ShoppingBag } from 'lucide-react';
 import { motion } from 'motion/react';
 import Link from 'next/link';
 import { type ReactNode, useCallback, useEffect, useRef, useState } from 'react';
@@ -11,10 +11,10 @@ import { selectItemCount, useCartHydrated, useCartStore } from '@/modules/cart/s
 
 import { STOREFRONT_NAV } from '../constants';
 import { useUiStore } from '../store/ui.store';
-import { AnimatedSearchPlaceholder } from './animated-search-placeholder';
 import { BrandMark } from './brand-mark';
 import { CategoryMegaMenu } from './category-mega-menu';
 import { DeliveryLocationBadge } from './delivery-location-badge';
+import { HeaderSearch } from './header-search';
 import { ThemeToggle } from './theme-toggle';
 
 type StorefrontHeaderProps = {
@@ -27,38 +27,26 @@ type StorefrontHeaderProps = {
 export function StorefrontHeader({ authSlot }: StorefrontHeaderProps) {
   const [stuck, setStuck] = useState(false);
 
-  const setSearchOpen = useUiStore((state) => state.setSearchOpen);
   const setCartOpen = useUiStore((state) => state.setCartOpen);
   const setMenuOpen = useUiStore((state) => state.setMenuOpen);
-  const setSearchTrigger = useUiStore((state) => state.setSearchTrigger);
 
-  // Hay dos disparadores de búsqueda —el ancho de escritorio y el icono de móvil—
-  // y solo uno está visible en cada breakpoint. Se guardan los dos para poder
-  // devolver el foco al que de verdad abrió el overlay (AC10).
-  const desktopSearchRef = useRef<HTMLButtonElement>(null);
-  const mobileSearchRef = useRef<HTMLButtonElement>(null);
+  // Hay dos campos de búsqueda —el de la fila 1 desde `md` y el de la fila propia
+  // de móvil— y solo uno está renderizado en cada breakpoint (D-8).
+  const desktopSearchRef = useRef<HTMLInputElement>(null);
+  const mobileSearchRef = useRef<HTMLInputElement>(null);
 
-  const openSearch = useCallback(
-    (trigger?: HTMLElement | null) => {
-      // Con `⌘K` no hay elemento pulsado, así que se elige el disparador que esté
-      // visible: `offsetParent === null` delata al que el breakpoint ha ocultado, y
-      // enfocar un elemento oculto no haría nada.
-      //
-      // Sigue funcionando con el header en dos filas: el criterio no es la fila en
-      // la que vive el botón sino si está renderizado, y cada disparador conserva
-      // su `hidden lg:flex` / `lg:hidden` de antes.
-      const target =
-        trigger ??
-        [desktopSearchRef.current, mobileSearchRef.current].find(
-          (element) => element !== null && element.offsetParent !== null,
-        ) ??
-        null;
+  // `⌘K` ya no abre nada: solo enfoca. Se elige el campo visible porque
+  // `offsetParent === null` delata al que el breakpoint ha ocultado, y enfocar un
+  // elemento oculto no haría nada. `select()` deja el término anterior listo para
+  // reemplazarse de una tecla (AC7).
+  const focusSearch = useCallback(() => {
+    const target = [desktopSearchRef.current, mobileSearchRef.current].find(
+      (element) => element !== null && element.offsetParent !== null,
+    );
 
-      setSearchTrigger(target);
-      setSearchOpen(true);
-    },
-    [setSearchOpen, setSearchTrigger],
-  );
+    target?.focus();
+    target?.select();
+  }, []);
 
   // Suscripción al valor derivado, no al array de líneas: así el header no se
   // re-renderiza cuando cambia el precio o el nombre de una línea, solo cuando
@@ -75,51 +63,26 @@ export function StorefrontHeader({ authSlot }: StorefrontHeaderProps) {
     return () => window.removeEventListener('scroll', onScroll);
   }, []);
 
-  // ⌘K se registra aquí y no en el diálogo porque el diálogo se carga en diferido:
-  // si el atajo viviera dentro, no existiría hasta haberlo abierto con el ratón.
+  // ⌘K se registra aquí y no dentro de `HeaderSearch` porque hay dos instancias
+  // montadas y solo el header sabe cuál está visible: con el listener dentro, las
+  // dos responderían al mismo atajo.
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key.toLowerCase() === 'k' && (event.metaKey || event.ctrlKey)) {
         event.preventDefault();
-        openSearch();
+        focusSearch();
       }
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [openSearch]);
+  }, [focusSearch]);
 
   return (
     <header
       data-stuck={stuck}
       className="sticky top-0 z-50 transition-colors data-[stuck=true]:nx-glass-panel data-[stuck=true]:border-b"
     >
-      {/* Búsqueda persistente de móvil: aparece bajo el header en cuanto se hace
-          scroll, para que la acción principal de la tienda no obligue a volver
-          arriba (AC14).
-
-          `absolute top-full` y no una tercera fila en el flujo: el header es
-          `sticky` y su hueco sigue reservado al principio del documento, así que
-          crecer mientras está pegado empujaría la página entera 2.75 rem hacia
-          abajo de golpe. Flotando bajo la cabecera no cambia ninguna altura y
-          `--nx-header-h` sigue siendo válida para los anclas.
-
-          No es un `<input>` nuevo: abre el mismo overlay `cmdk` con el mismo `⌘K` y
-          la misma devolución de foco, así que sigue habiendo un solo buscador
-          (spec 004, D-12). */}
-      {stuck ? (
-        <div className="nx-glass-panel border-border absolute inset-x-0 top-full border-b px-[clamp(1rem,4vw,2rem)] py-2 md:hidden">
-          <button
-            type="button"
-            onClick={(event) => openSearch(event.currentTarget)}
-            className="border-nx-line bg-card text-muted-foreground flex h-11 w-full items-center gap-2.5 rounded-full border px-4 text-sm"
-          >
-            <Search className="text-primary size-4 shrink-0" aria-hidden />
-            Buscar en el catálogo
-          </button>
-        </div>
-      ) : null}
-      {/* Fila 1: identidad, búsqueda y acciones de sesión. Es la única que existe
-          bajo 1024 px, así que conserva la altura y el orden de siempre. */}
+      {/* Fila 1: identidad, búsqueda y acciones de sesión. */}
       <div className="mx-auto flex h-16 w-full max-w-[1240px] items-center gap-3 px-[clamp(1rem,4vw,2rem)]">
         <Link
           href="/"
@@ -132,39 +95,17 @@ export function StorefrontHeader({ authSlot }: StorefrontHeaderProps) {
           </span>
         </Link>
 
-        {/* La búsqueda deja de ser un control más de la derecha y pasa a ocupar el
-            centro de la fila: es la acción principal de una tienda con catálogo.
-            Sigue siendo el mismo `<button>` que abre el overlay `cmdk`, con el
-            mismo `⌘K` y la misma devolución de foco (spec 004, AC10). */}
-        <button
-          ref={desktopSearchRef}
-          type="button"
-          onClick={(event) => openSearch(event.currentTarget)}
-          className="border-nx-line bg-card text-muted-foreground hover:border-primary ml-4 hidden h-11 min-w-[360px] flex-1 items-center gap-2.5 rounded-full border pr-2 pl-4 text-sm transition-colors lg:flex lg:max-w-[34rem]"
-        >
-          <Search className="text-primary size-4 shrink-0" aria-hidden />
-          <AnimatedSearchPlaceholder />
-          <kbd className="bg-secondary border-border text-nx-faint shrink-0 rounded-md border px-1.5 py-1 text-[11px] font-semibold">
-            ⌘K
-          </kbd>
-        </button>
+        {/* La búsqueda ocupa el centro de la fila: es la acción principal de una
+            tienda con catálogo. Desde `md` y no desde `lg` porque con el corte en
+            1024 px la franja 768–1023 px se quedaría sin campo —ni fila de móvil ni
+            hueco en esta— (D-9). */}
+        <HeaderSearch
+          inputRef={desktopSearchRef}
+          className="ml-4 hidden min-w-0 flex-1 md:flex lg:max-w-[34rem]"
+        />
 
         <div className="ml-auto flex items-center gap-1">
           <DeliveryLocationBadge />
-
-          {/* En móvil la búsqueda se reduce a un icono, pero sigue siendo el mismo
-              botón con el mismo destino. */}
-          <Button
-            ref={mobileSearchRef}
-            type="button"
-            variant="ghost"
-            size="icon"
-            onClick={(event) => openSearch(event.currentTarget)}
-            className="text-muted-foreground hover:text-foreground size-11 shrink-0 rounded-full lg:hidden"
-            aria-label="Buscar productos"
-          >
-            <Search className="size-5" aria-hidden />
-          </Button>
 
           <ThemeToggle />
 
@@ -214,6 +155,14 @@ export function StorefrontHeader({ authSlot }: StorefrontHeaderProps) {
             <Menu className="size-5" aria-hidden />
           </Button>
         </div>
+      </div>
+
+      {/* Fila de búsqueda de móvil: en el flujo del header y no flotando en
+          `absolute`, porque el campo tiene que estar ahí desde el primer píxel y no
+          solo al hacer scroll. Al crecer la altura real del header, `--nx-header-h`
+          se ajusta en `globals.css` bajo 48rem (D-13). */}
+      <div className="w-full px-[clamp(1rem,4vw,2rem)] pb-2 md:hidden">
+        <HeaderSearch inputRef={mobileSearchRef} />
       </div>
 
       {/* Fila 2: navegación por catálogo. Solo desde 1024 px; bajo ese ancho su

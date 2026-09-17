@@ -10,11 +10,13 @@ import type { CatalogQueryParams } from '@/modules/products/schemas/catalog.sche
 type CatalogSort = CatalogQueryParams['sort'];
 
 // Estado de UI puro, que la regla 6 de docs/SETUP.md asigna a Zustand. Vive en un
-// store y no en el header porque el disparador está arriba del árbol y el panel al
-// final: con `useState` el estado subiría al layout y convertiría en cliente todo
+// store y no en un componente porque el disparador está arriba del árbol y el panel
+// al final: con `useState` el estado subiría al layout y convertiría en cliente todo
 // lo que hay en medio, contra la regla 7 (spec 004, D-16).
+//
+// El buscador ya no está aquí: su campo y su panel viven en el mismo componente
+// (`header-search.tsx`), así que su estado es `useState` local (spec 019, D-3).
 type UiState = {
-  searchOpen: boolean;
   cartOpen: boolean;
   menuOpen: boolean;
   // Slug de la categoría filtrada en el catálogo, o 'all'. Vive aquí y no dentro de
@@ -42,21 +44,9 @@ type UiState = {
   //
   // Hacen falta en las dos direcciones: montar solo mientras `open` es true haría
   // desaparecer el overlay antes de que Radix devuelva el foco al disparador (AC10),
-  // y montarlos siempre descargaría los tres chunks diferidos al hidratar (D-17).
-  searchMounted: boolean;
+  // y montarlos siempre descargaría los dos chunks diferidos al hidratar (D-17).
   cartMounted: boolean;
   menuMounted: boolean;
-  // Elemento al que devolver el foco cuando se cierra el buscador. Radix lo hace
-  // solo cuando el disparador y el contenido están conectados de forma nativa
-  // (`Dialog.Trigger`), pero aquí el diálogo se monta ya abierto por el pestillo de
-  // carga diferida, así que nunca llega a registrar quién tenía el foco antes y al
-  // cerrar con `Esc` este caía al `<body>` (AC10). Se guarda a mano.
-  //
-  // Es una referencia al DOM, no estado de render: nadie se suscribe a ella y por
-  // eso no provoca re-renders.
-  searchTrigger: HTMLElement | null;
-  setSearchTrigger: (element: HTMLElement | null) => void;
-  setSearchOpen: (open: boolean) => void;
   setCartOpen: (open: boolean) => void;
   setMenuOpen: (open: boolean) => void;
   setCategoryFilter: (slug: string) => void;
@@ -66,18 +56,14 @@ type UiState = {
 };
 
 export const useUiStore = create<UiState>((set) => ({
-  searchOpen: false,
   cartOpen: false,
   menuOpen: false,
   categoryFilter: 'all',
   catalogQuery: '',
   catalogSort: 'featured',
   catalogPage: 1,
-  searchMounted: false,
   cartMounted: false,
   menuMounted: false,
-  searchTrigger: null,
-  setSearchTrigger: (searchTrigger) => set({ searchTrigger }),
   // Cambiar categoría, término u orden devuelve la rejilla a la página 1, y el
   // reset vive en el propio setter, no en un efecto de `catalog-section`. Hay
   // cinco disparadores del filtro repartidos por la tienda —chips, sidebar,
@@ -88,27 +74,18 @@ export const useUiStore = create<UiState>((set) => ({
   setCatalogQuery: (catalogQuery) => set({ catalogQuery, catalogPage: 1 }),
   setCatalogSort: (catalogSort) => set({ catalogSort, catalogPage: 1 }),
   setCatalogPage: (catalogPage) => set({ catalogPage }),
-  // Abrir un overlay cierra los otros dos: dos capas modales a la vez dejan la
-  // trampa de foco peleándose consigo misma y `Esc` cerrando la equivocada. El
-  // pestillo de montaje solo se arma al abrir, nunca se desarma al cerrar.
-  setSearchOpen: (searchOpen) =>
-    set((state) => ({
-      searchOpen,
-      cartOpen: false,
-      menuOpen: false,
-      searchMounted: state.searchMounted || searchOpen,
-    })),
+  // Abrir un overlay cierra el otro: dos capas modales a la vez dejan la trampa de
+  // foco peleándose consigo misma y `Esc` cerrando la equivocada. El pestillo de
+  // montaje solo se arma al abrir, nunca se desarma al cerrar.
   setCartOpen: (cartOpen) =>
     set((state) => ({
       cartOpen,
-      searchOpen: false,
       menuOpen: false,
       cartMounted: state.cartMounted || cartOpen,
     })),
   setMenuOpen: (menuOpen) =>
     set((state) => ({
       menuOpen,
-      searchOpen: false,
       cartOpen: false,
       menuMounted: state.menuMounted || menuOpen,
     })),

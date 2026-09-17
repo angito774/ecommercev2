@@ -32,11 +32,11 @@ export function DealsSection({ deals }: { deals: CatalogProduct[] }) {
   const secondary = rest.slice(0, 2);
 
   return (
-    // El margen de anclaje sale de `--nx-header-h`: con el header de dos filas, un
-    // `scroll-mt-24` fijo dejaba el título de la sección por debajo de la cabecera.
+    // Solo el respiro: el alto del header ya lo descuenta el `scroll-padding-top` de
+    // `html` en `globals.css`, que sale de `--nx-header-h`.
     <section
       id="ofertas"
-      className="scroll-mt-[calc(var(--nx-header-h)+1.5rem)] py-[clamp(3.75rem,8.5vw,7.25rem)]"
+      className="scroll-mt-6 py-[clamp(3.75rem,8.5vw,7.25rem)]"
     >
       <div className="mx-auto w-full max-w-[1240px] px-[clamp(1rem,4vw,2rem)]">
         <div className="mb-[clamp(2rem,4vw,3.25rem)] flex flex-wrap items-end justify-between gap-6">

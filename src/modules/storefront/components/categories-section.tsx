@@ -14,7 +14,9 @@ export function CategoriesSection({ categories }: { categories: CatalogCategory[
   return (
     <section
       id="categorias"
-      className="border-border bg-nx-inset scroll-mt-[calc(var(--nx-header-h)+1.5rem)] border-y py-[clamp(3.75rem,8.5vw,7.25rem)]"
+      // Solo el respiro: el alto del header ya lo descuenta el `scroll-padding-top`
+      // de `html` en `globals.css`.
+      className="border-border bg-nx-inset scroll-mt-6 border-y py-[clamp(3.75rem,8.5vw,7.25rem)]"
     >
       <div className="mx-auto w-full max-w-[1240px] px-[clamp(1rem,4vw,2rem)]">
         <div className="mb-[clamp(2rem,4vw,3.25rem)]">

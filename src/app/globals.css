@@ -225,21 +225,55 @@
      esta variable en su breakpoint y no reabre un componente ya revisado. */
   --nx-fab-bottom: 1.5rem;
 
-  /* Altura real del header pegajoso: una sola fila de 4rem bajo 1024 px y, a
-     partir de ahí, esa fila más la de navegación (2.75rem) y su borde superior
-     de 1 px. Es una variable porque la consumen el `sticky` del sidebar del
-     catálogo y el `scroll-mt` de las secciones ancladas: con el número copiado
-     en cada sitio, cualquier ajuste del header deja unas cuantas descalibradas
-     y el contenido acaba medio tapado al saltar por un ancla. */
-  --nx-header-h: 4rem;
-
   background-color: var(--background);
   color: var(--foreground);
   font-family: var(--font-body), ui-sans-serif, system-ui, sans-serif;
-  /* AC17: ni los orbes del hero ni las tarjetas flotantes ni el marquee pueden
-     provocar scroll horizontal en 390 px. Cada uno ya está contenido, pero esto lo
-     garantiza también para lo que se añada después. */
+}
+
+/* `overflow-x: hidden` no puede vivir en `[data-surface='storefront']`: ese div
+   es ancestro directo del `<header>` `sticky top-0`, y cualquier `overflow`
+   distinto de `visible` en un ancestro intermedio convierte a ese div en el
+   contenedor de referencia del sticky en vez del viewport, así que dejaba de
+   pegarse al hacer scroll. En `body` no pasa: sin `overflow` propio en `html`,
+   el overflow del `body` se propaga al viewport y no crea un contenedor
+   intermedio (AC17: ni los orbes del hero ni las tarjetas flotantes ni el
+   marquee pueden provocar scroll horizontal en 390 px). */
+body:has([data-surface='storefront']) {
   overflow-x: hidden;
+}
+
+/* Altura real del header pegajoso. Es una variable porque la consumen el `sticky`
+   del sidebar del catálogo, de la navegación de cuenta y del resumen de checkout, y
+   el `scroll-mt` de las secciones ancladas: con el número copiado en cada sitio,
+   cualquier ajuste del header deja unas cuantas descalibradas y el contenido acaba
+   medio tapado al saltar por un ancla.
+
+   Se declara en `html` y no en `[data-surface='storefront']` —de donde viene— porque
+   el `scroll-padding-top` de abajo tiene que vivir en el elemento raíz: el que
+   desplaza es el viewport, y su `scroll-padding` sale del propagado de `html`, no de
+   un div intermedio. Las variables heredan hacia abajo, así que todo lo que ya la
+   consumía dentro del storefront la sigue viendo igual.
+
+   Los tres valores, mobile-first y medidos sobre el header ya construido
+   (`storefront-header.tsx`), donde ninguna caja depende de su contenido:
+
+   - bajo 48rem: fila 1 (`h-16` = 4rem) + fila de búsqueda (input `h-11` = 2.75rem
+     y `pb-2` = 0.5rem) = 7.25rem;
+   - de 48rem a 64rem: el campo sube a la fila 1 y no hay segunda fila = 4rem;
+   - desde 64rem: fila 1 + fila de navegación (`h-11`) + su borde de 1 px
+     = 6.8125rem. */
+html:has([data-surface='storefront']) {
+  --nx-header-h: 7.25rem;
+
+  /* WCAG 2.2 AA «Focus Not Obscured (Minimum)»: al tabular o al saltar por un ancla,
+     el destino no puede quedar debajo del header pegajoso. */
+  scroll-padding-top: var(--nx-header-h);
+}
+
+@media (min-width: 48rem) {
+  html:has([data-surface='storefront']) {
+    --nx-header-h: 4rem;
+  }
 }
 
 /* Bajo 48rem (`md`) vive la barra inferior de móvil: 3.5rem de alto más el inset
@@ -255,7 +289,7 @@
 /* 64rem es el breakpoint `lg` de Tailwind, el mismo en el que `storefront-header`
    despliega la segunda fila. */
 @media (min-width: 64rem) {
-  [data-surface='storefront'] {
+  html:has([data-surface='storefront']) {
     --nx-header-h: 6.8125rem;
   }
 }

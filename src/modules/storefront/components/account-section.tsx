@@ -22,7 +22,9 @@ export function AccountSection({ id, eyebrow, title, children }: AccountSectionP
     <section
       id={id}
       aria-labelledby={headingId}
-      className="scroll-mt-[calc(var(--nx-header-h)+1.5rem)]"
+      // Solo el respiro: el alto del header ya lo descuenta el `scroll-padding-top`
+      // de `html` en `globals.css`.
+      className="scroll-mt-6"
     >
       <div className="mb-[clamp(1.25rem,2.5vw,1.75rem)]">
         <Eyebrow>{eyebrow}</Eyebrow>
