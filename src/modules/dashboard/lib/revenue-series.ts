@@ -1,6 +1,8 @@
+import { toReportingDayKey } from '@/lib/reporting';
+
 import type { RevenuePoint } from '../types/dashboard.types';
 
-import { toReportingDayKey, type PeriodRange } from './period-range';
+import type { PeriodRange } from './period-range';
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 

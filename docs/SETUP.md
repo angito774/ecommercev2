@@ -330,6 +330,7 @@ Columnas:
 | `orders` | cabecera: totales, estado, referencias de Stripe, dirección | N—1 `users` |
 | `order_items` | detalle con precio congelado | N—1 `orders`, `products` |
 | `payment_methods` | tarjetas guardadas del cliente: `pm_…` (unique), marca, `last4` y caducidad | N—1 `users` |
+| `expenses` | gastos operativos registrados a mano: concepto, importe, categoría y día | N—1 `users` (`created_by_id`) |
 
 Construido a 2026-09-07: `orders` y `order_items` (spec 007, migración `0004`).
 `orders` guarda `subtotal_cents`, `shipping_cents` y `amount_total_cents` como
@@ -349,6 +350,23 @@ fila no se actualiza nunca: se inserta al guardar y se borra al eliminar, porque
 `detach` de Stripe es permanente e irreversible. El `cus_…` vive en `users` y no en
 `payment_methods`: el Customer es del usuario, y hay que poder leerlo cuando
 todavía no tiene ninguna tarjeta.
+
+Construido a 2026-09-17: `expenses` y el enum `expense_category` (spec 017,
+migración `0006`). Es el primer concepto de gasto del proyecto: hasta aquí la base
+solo conocía los ingresos. Ocho valores de enum —`suppliers`, `logistics`, `rent`,
+`utilities`, `marketing`, `software`, `taxes`, `other`— y **ninguno de nómina**: los
+salarios son el spec 018 y no se les reserva sitio (spec 017, D-4). `incurred_on` es
+`date` con `mode: 'string'` y no `timestamptz`: un gasto ocurre un día, no en un
+instante, y una columna sin hora no puede desplazarse de día al cruzar el huso;
+`created_at` sigue siendo el instante del registro, que es otra cosa. Lleva el
+**primer `CHECK` del esquema**, `amount_cents > 0`: un gasto negativo invertiría el
+signo del resultado y el seed, una migración de datos o un `psql` a mano no pasan por
+Zod. Sin ningún `unique` —dos facturas del mismo proveedor, el mismo día y por el
+mismo importe son legítimas— así que ningún endpoint del módulo devuelve `409`. Un
+único índice sobre `(incurred_on desc)`, que sostiene el filtro por rango y el orden
+del listado. El borrado es **físico**: la tabla no tiene dependientes y un
+`is_active` obligaría a que las tres consultas de agregado recordasen el filtro;
+la traza queda en `audit_logs`, que es append-only (spec 017, D-7).
 
 ---
 
@@ -410,7 +428,8 @@ los tiene. Se editan en el Dashboard, en la propia clave.
 ### Administración
 Dashboard con métricas (Recharts: ventas, pedidos, top productos, stock bajo) ·
 CRUD de productos y categorías (TanStack Table: paginación, orden, filtros) ·
-gestión de pedidos y cambio de estado · listado de clientes.
+gestión de pedidos y cambio de estado · control de inventario · resumen financiero
+con registro de gastos operativos · listado de clientes.
 
 Construido a 2026-09-02: categorías (spec 001), accesos y bitácora (spec 002) y
 productos (spec 003). Pendiente: listado de clientes.
@@ -506,6 +525,58 @@ inventario para que la fila corregida desaparezca sin recargar. Quien tiene
 Fuera de alcance por decisión: tabla de movimientos de stock y su historial, umbral
 configurable, edición en línea de la celda, órdenes de compra y reposición,
 exportación a CSV y notificaciones de stock bajo.
+
+Construido a 2026-09-17: **resumen financiero** (`/admin/finance`, spec 017), con
+migración `0006` (tabla `expenses`, §5.3) y **cuatro** permisos nuevos —el catálogo
+pasa de 19 a 23 códigos—: `finance.read` para las dos lecturas y
+`expenses.create/update/delete` para las tres escrituras. No existe un
+`expenses.read`: el listado de gastos es el detalle que hay detrás de la cifra
+«Gastos» del resumen, no un recurso que se consulte por separado.
+
+Es el **primer módulo del panel que no se concede a los cuatro roles que lo abren**:
+solo `super_admin` y `admin`. `manager` y `audit` quedan fuera a propósito —el
+primero opera catálogo y pedidos, el segundo revisa la bitácora, y el resultado del
+negocio y lo que se paga a proveedores no forman parte de su trabajo—. La entrada
+«Finanzas» desaparece de la navegación sin `finance.read`, y la página responde el
+403 de `src/app/forbidden.tsx`.
+
+Cuatro endpoints: `GET /api/admin/finance/summary` (ingresos, gastos, resultado,
+margen y desglose por categoría) y el CRUD `GET`/`POST /api/admin/expenses` +
+`PATCH`/`DELETE /api/admin/expenses/[id]`. El resumen y el listado son **dos rutas y
+no una**: el listado pagina y se filtra por categoría, el resumen no, y con una sola
+ruta pasar a la página 2 recalcularía los tres agregados del mes entero. El filtro de
+categoría afecta solo a la tabla y **nunca** a los KPI —el endpoint de resumen ni
+siquiera acepta el parámetro—, para que «resultado del período» signifique lo mismo
+mientras se explora el detalle. Las tres mutaciones corren en `db.transaction` con
+`logAudit()` dentro (`expense.created` / `updated` / `deleted`); el `before` del
+`PATCH` se lee con el `tx`, y el `DELETE` guarda la fila completa en `changes.before`
+con `after: null`, que es la única copia que queda del gasto borrado.
+
+El rango es **libre por días**, con el mes en curso por defecto, resuelto en
+`America/Lima` igual que el dashboard. Los dos extremos son inclusivos porque es como
+los lee quien los teclea; la traducción a la ventana semiabierta sobre
+`orders.created_at` la hace el servidor en un solo sitio, así que es imposible que el
+resumen cuente un día de ventas distinto del de gastos. Por eso las primitivas de
+reporting —`REPORTING_TIME_ZONE`, `REPORTING_UTC_OFFSET_MINUTES`,
+`startOfReportingDay()`, `toReportingDayKey()`, `reportingDayStart()` y
+`addReportingDays()`— se mudaron de `src/modules/dashboard/` a **`src/lib/reporting.ts`**:
+«la zona horaria con la que el negocio corta sus días» no es una propiedad del
+dashboard, y de paso `metrics.repository.ts` —código de servidor— dejó de importar de
+un módulo de cliente.
+
+Lo que este resultado **no** es, y la pantalla lo dice en su encabezado: no es
+utilidad contable. No hay costo de mercadería vendida (`products` no tiene columna de
+costo), ni nómina (spec 018), ni comisiones de Stripe, ni impuestos. Los ingresos son
+`sum(amount_total_cents)` de los pedidos `paid`, envío incluido, para que la cifra de
+ventas sea la misma que la del dashboard en el mismo rango. `marginPercent` vale
+`null` —no `0` ni `Infinity`— cuando el rango no tuvo ingresos. Sin gráficos: el
+desglose por categoría son barras de ancho porcentual en CSS, porque ocho categorías
+con un importe cada una se leen mejor en una lista ordenada que en un donut.
+
+Fuera de alcance por decisión: nómina y salarios (spec 018), costo de mercadería,
+comisiones y reembolsos de Stripe, impuestos, multimoneda, adjuntos y proveedores como
+entidad, gastos recurrentes, presupuestos y alertas, cierre contable de período,
+exportación a CSV/PDF y búsqueda por concepto.
 
 Gestión de accesos: CRUD de roles, matriz rol × permiso, asignación de roles a
 usuarios · bitácora de auditoría filtrable por actor, entidad, acción y fecha.

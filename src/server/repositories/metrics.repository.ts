@@ -1,6 +1,6 @@
 import { and, asc, desc, eq, gte, lt, sql } from 'drizzle-orm';
 
-import { REPORTING_TIME_ZONE } from '@/modules/dashboard/constants';
+import { REPORTING_TIME_ZONE } from '@/lib/reporting';
 import type { PeriodRange, ResolvedPeriodRange } from '@/modules/dashboard/lib/period-range';
 import type {
   LowStockRow,
@@ -13,6 +13,12 @@ import { orderItems, orders, products } from '@/server/db/schema';
 // Solo lo cobrado: `pending`, `payment_failed` y `canceled` no suman ni al importe
 // ni al conteo (AC8). El filtro está en las tres lecturas de ventas, nunca en el
 // handler, para que ninguna pueda olvidarlo.
+//
+// `finance.repository.ts` declara esta misma constante: es la única regla que los dos
+// comparten y se deja duplicada a propósito (spec 017, D-1), porque acoplar los
+// repositorios haría que un cambio en la lógica de comparación del dashboard alterase
+// en silencio el estado de resultados. Si cambia el criterio de «venta cobrada», hay
+// que tocar los dos.
 const PAID = eq(orders.status, 'paid');
 
 // `sum(int4)` ya devuelve `bigint` en Postgres; el casteo explícito deja escrito

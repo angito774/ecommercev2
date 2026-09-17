@@ -1,11 +1,8 @@
 import { NextResponse } from 'next/server';
 
 import { authorize, badRequest, toErrorResponse } from '@/lib/api-guard';
-import {
-  LOW_STOCK_LIMIT,
-  REPORTING_TIME_ZONE,
-  TOP_PRODUCTS_LIMIT,
-} from '@/modules/dashboard/constants';
+import { REPORTING_TIME_ZONE } from '@/lib/reporting';
+import { LOW_STOCK_LIMIT, TOP_PRODUCTS_LIMIT } from '@/modules/dashboard/constants';
 import { averageTicketCents, percentChange } from '@/modules/dashboard/lib/metrics-math';
 import { resolvePeriodRange } from '@/modules/dashboard/lib/period-range';
 import { fillRevenueSeries } from '@/modules/dashboard/lib/revenue-series';

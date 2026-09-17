@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
+import { toReportingDayKey } from '@/lib/reporting';
+
 import { DASHBOARD_PERIODS, type DashboardPeriod } from '../schemas/dashboard.schema';
 
-import { resolvePeriodRange, toReportingDayKey } from './period-range';
+import { resolvePeriodRange } from './period-range';
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
@@ -76,23 +78,10 @@ describe('resolvePeriodRange', () => {
   });
 });
 
+// Los casos propios de `toReportingDayKey` se mudaron con la función a
+// `src/lib/reporting.test.ts` (spec 017, D-9). Aquí se queda solo el que cruza las
+// dos piezas: que la clave del día y el instante que abre la ventana concuerden.
 describe('toReportingDayKey', () => {
-  it('counts a sale made at 23:00 in Lima as that day, not the next (AC7)', () => {
-    expect(toReportingDayKey(new Date('2026-09-17T04:00:00.000Z'))).toBe('2026-09-16');
-  });
-
-  it('flips to the next day at 05:00 UTC', () => {
-    expect(toReportingDayKey(new Date('2026-09-17T05:00:00.000Z'))).toBe('2026-09-17');
-  });
-
-  it('pads month and day to two digits', () => {
-    expect(toReportingDayKey(new Date('2026-01-05T12:00:00.000Z'))).toBe('2026-01-05');
-  });
-
-  it('rolls the year back when the Lima day is still the 31st of December', () => {
-    expect(toReportingDayKey(new Date('2027-01-01T04:00:00.000Z'))).toBe('2026-12-31');
-  });
-
   it('agrees with the start instant of every window it labels', () => {
     const { current } = resolvePeriodRange('7d', NOON_IN_LIMA);
 

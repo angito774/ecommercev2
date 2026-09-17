@@ -10,15 +10,10 @@ export const LOW_STOCK_LIMIT = 10;
 
 export const TOP_PRODUCTS_LIMIT = 5;
 
-// Zona de referencia del negocio: se cobra en PEN y se formatea en es-PE. Agrupar
-// en UTC pondría una venta de las 20:00 de Lima en el día siguiente (D-6).
-export const REPORTING_TIME_ZONE = 'America/Lima';
-
-// Perú no aplica horario de verano desde 1994, así que el desfase es constante y
-// el cálculo del rango es aritmética de enteros: ni `Intl` en el camino caliente ni
-// una librería de zonas horarias. Mover `REPORTING_TIME_ZONE` a un país con DST
-// invalida esta constante y obliga a volver a `Intl` (§10).
-export const REPORTING_UTC_OFFSET_MINUTES = -300;
+// `REPORTING_TIME_ZONE` y `REPORTING_UTC_OFFSET_MINUTES` viven en `@/lib/reporting`:
+// «la zona horaria con la que el negocio corta sus días» no es una propiedad del
+// dashboard, y el módulo de finanzas no debe importar de aquí para saber cuándo
+// empieza un día (spec 017, D-9).
 
 // Duración en días de cada ventana. La ventana anterior mide lo mismo, así que
 // este número gobierna las dos y no pueden divergir.

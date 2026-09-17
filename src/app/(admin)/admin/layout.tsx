@@ -9,6 +9,7 @@ import {
   ShieldCheck,
   Tags,
   Users,
+  Wallet,
   type LucideIcon,
 } from 'lucide-react';
 import Link from 'next/link';
@@ -35,6 +36,10 @@ const NAV_ITEMS: readonly NavItem[] = [
   { href: '/admin/inventory', label: 'Inventario', icon: Boxes, permission: 'inventory.read' },
   { href: '/admin/categories', label: 'Categorías', icon: Tags, permission: 'categories.read' },
   { href: '/admin/orders', label: 'Pedidos', icon: Receipt, permission: 'orders.read' },
+  // Detrás de «Pedidos» porque es lo que entra frente a lo que sale. Es la primera
+  // entrada que `manager` y `audit` no ven: el filtro de abajo la retira sin
+  // `finance.read` (spec 017, D-3, AC3).
+  { href: '/admin/finance', label: 'Finanzas', icon: Wallet, permission: 'finance.read' },
   { href: '/admin/users', label: 'Usuarios', icon: Users, permission: 'users.read' },
   { href: '/admin/roles', label: 'Roles', icon: ShieldCheck, permission: 'roles.read' },
   { href: '/admin/audit-logs', label: 'Bitácora', icon: ScrollText, permission: 'audit_logs.read' },

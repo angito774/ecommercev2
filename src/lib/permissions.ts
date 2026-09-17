@@ -125,6 +125,33 @@ export const PERMISSIONS = [
     action: 'read',
     description: 'Ver el control de inventario y las alertas de stock.',
   },
+  // Recurso propio y no `expenses.read`: lo que concede es el resultado del negocio
+  // —ingresos menos gastos— y el listado de gastos es el detalle que hay detrás de
+  // esa cifra, no un recurso que se consulte por separado (spec 017, D-2).
+  {
+    code: 'finance.read',
+    resource: 'finance',
+    action: 'read',
+    description: 'Ver el resumen financiero y el registro de gastos.',
+  },
+  {
+    code: 'expenses.create',
+    resource: 'expenses',
+    action: 'create',
+    description: 'Registrar gastos operativos.',
+  },
+  {
+    code: 'expenses.update',
+    resource: 'expenses',
+    action: 'update',
+    description: 'Editar gastos operativos ya registrados.',
+  },
+  {
+    code: 'expenses.delete',
+    resource: 'expenses',
+    action: 'delete',
+    description: 'Eliminar gastos operativos.',
+  },
 ] as const;
 
 // `PermissionDefinition` es la entrada del catálogo en código, simétrica con
@@ -200,6 +227,10 @@ export const ROLE_PERMISSION_MATRIX: Record<RoleSlug, readonly PermissionCode[]>
     'audit_logs.read',
     'dashboard.read',
     'inventory.read',
+    'finance.read',
+    'expenses.create',
+    'expenses.update',
+    'expenses.delete',
   ],
   admin: [
     'categories.read',
@@ -220,7 +251,17 @@ export const ROLE_PERMISSION_MATRIX: Record<RoleSlug, readonly PermissionCode[]>
     'audit_logs.read',
     'dashboard.read',
     'inventory.read',
+    'finance.read',
+    'expenses.create',
+    'expenses.update',
+    'expenses.delete',
   ],
+  // `manager` y `audit` quedan fuera del módulo financiero a propósito (spec 017,
+  // D-3): es el primer módulo con datos de resultado y no de operación. `manager`
+  // opera catálogo y pedidos, `audit` revisa la bitácora —donde sí verá `expense.*`—,
+  // y ninguno de los dos necesita el estado de resultados ni lo que se paga a
+  // proveedores para su trabajo. El criterio es conceder por necesidad, no por
+  // comodidad. Es la primera vez que un módulo del panel no se abre a los cuatro roles.
   manager: [
     'categories.read',
     'categories.create',
