@@ -1,6 +1,7 @@
 import { UserButton } from '@clerk/nextjs';
 import { auth } from '@clerk/nextjs/server';
 import {
+  LayoutDashboard,
   Package,
   Receipt,
   ScrollText,
@@ -24,6 +25,9 @@ type NavItem = {
 };
 
 const NAV_ITEMS: readonly NavItem[] = [
+  // Primero porque es la raíz del panel: quien entra por `/admin` ya está aquí
+  // (spec 015, D-1). Sin `dashboard.read` el filtro de abajo la retira (AC3).
+  { href: '/admin', label: 'Dashboard', icon: LayoutDashboard, permission: 'dashboard.read' },
   { href: '/admin/products', label: 'Productos', icon: Package, permission: 'products.read' },
   { href: '/admin/categories', label: 'Categorías', icon: Tags, permission: 'categories.read' },
   { href: '/admin/orders', label: 'Pedidos', icon: Receipt, permission: 'orders.read' },

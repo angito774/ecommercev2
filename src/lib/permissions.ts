@@ -106,6 +106,15 @@ export const PERMISSIONS = [
     action: 'read',
     description: 'Consultar la bitácora de auditoría.',
   },
+  // Recurso propio y no `orders.read`: el dashboard mezcla pedidos, productos y
+  // stock, así que exigir dos permisos dejaría indefinido qué se ve con uno solo
+  // (spec 015, D-2). Lo que concede es el agregado, no las filas.
+  {
+    code: 'dashboard.read',
+    resource: 'dashboard',
+    action: 'read',
+    description: 'Ver el dashboard de métricas del panel.',
+  },
 ] as const;
 
 // `PermissionDefinition` es la entrada del catálogo en código, simétrica con
@@ -179,6 +188,7 @@ export const ROLE_PERMISSION_MATRIX: Record<RoleSlug, readonly PermissionCode[]>
     'users.assign_elevated_roles',
     'roles.read',
     'audit_logs.read',
+    'dashboard.read',
   ],
   admin: [
     'categories.read',
@@ -197,6 +207,7 @@ export const ROLE_PERMISSION_MATRIX: Record<RoleSlug, readonly PermissionCode[]>
     'users.assign_roles',
     'roles.read',
     'audit_logs.read',
+    'dashboard.read',
   ],
   manager: [
     'categories.read',
@@ -211,6 +222,7 @@ export const ROLE_PERMISSION_MATRIX: Record<RoleSlug, readonly PermissionCode[]>
     'orders.update_status',
     'users.read',
     'roles.read',
+    'dashboard.read',
   ],
   employee: [],
   customer: [],
@@ -221,6 +233,7 @@ export const ROLE_PERMISSION_MATRIX: Record<RoleSlug, readonly PermissionCode[]>
     'users.read',
     'roles.read',
     'audit_logs.read',
+    'dashboard.read',
   ],
 };
 

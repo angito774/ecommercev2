@@ -413,7 +413,7 @@ CRUD de productos y categorías (TanStack Table: paginación, orden, filtros) ·
 gestión de pedidos y cambio de estado · listado de clientes.
 
 Construido a 2026-09-02: categorías (spec 001), accesos y bitácora (spec 002) y
-productos (spec 003). Pendientes: dashboard de métricas y clientes.
+productos (spec 003). Pendiente: listado de clientes.
 
 Construido a 2026-09-16: **panel de pedidos** (`/admin/orders`, spec 014), con los
 permisos `orders.read` y `orders.update_status` —los dos primeros de `orders` en el
@@ -437,6 +437,38 @@ leen tal cual estaban.
 Fuera de alcance por decisión y no por olvido: fulfillment y estados de envío,
 reembolsos, cancelación de pedidos `paid` (necesitaría reponer stock y llamar a
 Stripe), enlaces al Dashboard de Stripe, exportación a CSV y métricas de ventas.
+
+Construido a 2026-09-16: **dashboard de métricas** en la raíz del panel (`/admin`,
+spec 015), bajo el permiso nuevo `dashboard.read` —el catálogo pasa de 17 a 18
+códigos y lo reciben `super_admin`, `admin`, `manager` y `audit`—. Sin migración:
+agrega sobre `orders`, `order_items` y `products` tal y como están.
+
+`GET /api/admin/metrics` devuelve los cuatro bloques en una sola respuesta —tres
+KPI con su variación, serie diaria, top 5 de productos y stock bajo— para un único
+parámetro `period` (`today | 7d | 30d`, default `7d`). Las cuatro consultas se
+lanzan en paralelo dentro del handler; los KPI del período y del anterior salen de
+una sola consulta con agregados condicionales, y las sumas se castean a `::bigint`
+porque `sum(amount_total_cents)` desborda el `int4` a partir de ~21 500 000 PEN
+acumulados. Todas las lecturas de venta filtran `status = 'paid'`: lo que no se
+cobró no cuenta, así que el dashboard puede mostrar menos pedidos que
+`/admin/orders` para el mismo rango.
+
+Los días se agrupan en **`America/Lima`** con desfase fijo de −05:00, no en UTC:
+una venta de las 20:00 de Lima aparecería en el día siguiente y el KPI de «hoy»
+estaría vacío hasta las 05:00. El rango se resuelve en el servidor como intervalo
+semiabierto `[from, to)` y viaja en `meta` para que un error de huso sea visible en
+la respuesta. La constante vale solo mientras el negocio opere en un país sin
+horario de verano.
+
+El umbral de stock bajo es constante (`LOW_STOCK_THRESHOLD = 10`, máximo 10 filas)
+y el widget ignora el período: refleja el stock de ahora. El refresco es *polling*
+de 60 s con `refetchInterval` de TanStack Query, sin refrescar en segundo plano;
+no hay WebSockets ni SSE, y se descartaron a conciencia (spec 015, D-3). El
+dashboard es de solo lectura y no escribe en `audit_logs`.
+
+Fuera de alcance: rango de fechas libre, comparativa interanual, desglose por
+categoría o cliente, exportación, enlaces del dashboard al detalle y métricas de
+tráfico o conversión.
 
 Gestión de accesos: CRUD de roles, matriz rol × permiso, asignación de roles a
 usuarios · bitácora de auditoría filtrable por actor, entidad, acción y fecha.
