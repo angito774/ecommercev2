@@ -7,6 +7,19 @@
 // `src/lib/permissions.ts` porque ambos están acoplados a la resolución de la
 // sesión y al catálogo de permisos respectivamente.
 
+// Un invariante de negocio que el cuerpo no podía cumplir y que Zod no puede ver
+// porque depende de otra fila —hoy, una fecha de pago anterior al ingreso del empleado
+// (spec 018, D-16)—. Es un 400 y no un 409: el recurso no está en conflicto, los datos
+// enviados son incorrectos. Sin `issues`: la comprobación no la hace un schema, así que
+// no hay ninguno que reportar, y el contrato de `src/lib/axios.ts` solo necesita el
+// `message`.
+export class ValidationError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'ValidationError';
+  }
+}
+
 export class NotFoundError extends Error {
   constructor(message: string) {
     super(message);

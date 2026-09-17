@@ -2,6 +2,7 @@ import { UserButton } from '@clerk/nextjs';
 import { auth } from '@clerk/nextjs/server';
 import {
   Boxes,
+  HandCoins,
   LayoutDashboard,
   Package,
   Receipt,
@@ -40,6 +41,13 @@ const NAV_ITEMS: readonly NavItem[] = [
   // entrada que `manager` y `audit` no ven: el filtro de abajo la retira sin
   // `finance.read` (spec 017, D-3, AC3).
   { href: '/admin/finance', label: 'Finanzas', icon: Wallet, permission: 'finance.read' },
+  // Junto a «Finanzas» porque también es dinero que sale, y delante de «Usuarios» para
+  // que se lea «nómina» antes que «personas con acceso»: son dos cosas distintas y
+  // confundirlas es el riesgo principal del módulo (spec 018, D-18). El icono no es
+  // `Wallet` como proponía el spec porque «Finanzas» ya lo ocupa, y dos entradas
+  // seguidas con el mismo glifo se leen como la misma. Sin `payroll.read` el filtro de
+  // abajo la retira, igual que «Finanzas» (AC4).
+  { href: '/admin/payroll', label: 'Nómina', icon: HandCoins, permission: 'payroll.read' },
   { href: '/admin/users', label: 'Usuarios', icon: Users, permission: 'users.read' },
   { href: '/admin/roles', label: 'Roles', icon: ShieldCheck, permission: 'roles.read' },
   { href: '/admin/audit-logs', label: 'Bitácora', icon: ScrollText, permission: 'audit_logs.read' },

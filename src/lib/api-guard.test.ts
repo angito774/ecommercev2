@@ -3,7 +3,7 @@ import { z } from 'zod';
 
 import { badRequest, parseJsonBody, toErrorResponse } from './api-guard';
 import { UnauthorizedError } from './auth';
-import { ConflictError, NotFoundError, UpstreamError } from './errors';
+import { ConflictError, NotFoundError, UpstreamError, ValidationError } from './errors';
 import { ForbiddenError } from './permissions';
 
 const schema = z.object({ name: z.string().min(1) });
@@ -89,6 +89,19 @@ describe('toErrorResponse', () => {
     const response = toErrorResponse(new ForbiddenError('categories.delete', 'No puedes'), options);
     expect(response.status).toBe(403);
     expect(await response.json()).toEqual({ message: 'No puedes' });
+  });
+
+  it('maps ValidationError to 400 with only the message', async () => {
+    const response = toErrorResponse(
+      new ValidationError('La fecha de pago no puede ser anterior al ingreso del empleado.'),
+      options,
+    );
+    expect(response.status).toBe(400);
+    // Sin `issues`, a diferencia del 400 de Zod: el invariante lo comprueba el service
+    // contra otra fila, no un schema (spec 018, D-16).
+    expect(await response.json()).toEqual({
+      message: 'La fecha de pago no puede ser anterior al ingreso del empleado.',
+    });
   });
 
   it('maps NotFoundError to 404', async () => {

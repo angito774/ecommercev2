@@ -29,6 +29,22 @@ export const AUDIT_ACTIONS = [
   { code: 'order.canceled', label: 'Pedido cancelado', entityType: 'order' },
   { code: 'order.status_changed', label: 'Estado del pedido cambiado', entityType: 'order' },
   { code: 'order.oversold', label: 'Stock negativo tras la venta', entityType: 'order' },
+  // Las cinco del módulo de nómina (spec 018). Ninguna lleva importes en `changes` ni
+  // en `metadata`: esta vista las renderiza íntegras y la leen roles sin `payroll.read`
+  // (spec 018, D-8).
+  { code: 'employee.created', label: 'Empleado dado de alta', entityType: 'employee' },
+  { code: 'employee.updated', label: 'Empleado editado', entityType: 'employee' },
+  { code: 'employee.deactivated', label: 'Empleado dado de baja', entityType: 'employee' },
+  {
+    code: 'payroll_payment.registered',
+    label: 'Pago de nómina registrado',
+    entityType: 'payroll_payment',
+  },
+  {
+    code: 'payroll_payment.voided',
+    label: 'Pago de nómina anulado',
+    entityType: 'payroll_payment',
+  },
 ] as const;
 
 const ACTION_LABELS = new Map<string, string>(
@@ -45,6 +61,10 @@ const ENTITY_TYPE_LABELS: Record<string, string> = {
   product: 'Producto',
   order: 'Pedido',
   role: 'Rol',
+  // «Empleado» y no «Persona»: `user` ya ocupa ese significado y las dos tablas son
+  // deliberadamente independientes (spec 018, D-1).
+  employee: 'Empleado',
+  payroll_payment: 'Pago de nómina',
 };
 
 export function entityTypeLabel(entityType: string): string {
@@ -72,6 +92,8 @@ export const AUDIT_ENTITY_OPTIONS = [
   { value: 'category', label: 'Categorías' },
   { value: 'product', label: 'Productos' },
   { value: 'order', label: 'Pedidos' },
+  { value: 'employee', label: 'Personal' },
+  { value: 'payroll_payment', label: 'Pagos de nómina' },
 ] as const;
 
 export const AUDIT_ACTION_OPTIONS = [
@@ -97,6 +119,14 @@ const FIELD_LABELS: Record<string, string> = {
   firstName: 'Nombre',
   lastName: 'Apellido',
   status: 'Estado',
+  employeeCode: 'Código de planilla',
+  jobTitle: 'Cargo',
+  hiredAt: 'Fecha de ingreso',
+  period: 'Periodo',
+  paidAt: 'Fecha de pago',
+  // La bitácora dice que el salario cambió, no de cuánto a cuánto: la cifra vive en la
+  // tabla del dominio, protegida por `payroll.read` (spec 018, D-8).
+  salaryChanged: 'Salario modificado',
 };
 
 export function auditFieldLabel(field: string): string {

@@ -368,6 +368,51 @@ del listado. El borrado es **físico**: la tabla no tiene dependientes y un
 `is_active` obligaría a que las tres consultas de agregado recordasen el filtro;
 la traza queda en `audit_logs`, que es append-only (spec 017, D-7).
 
+### 5.4 Personal y nómina
+
+| Tabla | Propósito | Relaciones |
+|---|---|---|
+| `employees` | planilla: código, nombre, apellido, cargo, fecha de ingreso, salario base en céntimos y baja lógica | 1—N `payroll_payments` |
+| `payroll_payments` | bitácora de sueldos pagados: periodo mensual, fecha, importe congelado y anulación lógica | N—1 `employees` |
+
+Construido a 2026-09-17: las dos tablas (spec 018, migración `0007`). Lo primero que
+hay que dejar escrito es lo que **no** son, porque los nombres se parecen lo bastante
+como para confundir a quien lea el código dentro de seis meses:
+
+- `employees` **no tiene ninguna FK a `users`** ni exige cuenta de Clerk (spec 018,
+  D-1). `users` responde «esta cuenta de Clerk existe» y `roles`/`permissions`
+  responden «qué puede tocar en el panel»; ninguno de los dos dice nada sobre una
+  relación laboral. Un empleado aquí es un registro puramente administrativo: si
+  además esa persona entra al panel, se resuelve por invitación y roles (spec 002) y
+  las dos filas no se conocen.
+- El rol `employee` de `ROLE_DEFINITIONS` **no modela a un empleado**: su matriz de
+  permisos está vacía y significa «cuenta de Clerk a la que no le concedemos nada en
+  `/admin`». Nadie cobra por tener ese rol.
+- La identidad del empleado la da `employee_code`, que teclea quien administra, igual
+  que `products.sku`. **Sin DNI, sin dirección, sin teléfono, sin correo y sin datos
+  bancarios** (D-2): el DNI es PII sensible y su única función aquí sería evitar
+  duplicados, que es justo lo que hace el código de planilla con su `unique`.
+
+`hired_at` y `paid_at` son `date` con `mode: 'string'`, no `timestamptz` (D-11): son
+días del calendario, no instantes, y en modo string el valor entra y sale como
+`'AAAA-MM-DD'` sin pasar por ningún `Date` con huso. **Ningún campo `Date` viaja en las
+respuestas del módulo**, así que no hereda la deuda de `ProductWithCategory`.
+
+`period` es `varchar(7)` con formato `'AAAA-MM'` y no un rango ni una columna `date`
+(D-5): el ancho fijo hace que el orden lexicográfico sea el cronológico, y sobre todo
+permite el invariante que de verdad importa —**un solo pago vivo por empleado y
+mes**— como **índice único parcial** `where voided_at is null`. La cláusula parcial no
+es decorativa: sin ella, anular un pago y volver a registrarlo sería imposible. Se
+verificó en la base tras migrar: `CREATE UNIQUE INDEX
+payroll_payments_employee_period_active_idx ON public.payroll_payments USING btree
+(employee_id, period) WHERE (voided_at IS NULL)`.
+
+`amount_cents` es un **snapshot** independiente de `employees.base_salary_cents`
+(D-6), mismo criterio que `order_items` congelando el precio: una subida de sueldo en
+octubre no puede reescribir lo que se pagó en septiembre. **Nada de este módulo se
+borra**: el empleado se da de baja (`is_active = false`, con FK `restrict` desde los
+pagos) y el pago se anula (`voided_at`), conservando su importe intacto.
+
 ---
 
 ## 6. Módulos funcionales
@@ -429,7 +474,7 @@ los tiene. Se editan en el Dashboard, en la propia clave.
 Dashboard con métricas (Recharts: ventas, pedidos, top productos, stock bajo) ·
 CRUD de productos y categorías (TanStack Table: paginación, orden, filtros) ·
 gestión de pedidos y cambio de estado · control de inventario · resumen financiero
-con registro de gastos operativos · listado de clientes.
+con registro de gastos operativos · personal y nómina · listado de clientes.
 
 Construido a 2026-09-02: categorías (spec 001), accesos y bitácora (spec 002) y
 productos (spec 003). Pendiente: listado de clientes.
@@ -577,6 +622,76 @@ Fuera de alcance por decisión: nómina y salarios (spec 018), costo de mercader
 comisiones y reembolsos de Stripe, impuestos, multimoneda, adjuntos y proveedores como
 entidad, gastos recurrentes, presupuestos y alertas, cierre contable de período,
 exportación a CSV/PDF y búsqueda por concepto.
+
+Construido a 2026-09-17: **personal y nómina** (`/admin/payroll`, spec 018), con
+migración `0007` (§5.4) y **dos** permisos nuevos —el catálogo pasa de 23 a 25
+códigos—: `payroll.read` para las dos lecturas y `payroll.manage` para las cinco
+escrituras. Dos códigos y no siete (`employees.*` + `payroll.*` con CRUD cada uno)
+porque no existe el rol que administre personal sin ver sus pagos; partir por
+read/manage sí separa algo real y es lo que sostiene el `meta.canManage` de la UI.
+El nombre del recurso es el dominio y no la ruta: por eso `/api/admin/employees` se
+protege con un código `payroll.*`.
+
+Como el resumen financiero, **solo `super_admin` y `admin`**. `manager` y `audit`
+quedan fuera y aquí el motivo es más fuerte que en el 017: `audit_logs.read` lo tienen
+`audit` y `manager`, y la vista de bitácora renderiza `changes` y `metadata` íntegros,
+así que si una mutación de nómina escribiera un importe en el log, `/admin/audit-logs`
+se convertiría en el listado de sueldos de la empresa para justo los roles a los que se
+les acaba de negar el módulo. De ahí la regla dura del spec 018 (D-8): **ningún importe
+entra en `audit_logs`**. Un cambio de salario se registra como
+`metadata: { salaryChanged: true }`, nunca con las cifras, y el saneado no es un
+`delete` suelto en el handler sino `toAuditableEmployee()`, una función pura con
+proyección positiva y probada. El precio consciente es que la bitácora dice que el
+salario cambió, quién y cuándo, pero no de cuánto a cuánto; si algún día hace falta ese
+rastro, la salida es una tabla `employee_salary_history` protegida por `payroll.read`,
+no relajar lo que entra en el log.
+
+Siete endpoints: `GET`/`POST /api/admin/employees` + `PATCH`/`DELETE
+/api/admin/employees/[id]` y `GET`/`POST /api/admin/payroll` + `DELETE
+/api/admin/payroll/[id]`. Los dos `DELETE` son **lógicos** —baja del empleado y
+anulación del pago—, idempotentes, y devuelven `200` con el recurso en su estado final:
+repetirlos no escribe una segunda entrada en la bitácora. El CRUD de empleados se
+orquesta en sus handlers, que tocan un solo repositorio, y los pagos en
+`src/server/services/payroll.service.ts`, porque registrar un pago cruza
+`employee.repository` (existe, está activo, cuándo ingresó) y
+`payroll-payment.repository` (D-9). Las cinco mutaciones corren en `db.transaction` con
+`logAudit()` dentro y `severity: 'warning'` —con `info` el alta se purgaría a los 180
+días mientras sus pagos siguen ahí—.
+
+Tres respuestas que conviene no confundir: pagar a un empleado **inactivo** es `409`
+—el cuerpo es válido y lo que está en conflicto es el estado del recurso, igual que
+cancelar un pedido que ya no está `pending`—; un `paidAt` anterior al ingreso es `400`;
+y un segundo pago vivo del mismo mes es `409` nombrando el mes. Ese último invariante lo
+sostienen **dos** piezas (D-19): la pre-comprobación dentro de la transacción, que
+produce el mensaje con el mes, y el índice único parcial, que es lo que aguanta la
+concurrencia. Un pago anulado no ocupa el mes, así que corregir un importe es anular y
+volver a registrar; no hay `PATCH` sobre `payroll_payments`.
+
+Periodicidad **solo mensual** y sin lógica de huso horario en el servidor (D-13): aquí
+nada se deriva de `now()` —el periodo y la fecha de pago son datos de entrada
+obligatorios del cuerpo— y el único instante que pone el servidor es `created_at`. Por
+eso el módulo **no importa `src/lib/reporting.ts`**: hacerlo acoplaría la nómina a la
+zona de corte del negocio sin necesitarla. Las fechas se pintan con `formatIsoDate()`,
+que parte la cadena sin construir un `Date`, porque `new Date('2026-09-01')` es
+medianoche UTC y en Lima se pintaría como 31 de agosto.
+
+Una sola página con dos pestañas —Personal y Pagos— y una sola entrada «Nómina» en la
+navegación, que desaparece sin `payroll.read` y cuya página responde el 403 de
+`src/app/forbidden.tsx`. El pago se registra **desde la fila del empleado** y no desde
+un selector en la pestaña de pagos: elimina el problema de listar cientos de empleados
+en un `Select` y permite proponer el salario base como importe inicial sin una segunda
+petición. La pestaña activa es estado local, sin Zustand y sin parámetro en la URL, así
+que `/admin/payroll` siempre abre en «Personal».
+
+Fuera de alcance por decisión: **motor de cálculo de nómina** (AFP/ONP, EsSalud, quinta
+categoría, gratificaciones, CTS, asignación familiar, horas extra) —es un dominio legal
+que cambia por norma y modelarlo mal tiene consecuencias legales, no de UX—, vínculo
+empleado ↔ cuenta de usuario, portal del empleado, periodicidad quincenal o semanal,
+edición de un pago ya registrado, borrado físico, recibos en PDF, exportación,
+adelantos, préstamos, vacaciones y evaluaciones. La integración con el resumen
+financiero (spec 017) —los pagos de nómina como línea de gasto— queda documentada como
+deuda: el enganche es una lectura agregada desde el repositorio de nómina, expuesta por
+una función de servidor y casteando a `::bigint`, nunca un import de tabla cruzado.
 
 Gestión de accesos: CRUD de roles, matriz rol × permiso, asignación de roles a
 usuarios · bitácora de auditoría filtrable por actor, entidad, acción y fecha.

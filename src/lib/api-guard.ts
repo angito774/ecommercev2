@@ -7,7 +7,7 @@ import {
   requirePermission,
   UnauthorizedError,
 } from '@/lib/auth';
-import { ConflictError, NotFoundError, UpstreamError } from '@/lib/errors';
+import { ConflictError, NotFoundError, UpstreamError, ValidationError } from '@/lib/errors';
 import { ForbiddenError, type PermissionCode } from '@/lib/permissions';
 import { isUniqueViolation, uniqueViolationTarget } from '@/lib/utils';
 import type { users } from '@/server/db/schema';
@@ -113,6 +113,12 @@ export function toErrorResponse(error: unknown, options: ErrorResponseOptions): 
 
   if (error instanceof ForbiddenError) {
     return NextResponse.json({ message: error.message }, { status: 403 });
+  }
+
+  // Antes que el 409: un invariante cruzado que el cuerpo incumple es un 400, no un
+  // conflicto del recurso (spec 018, D-16).
+  if (error instanceof ValidationError) {
+    return badRequest(error.message);
   }
 
   if (error instanceof NotFoundError) {

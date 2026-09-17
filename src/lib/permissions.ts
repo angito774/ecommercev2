@@ -152,6 +152,23 @@ export const PERMISSIONS = [
     action: 'delete',
     description: 'Eliminar gastos operativos.',
   },
+  // El recurso es el dominio (`payroll`), no la ruta: por eso `/api/admin/employees`
+  // se protege con un código `payroll.*` (spec 018, D-10). Dos códigos y no siete:
+  // no existe el rol que administre personal sin ver sus pagos, y partir por
+  // read/manage sí separa algo real —consultar la planilla no es tocarla— que es lo
+  // que sostiene el `meta.canManage` de la UI.
+  {
+    code: 'payroll.read',
+    resource: 'payroll',
+    action: 'read',
+    description: 'Ver el personal contratado y la bitácora de pagos de nómina.',
+  },
+  {
+    code: 'payroll.manage',
+    resource: 'payroll',
+    action: 'manage',
+    description: 'Dar de alta o de baja personal y registrar o anular pagos de nómina.',
+  },
 ] as const;
 
 // `PermissionDefinition` es la entrada del catálogo en código, simétrica con
@@ -231,6 +248,8 @@ export const ROLE_PERMISSION_MATRIX: Record<RoleSlug, readonly PermissionCode[]>
     'expenses.create',
     'expenses.update',
     'expenses.delete',
+    'payroll.read',
+    'payroll.manage',
   ],
   admin: [
     'categories.read',
@@ -255,6 +274,8 @@ export const ROLE_PERMISSION_MATRIX: Record<RoleSlug, readonly PermissionCode[]>
     'expenses.create',
     'expenses.update',
     'expenses.delete',
+    'payroll.read',
+    'payroll.manage',
   ],
   // `manager` y `audit` quedan fuera del módulo financiero a propósito (spec 017,
   // D-3): es el primer módulo con datos de resultado y no de operación. `manager`
@@ -291,6 +312,14 @@ export const ROLE_PERMISSION_MATRIX: Record<RoleSlug, readonly PermissionCode[]>
     // Ve la lista de alertas y ninguna acción: sin `products.update` la tabla no
     // pinta la columna de acciones (spec 016, AC13).
     'inventory.read',
+    // Sin `payroll.read`, y es deliberado pese a que `audit` lee todo lo demás
+    // (spec 018, D-4). El salario es la cifra más sensible del panel y este rol rompe
+    // aquí la regla implícita de «audit lo ve todo». La consecuencia está acoplada a
+    // D-8: `audit` y `manager` sí tienen `audit_logs.read`, y la vista de bitácora
+    // renderiza `changes` y `metadata` íntegros, así que si alguna mutación de nómina
+    // escribiera un importe en el log, `/admin/audit-logs` se convertiría en el
+    // listado de sueldos de la empresa para roles a los que se les acaba de negar.
+    // Restaurar «audit lo lee todo» sin pensar reabre esa puerta trasera.
   ],
 };
 
