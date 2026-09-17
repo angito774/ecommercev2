@@ -3,9 +3,9 @@
 import { useState } from 'react';
 
 import { Card, CardContent } from '@/components/ui/card';
+import { LOW_STOCK_THRESHOLD } from '@/modules/products/constants';
 import { formatPrice } from '@/modules/products/lib/price';
 
-import { LOW_STOCK_THRESHOLD } from '../constants';
 import { useDashboardMetrics } from '../hooks/use-dashboard-metrics';
 import type { DashboardPeriod } from '../schemas/dashboard.schema';
 

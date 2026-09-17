@@ -3,6 +3,17 @@ import type { ProductQueryParams } from './schemas/product.schema';
 
 export const DEFAULT_PAGE_SIZE = 10;
 
+// A partir de cuántas unidades el panel considera que hay que reponer. Vive aquí y
+// no en `dashboard/constants.ts` —de donde vino (spec 015, D-12)— porque es una
+// propiedad del producto: el widget del dashboard y la página de inventario tienen
+// que decir el mismo número, y que uno importara del otro invertiría la dependencia
+// (spec 016, D-2). Sigue siendo global y provisional; hacerlo configurable por
+// producto o categoría es deuda explícita del spec 016 §11.
+//
+// No confundir con `CATALOG_LOW_STOCK_THRESHOLD` de `product.repository.ts`, que
+// vale 5 y es información comercial para el comprador, no una alerta de reposición.
+export const LOW_STOCK_THRESHOLD = 10;
+
 export const SEARCH_DEBOUNCE_MS = 300;
 
 // El interceptor de src/lib/axios.ts colapsa la respuesta de error a su `message` y

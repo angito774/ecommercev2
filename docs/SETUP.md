@@ -470,6 +470,43 @@ Fuera de alcance: rango de fechas libre, comparativa interanual, desglose por
 categoría o cliente, exportación, enlaces del dashboard al detalle y métricas de
 tráfico o conversión.
 
+Construido a 2026-09-17: **control de inventario** (`/admin/inventory`, spec 016),
+bajo el permiso nuevo `inventory.read` —el catálogo pasa de 18 a 19 códigos y lo
+reciben `super_admin`, `admin`, `manager` y `audit`—. Sin migración: lee `products`
+y `categories` tal y como están.
+
+`GET /api/admin/inventory` lista paginado por offset (20 por página) los productos
+**activos** con `stock < LOW_STOCK_THRESHOLD`, con búsqueda sobre nombre y SKU y
+filtro por categoría (centinela `all`). Los dos invariantes —`is_active = true` y el
+umbral— viven dentro de `buildInventoryFilters()` y **no** son desactivables desde la
+query: ningún parámetro puede convertir esta ruta en el catálogo entero. El orden es
+fijo (`stock asc, name asc, id asc`) y no hay `sortBy`: la pantalla responde «qué
+atiendo primero» y un orden elegible permitiría ocultar lo urgente.
+
+El umbral es el **mismo** que usa el widget de stock bajo del dashboard, y por eso
+`LOW_STOCK_THRESHOLD = 10` se mudó de `src/modules/dashboard/constants.ts` a
+**`src/modules/products/constants.ts`**: «menos de N unidades» es una propiedad del
+producto, no del dashboard. Sigue siendo global y provisional; hacerlo configurable
+por producto o categoría es deuda declarada del spec 016 §11. No confundirlo con el
+`CATALOG_LOW_STOCK_THRESHOLD = 5` de `product.repository.ts`, que es información
+comercial para el comprador y se renombró justamente para que los dos nombres no
+colisionen. El `status` de cada fila (`out | low | in`) lo deriva el servidor en
+TypeScript con `resolveStockStatus()`, no con un `CASE` en SQL, y el umbral que usó
+la consulta viaja en `meta` para que el rótulo no pueda decir otro número.
+
+El alcance es de **solo lectura**: no hay ningún verbo de escritura en este recurso.
+La única escritura de stock sigue siendo `PATCH /api/admin/products/[id]` bajo
+`products.update`, que ya escribe `product.updated` en `audit_logs` dentro de su
+transacción; la página reutiliza `ProductFormDialog` del módulo de productos en vez
+de duplicar el formulario, y `useUpdateProduct()` invalida también el caché de
+inventario para que la fila corregida desaparezca sin recargar. Quien tiene
+`inventory.read` pero no `products.update` —el rol `audit`— recibe
+`meta.canUpdateProduct: false` y la tabla no pinta la columna de acciones.
+
+Fuera de alcance por decisión: tabla de movimientos de stock y su historial, umbral
+configurable, edición en línea de la celda, órdenes de compra y reposición,
+exportación a CSV y notificaciones de stock bajo.
+
 Gestión de accesos: CRUD de roles, matriz rol × permiso, asignación de roles a
 usuarios · bitácora de auditoría filtrable por actor, entidad, acción y fecha.
 

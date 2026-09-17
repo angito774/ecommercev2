@@ -3,7 +3,6 @@ import { NextResponse } from 'next/server';
 import { authorize, badRequest, toErrorResponse } from '@/lib/api-guard';
 import {
   LOW_STOCK_LIMIT,
-  LOW_STOCK_THRESHOLD,
   REPORTING_TIME_ZONE,
   TOP_PRODUCTS_LIMIT,
 } from '@/modules/dashboard/constants';
@@ -15,6 +14,7 @@ import type {
   DashboardMetricsResponse,
   MetricComparison,
 } from '@/modules/dashboard/types/dashboard.types';
+import { LOW_STOCK_THRESHOLD } from '@/modules/products/constants';
 import * as metricsRepository from '@/server/repositories/metrics.repository';
 
 function toComparison(value: number, previousValue: number): MetricComparison {

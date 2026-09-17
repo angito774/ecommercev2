@@ -110,7 +110,12 @@ export async function findMany(params: ProductListParams): Promise<ProductListRe
 // A partir de aquí se sirve la tienda. El umbral vive en una constante para poder
 // subirlo sin tocar el contrato: `low` revela que quedan pocas unidades y eso es
 // información comercial deliberada, no un descuido (spec 004, §10).
-const LOW_STOCK_THRESHOLD = 5;
+//
+// El prefijo `CATALOG_` no es cosmético: `@/modules/products/constants` exporta un
+// `LOW_STOCK_THRESHOLD` distinto —vale 10 y es la alerta de reposición del panel—, y
+// con los dos nombres iguales el primer import del compartido en este archivo
+// sombrearía este `const` sin que nada avisara (spec 016, D-3).
+const CATALOG_LOW_STOCK_THRESHOLD = 5;
 
 export type CatalogListParams = {
   q?: string;
@@ -144,7 +149,7 @@ const DISCOUNT_PERCENT = sql<number | null>`
 const STOCK_LEVEL = sql<StockLevel>`
   case
     when ${products.stock} <= 0 then 'out'
-    when ${products.stock} <= ${LOW_STOCK_THRESHOLD} then 'low'
+    when ${products.stock} <= ${CATALOG_LOW_STOCK_THRESHOLD} then 'low'
     else 'in'
   end
 `;

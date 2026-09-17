@@ -1,6 +1,7 @@
 import { UserButton } from '@clerk/nextjs';
 import { auth } from '@clerk/nextjs/server';
 import {
+  Boxes,
   LayoutDashboard,
   Package,
   Receipt,
@@ -29,6 +30,9 @@ const NAV_ITEMS: readonly NavItem[] = [
   // (spec 015, D-1). Sin `dashboard.read` el filtro de abajo la retira (AC3).
   { href: '/admin', label: 'Dashboard', icon: LayoutDashboard, permission: 'dashboard.read' },
   { href: '/admin/products', label: 'Productos', icon: Package, permission: 'products.read' },
+  // Detrás de «Productos» porque es una vista de productos, no un dominio aparte.
+  // Sin `inventory.read` el filtro de abajo la retira (spec 016, AC3).
+  { href: '/admin/inventory', label: 'Inventario', icon: Boxes, permission: 'inventory.read' },
   { href: '/admin/categories', label: 'Categorías', icon: Tags, permission: 'categories.read' },
   { href: '/admin/orders', label: 'Pedidos', icon: Receipt, permission: 'orders.read' },
   { href: '/admin/users', label: 'Usuarios', icon: Users, permission: 'users.read' },

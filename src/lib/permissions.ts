@@ -115,6 +115,16 @@ export const PERMISSIONS = [
     action: 'read',
     description: 'Ver el dashboard de métricas del panel.',
   },
+  // Recurso propio y no `products.read`: deja la puerta abierta a un rol de almacén
+  // que reponga sin ver precios ni poder crear productos, sin tener que partir
+  // `products.read` después (spec 016, D-1). Lo que concede es la vista de alertas;
+  // corregir el stock sigue exigiendo `products.update`.
+  {
+    code: 'inventory.read',
+    resource: 'inventory',
+    action: 'read',
+    description: 'Ver el control de inventario y las alertas de stock.',
+  },
 ] as const;
 
 // `PermissionDefinition` es la entrada del catálogo en código, simétrica con
@@ -189,6 +199,7 @@ export const ROLE_PERMISSION_MATRIX: Record<RoleSlug, readonly PermissionCode[]>
     'roles.read',
     'audit_logs.read',
     'dashboard.read',
+    'inventory.read',
   ],
   admin: [
     'categories.read',
@@ -208,6 +219,7 @@ export const ROLE_PERMISSION_MATRIX: Record<RoleSlug, readonly PermissionCode[]>
     'roles.read',
     'audit_logs.read',
     'dashboard.read',
+    'inventory.read',
   ],
   manager: [
     'categories.read',
@@ -223,6 +235,7 @@ export const ROLE_PERMISSION_MATRIX: Record<RoleSlug, readonly PermissionCode[]>
     'users.read',
     'roles.read',
     'dashboard.read',
+    'inventory.read',
   ],
   employee: [],
   customer: [],
@@ -234,6 +247,9 @@ export const ROLE_PERMISSION_MATRIX: Record<RoleSlug, readonly PermissionCode[]>
     'roles.read',
     'audit_logs.read',
     'dashboard.read',
+    // Ve la lista de alertas y ninguna acción: sin `products.update` la tabla no
+    // pinta la columna de acciones (spec 016, AC13).
+    'inventory.read',
   ],
 };
 

@@ -1,8 +1,8 @@
 import type { DashboardPeriod } from './schemas/dashboard.schema';
 
-// El spec de Inventario lo hará configurable y esta constante será su default
-// (D-12).
-export const LOW_STOCK_THRESHOLD = 10;
+// `LOW_STOCK_THRESHOLD` vive en `@/modules/products/constants`: «menos de N
+// unidades» es una propiedad del producto, no del dashboard, y el módulo de
+// inventario no debe importar de aquí para saber qué es poco stock (spec 016, D-2).
 
 // Tope de filas del widget: es un aviso de un vistazo, no el inventario. Quien
 // necesite la lista entera la tiene en /admin/products ordenada por stock.
