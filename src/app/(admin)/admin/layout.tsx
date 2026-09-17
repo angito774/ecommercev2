@@ -1,6 +1,14 @@
 import { UserButton } from '@clerk/nextjs';
 import { auth } from '@clerk/nextjs/server';
-import { Package, ScrollText, ShieldCheck, Tags, Users, type LucideIcon } from 'lucide-react';
+import {
+  Package,
+  Receipt,
+  ScrollText,
+  ShieldCheck,
+  Tags,
+  Users,
+  type LucideIcon,
+} from 'lucide-react';
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 
@@ -18,6 +26,7 @@ type NavItem = {
 const NAV_ITEMS: readonly NavItem[] = [
   { href: '/admin/products', label: 'Productos', icon: Package, permission: 'products.read' },
   { href: '/admin/categories', label: 'Categorías', icon: Tags, permission: 'categories.read' },
+  { href: '/admin/orders', label: 'Pedidos', icon: Receipt, permission: 'orders.read' },
   { href: '/admin/users', label: 'Usuarios', icon: Users, permission: 'users.read' },
   { href: '/admin/roles', label: 'Roles', icon: ShieldCheck, permission: 'roles.read' },
   { href: '/admin/audit-logs', label: 'Bitácora', icon: ScrollText, permission: 'audit_logs.read' },

@@ -16,6 +16,21 @@ export function slugify(input: string): string {
     .replace(/^-+|-+$/g, '');
 }
 
+// `%` y `_` son comodines de LIKE, no texto. Sin escaparlos, `?q=%` se traduce en
+// `ilike '%%%'` y devuelve la tabla entera como si fuera un resultado de búsqueda, y
+// `?q=_` casa con cualquier carácter. No es inyección —el valor sigue viajando como
+// parámetro— pero sí un resultado incorrecto que quien consulta puede provocar. La
+// barra invertida es a su vez el carácter de escape, así que va primero o se
+// escaparía a sí misma dos veces.
+//
+// Vive aquí y no en `product.repository.ts` porque tiene dos consumidores (el
+// catálogo y la búsqueda por cliente de `/admin/orders`): un repositorio importando
+// de otro solo por un helper de cadena crea una dependencia lateral falsa
+// (spec 014, D-9).
+export function escapeLikePattern(value: string): string {
+  return value.replace(/[\\%_]/g, (char) => `\\${char}`);
+}
+
 const UNIQUE_VIOLATION = '23505';
 
 const MAX_CAUSE_DEPTH = 5;

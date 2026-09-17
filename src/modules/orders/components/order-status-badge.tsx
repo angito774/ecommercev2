@@ -16,6 +16,16 @@ const STATUS_VARIANTS: Record<OrderStatus, BadgeVariant> = {
   canceled: 'outline',
 };
 
-export function OrderStatusBadge({ status }: { status: OrderStatus }) {
-  return <Badge variant={STATUS_VARIANTS[status]}>{ORDER_STATUS_LABELS[status]}</Badge>;
+type OrderStatusBadgeProps = {
+  status: OrderStatus;
+  /**
+   * Texto alternativo al del cliente. El panel lo usa porque «Confirmando tu pago»
+   * le habla al comprador de su propia compra y ahí se está mirando la de otro; el
+   * color lo sigue decidiendo el estado (D-15).
+   */
+  label?: string;
+};
+
+export function OrderStatusBadge({ status, label }: OrderStatusBadgeProps) {
+  return <Badge variant={STATUS_VARIANTS[status]}>{label ?? ORDER_STATUS_LABELS[status]}</Badge>;
 }

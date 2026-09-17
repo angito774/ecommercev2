@@ -33,8 +33,12 @@ describe('entityTypeLabel', () => {
     expect(entityTypeLabel('product')).toBe('Producto');
   });
 
+  it('translates the order entity type added by the admin orders panel', () => {
+    expect(entityTypeLabel('order')).toBe('Pedido');
+  });
+
   it('falls back to the raw entity type when it is not in the catalog', () => {
-    expect(entityTypeLabel('order')).toBe('order');
+    expect(entityTypeLabel('invoice')).toBe('invoice');
   });
 
   it('falls back to an empty string when given an empty string', () => {

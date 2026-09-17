@@ -413,10 +413,30 @@ CRUD de productos y categorías (TanStack Table: paginación, orden, filtros) ·
 gestión de pedidos y cambio de estado · listado de clientes.
 
 Construido a 2026-09-02: categorías (spec 001), accesos y bitácora (spec 002) y
-productos (spec 003). Pendientes: dashboard de métricas, pedidos y clientes. El
-panel de pedidos (`/admin/orders`, permisos `orders.read` y
-`orders.update_status`) es lo siguiente: desde el spec 007 hay pedidos pagados
-en la base que todavía no se pueden consultar desde la aplicación.
+productos (spec 003). Pendientes: dashboard de métricas y clientes.
+
+Construido a 2026-09-16: **panel de pedidos** (`/admin/orders`, spec 014), con los
+permisos `orders.read` y `orders.update_status` —los dos primeros de `orders` en el
+catálogo, que pasa de 15 a 17 códigos—. `GET /api/admin/orders` lista paginado por
+offset (20 por página, orden `created_at desc, id desc`) con filtros de rango de
+fechas, estado y búsqueda de cliente por correo, nombre, apellido y nombre completo;
+`GET /api/admin/orders/[id]` devuelve el detalle con las líneas, la dirección de
+envío parseada del jsonb y los ids de Stripe como texto.
+
+El alcance es de **solo consulta** salvo una única mutación:
+`PATCH /api/admin/orders/[id]` con `{ status: 'canceled' }`, que solo admite la
+transición `pending → canceled`. Reutiliza el `markCanceled()` del webhook —el mismo
+`UPDATE … WHERE status = 'pending'` que ya sostiene la idempotencia— y escribe
+`order.status_changed` en `audit_logs` dentro de la misma transacción, con `changes`
+limitado a `{ status }`: ni la dirección ni el correo del comprador entran en la
+bitácora. Un estado distinto de `pending` responde `409` nombrando el estado actual,
+no `400`: el cuerpo es válido y lo que está en conflicto es el recurso. No hay
+migración: el enum `order_status` no crece, y `orders`, `order_items` y `users` se
+leen tal cual estaban.
+
+Fuera de alcance por decisión y no por olvido: fulfillment y estados de envío,
+reembolsos, cancelación de pedidos `paid` (necesitaría reponer stock y llamar a
+Stripe), enlaces al Dashboard de Stripe, exportación a CSV y métricas de ventas.
 
 Gestión de accesos: CRUD de roles, matriz rol × permiso, asignación de roles a
 usuarios · bitácora de auditoría filtrable por actor, entidad, acción y fecha.

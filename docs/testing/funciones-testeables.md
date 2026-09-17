@@ -36,6 +36,7 @@ No hay framework de pruebas instalado todavía (`package.json` no declara
 | `isUniqueViolation(error: unknown): boolean` | `lib/utils.ts` | Detecta si un error representa una violación de constraint único de Postgres (código `23505`), recorriendo la cadena `cause`. |
 | `uniqueViolationTarget(error: unknown): string \| null` | `lib/utils.ts` | Extrae el nombre del constraint único que falló, o `null` si no se puede determinar. |
 | *(privada)* `findUniqueViolation(error): PgError \| null` | `lib/utils.ts` | Recorre hasta 5 niveles de `cause` buscando el error de Postgres subyacente. |
+| `escapeLikePattern(value: string): string` | `lib/utils.ts` | Escapa los comodines `%`, `_` y `\` de un término de búsqueda antes de usarlo en `ILIKE`. Movida desde `server/repositories/product.repository.ts` (spec 014, D-9) al ganar un segundo consumidor en `order.repository.ts`. |
 | `can(granted, code): boolean` | `lib/permissions.ts` | Verifica si un conjunto de permisos concedidos incluye un código dado. |
 | `isPermissionCode(value: string): boolean` | `lib/permissions.ts` | Type guard: valida que un string sea un código de permiso existente en el catálogo. |
 | `isRoleSlug(value: string): boolean` | `lib/permissions.ts` | Type guard: valida que un string sea un slug de rol existente en el catálogo. |
@@ -180,12 +181,6 @@ Módulo extenso — dividido por submódulo.
 | `productFormSchema` (Zod) | `modules/products/schemas/product.schema.ts` | Valida el formulario de producto (precio como texto); `.refine()` reutiliza `isValidComparePrice` sobre los valores convertidos con `toCents`. |
 | `catalogQuerySchema` (Zod) | `modules/products/schemas/catalog.schema.ts` | Valida el contrato público de `GET /api/products`: búsqueda, categoría, orden cerrado, descuento y paginación acotada. |
 | `catalogSlugParamSchema` (Zod) | `modules/products/schemas/catalog.schema.ts` | Valida el slug de producto en la ruta pública, reutilizando el patrón de `productSlugSchema`. |
-
-### 8.3 `products` — helper puro en `server/repositories` (sin I/O)
-
-| Función | Archivo | Descripción |
-|---|---|---|
-| *(privada)* `escapeLikePattern(value: string): string` | `server/repositories/product.repository.ts` | Escapa los comodines `%`, `_` y `\` de un término de búsqueda antes de usarlo en `ILIKE`. Es texto puro, sin tocar la base — buena candidata pese a vivir en el repositorio. |
 
 > `buildFilters` y `buildCatalogFilters` del mismo archivo son puras en el sentido de no hacer I/O, pero devuelven fragmentos `SQL` de Drizzle: solo se pueden aserear inspeccionando el SQL generado, por lo que rinden más como prueba de integración.
 

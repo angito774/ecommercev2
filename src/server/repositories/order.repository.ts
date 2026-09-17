@@ -1,14 +1,33 @@
-import { and, asc, desc, eq, gte, inArray, isNotNull, lte } from 'drizzle-orm';
+import {
+  and,
+  asc,
+  count,
+  desc,
+  eq,
+  gte,
+  ilike,
+  inArray,
+  isNotNull,
+  lte,
+  or,
+  sql,
+  type SQL,
+} from 'drizzle-orm';
 
+import { escapeLikePattern } from '@/lib/utils';
 import { MAX_ORDER_HISTORY } from '@/modules/orders/constants';
+import { parseShippingAddress } from '@/modules/orders/lib/shipping-address';
 import type {
+  AdminOrderDetail,
+  AdminOrderRow,
   OrderHistoryEntry,
   OrderLineDisplay,
   OrderSummary,
 } from '@/modules/orders/types/order.types';
+import type { AdminOrderQueryParams } from '@/modules/orders/schemas/admin-order.schema';
 import type { OrderHistoryQueryParams } from '@/modules/orders/schemas/order-history.schema';
 import { db, type Reader, type Tx } from '@/server/db';
-import { orderItems, orders } from '@/server/db/schema';
+import { orderItems, orders, users } from '@/server/db/schema';
 
 type Order = typeof orders.$inferSelect;
 type NewOrder = typeof orders.$inferInsert;
@@ -234,6 +253,206 @@ export async function findBySessionIdForUser(
   if (!order) return null;
 
   return toSummary(order, await loadItems(order.id, reader));
+}
+
+// ---------------------------------------------------------------------------
+// Panel de administración (spec 014). A diferencia de las lecturas de cliente, el
+// filtro de propiedad no existe: quien llega hasta aquí ya trae `orders.read`, que
+// es un permiso sobre todos los pedidos. Tampoco se descartan los pedidos sin
+// `stripe_checkout_session_id`: al administrador le interesan justamente esos, los
+// intentos en los que falló la creación de la sesión (D-7).
+// ---------------------------------------------------------------------------
+
+// Número de líneas del pedido como subconsulta agregada dentro del mismo SELECT, no
+// una consulta por fila: la tabla solo muestra el contador y cargar las líneas de
+// las 20 cabeceras serían 20 viajes al pool serverless (§10).
+const ADMIN_ITEM_COUNT = sql<number>`(
+  select count(*)::int
+  from ${orderItems}
+  where ${orderItems.orderId} = ${orders.id}
+)`;
+
+type AdminOrderFilterParams = Pick<
+  AdminOrderQueryParams,
+  'dateFrom' | 'dateTo' | 'status' | 'customerSearch'
+>;
+
+// Exportada para poder probarla sin base de datos: es la pieza con reglas —el
+// `all` que no filtra, el escape de comodines, las cuatro columnas de la búsqueda—
+// y el resto de `findManyForAdmin` es fontanería de Drizzle.
+export function buildAdminOrderFilters(params: AdminOrderFilterParams): SQL | undefined {
+  const conditions: SQL[] = [];
+
+  if (params.status !== 'all') conditions.push(eq(orders.status, params.status));
+
+  // Extremos incluidos (AC5): `gte`/`lte`. Los instantes llegan ya en UTC desde el
+  // navegador, igual que en el historial del cliente.
+  if (params.dateFrom) conditions.push(gte(orders.createdAt, new Date(params.dateFrom)));
+  if (params.dateTo) conditions.push(lte(orders.createdAt, new Date(params.dateTo)));
+
+  const search = params.customerSearch?.trim();
+  if (search) {
+    // Sin escapar, buscar `%` devolvería la tabla entera como si fuera un resultado
+    // (AC9). El valor sigue viajando como parámetro: esto no es inyección, es un
+    // resultado incorrecto que quien consulta puede provocar.
+    const pattern = `%${escapeLikePattern(search)}%`;
+
+    // `concat_ws` y no `firstName || ' ' || lastName`: la concatenación con `||`
+    // devuelve NULL si cualquiera de los dos lados lo es, así que quien solo tiene
+    // nombre desaparecería del resultado en vez de casar por él (D-8).
+    conditions.push(
+      or(
+        ilike(users.email, pattern),
+        ilike(users.firstName, pattern),
+        ilike(users.lastName, pattern),
+        ilike(sql`concat_ws(' ', ${users.firstName}, ${users.lastName})`, pattern),
+      ) as SQL,
+    );
+  }
+
+  return conditions.length === 0 ? undefined : and(...conditions);
+}
+
+// Nombre para mostrar. `null` y no cadena vacía cuando Clerk no dio ninguno de los
+// dos: la UI cae al correo, y `''` la dejaría pintando un hueco.
+function toCustomerName(firstName: string | null, lastName: string | null): string | null {
+  const name = [firstName, lastName].filter(Boolean).join(' ').trim();
+  return name === '' ? null : name;
+}
+
+// Proyección positiva, mismo criterio que `HISTORY_ORDER_COLUMNS`: se enumera lo que
+// sale. Lo común a listado y detalle; ni los ids de Stripe ni la dirección entran
+// aquí, porque el listado no los publica.
+const ADMIN_ORDER_BASE_COLUMNS = {
+  id: orders.id,
+  status: orders.status,
+  subtotalCents: orders.subtotalCents,
+  shippingCents: orders.shippingCents,
+  amountTotalCents: orders.amountTotalCents,
+  currency: orders.currency,
+  createdAt: orders.createdAt,
+  customerId: users.id,
+  customerFirstName: users.firstName,
+  customerLastName: users.lastName,
+  customerEmail: users.email,
+} as const;
+
+const ADMIN_ORDER_COLUMNS = {
+  ...ADMIN_ORDER_BASE_COLUMNS,
+  itemCount: ADMIN_ITEM_COUNT,
+} as const;
+
+export type AdminOrderListResult = { data: AdminOrderRow[]; total: number };
+
+export async function findManyForAdmin(
+  params: AdminOrderQueryParams,
+  reader: Reader = db,
+): Promise<AdminOrderListResult> {
+  const { page, pageSize } = params;
+  const where = buildAdminOrderFilters(params);
+
+  // `innerJoin` y no `leftJoin`: `orders.user_id` es `notNull` con FK `restrict`, así
+  // que un pedido sin comprador no puede existir y el join no oculta ninguna fila.
+  const [rows, [totals]] = await Promise.all([
+    reader
+      .select(ADMIN_ORDER_COLUMNS)
+      .from(orders)
+      .innerJoin(users, eq(users.id, orders.userId))
+      .where(where)
+      // `id` como desempate: dos pedidos con el mismo `created_at` al microsegundo
+      // podrían repetirse o saltarse entre dos páginas.
+      .orderBy(desc(orders.createdAt), desc(orders.id))
+      .limit(pageSize)
+      .offset((page - 1) * pageSize),
+    // El conteo repite el join porque la búsqueda por cliente filtra sobre `users`:
+    // sin él, el total no casaría con las filas de la página.
+    reader
+      .select({ value: count() })
+      .from(orders)
+      .innerJoin(users, eq(users.id, orders.userId))
+      .where(where),
+  ]);
+
+  return {
+    total: totals?.value ?? 0,
+    data: rows.map((row) => ({
+      id: row.id,
+      status: row.status,
+      subtotalCents: row.subtotalCents,
+      shippingCents: row.shippingCents,
+      amountTotalCents: row.amountTotalCents,
+      currency: row.currency,
+      createdAt: row.createdAt.toISOString(),
+      customerId: row.customerId,
+      customerName: toCustomerName(row.customerFirstName, row.customerLastName),
+      customerEmail: row.customerEmail,
+      itemCount: row.itemCount,
+    })),
+  };
+}
+
+// Fila desnuda, sin join ni proyección: alimenta el `before` de la bitácora y la
+// comprobación de estado previa al UPDATE (D-5). Acepta un `Reader` porque esa
+// lectura debe correr dentro de la transacción de la cancelación para ver el mismo
+// estado que el UPDATE.
+export async function findById(id: string, reader: Reader = db): Promise<Order | null> {
+  const [order] = await reader.select().from(orders).where(eq(orders.id, id)).limit(1);
+  return order ?? null;
+}
+
+// Aquí sí salen los ids de Stripe y la dirección: es el detalle, y sigue bajo
+// `orders.read` (D-6). Sin `itemCount`, en cambio: el detalle trae las líneas
+// enteras, y contarlas aparte sería pedir dos veces lo mismo.
+const ADMIN_ORDER_DETAIL_COLUMNS = {
+  ...ADMIN_ORDER_BASE_COLUMNS,
+  updatedAt: orders.updatedAt,
+  shippingAddress: orders.shippingAddress,
+  stripeCheckoutSessionId: orders.stripeCheckoutSessionId,
+  stripePaymentIntentId: orders.stripePaymentIntentId,
+} as const;
+
+export async function findByIdForAdmin(
+  id: string,
+  reader: Reader = db,
+): Promise<AdminOrderDetail | null> {
+  const [row] = await reader
+    .select(ADMIN_ORDER_DETAIL_COLUMNS)
+    .from(orders)
+    .innerJoin(users, eq(users.id, orders.userId))
+    .where(eq(orders.id, id))
+    .limit(1);
+
+  if (!row) return null;
+
+  const items = await loadItems(row.id, reader);
+
+  return {
+    id: row.id,
+    status: row.status,
+    subtotalCents: row.subtotalCents,
+    shippingCents: row.shippingCents,
+    amountTotalCents: row.amountTotalCents,
+    currency: row.currency,
+    createdAt: row.createdAt.toISOString(),
+    updatedAt: row.updatedAt.toISOString(),
+    customerId: row.customerId,
+    customerName: toCustomerName(row.customerFirstName, row.customerLastName),
+    customerEmail: row.customerEmail,
+    // Se enumera lo que sale, igual que en las proyecciones de arriba: `loadItems`
+    // trae `productId` porque el fulfillment lo necesita, y el contrato del detalle
+    // publica `OrderLineDisplay`. Mandar un campo que el tipo no declara deja al
+    // cliente dependiendo de algo que nadie acordó.
+    items: items.map((line) => ({
+      id: line.id,
+      nameSnapshot: line.nameSnapshot,
+      imageUrlSnapshot: line.imageUrlSnapshot,
+      priceCentsSnapshot: line.priceCentsSnapshot,
+      quantity: line.quantity,
+    })),
+    shippingAddress: parseShippingAddress(row.shippingAddress),
+    stripeCheckoutSessionId: row.stripeCheckoutSessionId,
+    stripePaymentIntentId: row.stripePaymentIntentId,
+  };
 }
 
 // UPDATE condicional, no read-then-write: dos entregas concurrentes del mismo

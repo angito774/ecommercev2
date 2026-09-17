@@ -21,6 +21,14 @@ export const AUDIT_ACTIONS = [
   { code: 'user.roles_changed', label: 'Roles cambiados', entityType: 'user' },
   { code: 'user.activated', label: 'Acceso devuelto', entityType: 'user' },
   { code: 'user.deactivated', label: 'Acceso retirado', entityType: 'user' },
+  // `order.paid`, `order.payment_failed`, `order.canceled` y `order.oversold` los
+  // escribe el webhook de Stripe desde el spec 007 con `actor_id` nulo;
+  // `order.status_changed` es la cancelación desde el panel (spec 014).
+  { code: 'order.paid', label: 'Pago confirmado', entityType: 'order' },
+  { code: 'order.payment_failed', label: 'Pago fallido', entityType: 'order' },
+  { code: 'order.canceled', label: 'Pedido cancelado', entityType: 'order' },
+  { code: 'order.status_changed', label: 'Estado del pedido cambiado', entityType: 'order' },
+  { code: 'order.oversold', label: 'Stock negativo tras la venta', entityType: 'order' },
 ] as const;
 
 const ACTION_LABELS = new Map<string, string>(
@@ -35,6 +43,7 @@ const ENTITY_TYPE_LABELS: Record<string, string> = {
   user: 'Persona',
   category: 'Categoría',
   product: 'Producto',
+  order: 'Pedido',
   role: 'Rol',
 };
 
@@ -62,6 +71,7 @@ export const AUDIT_ENTITY_OPTIONS = [
   { value: 'user', label: 'Personas' },
   { value: 'category', label: 'Categorías' },
   { value: 'product', label: 'Productos' },
+  { value: 'order', label: 'Pedidos' },
 ] as const;
 
 export const AUDIT_ACTION_OPTIONS = [
@@ -86,6 +96,7 @@ const FIELD_LABELS: Record<string, string> = {
   email: 'Correo',
   firstName: 'Nombre',
   lastName: 'Apellido',
+  status: 'Estado',
 };
 
 export function auditFieldLabel(field: string): string {

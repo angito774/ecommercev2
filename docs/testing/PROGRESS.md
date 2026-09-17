@@ -16,7 +16,7 @@ tests creados + `npm run typecheck && npm run lint && npm run test` en verde.
 - [x] 10. `payments`
 - [x] 11. `products/lib` (price)
 - [x] 12. `products/schemas`
-- [x] 13. `products/repository-helper` (escapeLikePattern)
+- [x] 13. (vacía — `escapeLikePattern` movida a la unidad 1, `lib/utils.ts`, spec 014 D-9)
 - [x] 14. `roles`
 - [x] 15. `storefront`
 - [x] 16. `users`

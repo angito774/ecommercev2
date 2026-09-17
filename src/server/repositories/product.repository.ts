@@ -1,5 +1,6 @@
 import { and, asc, count, desc, eq, ilike, inArray, or, sql, type SQL } from 'drizzle-orm';
 
+import { escapeLikePattern } from '@/lib/utils';
 import type {
   CatalogProduct,
   CatalogProductDetail,
@@ -165,16 +166,6 @@ const CATALOG_ORDER_BY = {
   price_asc: [asc(products.priceCents), asc(products.id)],
   price_desc: [desc(products.priceCents), asc(products.id)],
 } as const satisfies Record<CatalogListParams['sort'], readonly SQL[]>;
-
-// `%` y `_` son comodines de LIKE, no texto. Sin escaparlos, `?q=%` se traduce en
-// `ilike '%%%'` y devuelve el catálogo entero como si fuera un resultado de
-// búsqueda, y `?q=_` casa con cualquier carácter. No es inyección —el valor sigue
-// viajando como parámetro— pero sí un resultado incorrecto que el visitante puede
-// provocar. La barra invertida es a su vez el carácter de escape, así que va
-// primero o se escaparía a sí misma dos veces.
-export function escapeLikePattern(value: string): string {
-  return value.replace(/[\\%_]/g, (char) => `\\${char}`);
-}
 
 // El filtro invariante no es parametrizable desde fuera a propósito: ningún query
 // param puede desactivarlo, así que un producto inactivo —o uno activo bajo una

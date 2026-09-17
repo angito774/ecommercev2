@@ -1,3 +1,4 @@
+import type { AdminOrderQueryParams } from './schemas/admin-order.schema';
 import type { OrderHistoryRange, OrderStatus } from './types/order.types';
 
 // Una sola moneda en toda la app, igual que en `cart/constants.ts`. La columna
@@ -80,3 +81,51 @@ export const RECEIPT_UPSTREAM_MESSAGE =
 // no hay error que reintentar, solo una explicación (AC11).
 export const RECEIPT_UNAVAILABLE_HINT =
   'Stripe solo emite la boleta con el cobro confirmado, así que este pedido no tiene ninguna.';
+
+// ---------------------------------------------------------------------------
+// Panel de administración (spec 014)
+// ---------------------------------------------------------------------------
+
+export const ADMIN_ORDER_PAGE_SIZE = 20;
+
+// Etiquetas propias y no las de `ORDER_STATUS_LABELS`: «Confirmando tu pago» le
+// habla al comprador de su propia compra, y en el panel quien lee está mirando el
+// pedido de otro. Los colores sí son los mismos, porque los decide
+// `OrderStatusBadge` a partir del estado (D-15).
+export const ADMIN_ORDER_STATUS_LABELS: Record<OrderStatus, string> = {
+  pending: 'Pendiente',
+  paid: 'Pagado',
+  payment_failed: 'Pago fallido',
+  canceled: 'Cancelado',
+};
+
+// `all` es el valor del filtro, no de la columna: el `Select` de shadcn no admite
+// un item con valor vacío.
+export const ADMIN_ORDER_STATUS_OPTIONS = [
+  { value: 'all', label: 'Todos los estados' },
+  { value: 'pending', label: ADMIN_ORDER_STATUS_LABELS.pending },
+  { value: 'paid', label: ADMIN_ORDER_STATUS_LABELS.paid },
+  { value: 'payment_failed', label: ADMIN_ORDER_STATUS_LABELS.payment_failed },
+  { value: 'canceled', label: ADMIN_ORDER_STATUS_LABELS.canceled },
+] as const satisfies ReadonlyArray<{ value: AdminOrderQueryParams['status']; label: string }>;
+
+// 404 del panel: a diferencia del 404 del historial de cliente, aquí no hay nada
+// que ocultar —quien consulta tiene `orders.read` sobre todos los pedidos—, así que
+// el mensaje puede decir la verdad literal.
+export const ADMIN_ORDER_NOT_FOUND_MESSAGE = 'Ese pedido no existe.';
+
+// 409: el cuerpo era válido y el pedido existe; lo que está en conflicto es su
+// estado (D-3). Nombra el estado actual para que el administrador sepa qué pasó en
+// vez de quedarse con «no se pudo» (AC13).
+export const orderNotCancelableMessage = (status: OrderStatus) =>
+  `Solo se puede cancelar un pedido pendiente de pago, y este está «${ADMIN_ORDER_STATUS_LABELS[status]}».`;
+
+export const adminOrderKeys = {
+  all: ['admin-orders'] as const,
+  lists: () => [...adminOrderKeys.all, 'list'] as const,
+  // Los filtros enteros entran en la clave: cambiar de página o de rango es otra
+  // consulta, no una invalidación de la anterior, y `keepPreviousData` necesita
+  // distinguirlas.
+  list: (params: AdminOrderQueryParams) => [...adminOrderKeys.lists(), params] as const,
+  detail: (id: string) => [...adminOrderKeys.all, 'detail', id] as const,
+};
