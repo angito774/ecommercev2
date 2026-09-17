@@ -449,8 +449,12 @@ body:has([data-surface='storefront']) :is([data-slot='dialog-title'], [data-slot
 .nx-glass-panel {
   background: var(--nx-glass);
   border-color: var(--nx-glass-border);
+  /* Sin `-webkit-backdrop-filter` manual: Lightning CSS (el compilador de
+     Tailwind 4) lo genera solo a partir de esta declaración, y con las dos
+     escritas a mano se quedaba únicamente con la con prefijo, descartando la
+     estándar del CSS compilado —`backdrop-filter` resolvía a `none` en
+     cualquier elemento con esta clase. */
   backdrop-filter: blur(18px) saturate(1.6);
-  -webkit-backdrop-filter: blur(18px) saturate(1.6);
 }
 
 .nx-grid-bg {

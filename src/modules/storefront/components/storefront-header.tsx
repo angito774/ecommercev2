@@ -7,6 +7,7 @@ import { type ReactNode, useCallback, useEffect, useRef, useState } from 'react'
 
 import { Button } from '@/components/ui/button';
 import { APP_NAME } from '@/lib/constants';
+import { cn } from '@/lib/utils';
 import { selectItemCount, useCartHydrated, useCartStore } from '@/modules/cart/store/cart.store';
 
 import { STOREFRONT_NAV } from '../constants';
@@ -80,7 +81,13 @@ export function StorefrontHeader({ authSlot }: StorefrontHeaderProps) {
   return (
     <header
       data-stuck={stuck}
-      className="sticky top-0 z-50 transition-colors data-[stuck=true]:nx-glass-panel data-[stuck=true]:border-b"
+      // `nx-glass-panel` es una clase escrita a mano en globals.css, no una utilidad
+      // de Tailwind: `data-[stuck=true]:nx-glass-panel` no genera ninguna regla (el
+      // compilador la descarta en silencio) y el header se quedaba con fondo
+      // transparente incluso pegado arriba, dejando ver el contenido a través suyo al
+      // hacer scroll. Se condiciona por JS, como ya hace el resto del componente con
+      // `stuck`.
+      className={cn('sticky top-0 z-50 transition-colors', stuck && 'nx-glass-panel border-b')}
     >
       {/* Fila 1: identidad, búsqueda y acciones de sesión. */}
       <div className="mx-auto flex h-16 w-full max-w-[1240px] items-center gap-3 px-[clamp(1rem,4vw,2rem)]">
