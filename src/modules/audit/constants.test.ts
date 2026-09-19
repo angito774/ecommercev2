@@ -104,3 +104,22 @@ describe('payroll audit catalog (spec 018)', () => {
     expect(entityTypeLabel('payroll_payment')).toBe('Pago de nómina');
   });
 });
+
+describe('inventory document audit catalog (spec 020)', () => {
+  it('labels the action written by the document service', () => {
+    expect(auditActionLabel('inventory_document.created')).toBe(
+      'Documento de inventario registrado',
+    );
+  });
+
+  it('labels its entity type', () => {
+    expect(entityTypeLabel('inventory_document')).toBe('Documento de inventario');
+  });
+
+  it('labels the four fields the document writes to `changes` (D-19)', () => {
+    expect(auditFieldLabel('docNumber')).toBe('Número de documento');
+    expect(auditFieldLabel('transaccionId')).toBe('Tipo de transacción');
+    expect(auditFieldLabel('docDate')).toBe('Fecha del documento');
+    expect(auditFieldLabel('itemCount')).toBe('Líneas');
+  });
+});

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { currentPayrollPeriod, formatIsoDate, formatPeriodLabel } from './payroll-dates';
+import { currentPayrollPeriod, formatPeriodLabel } from './payroll-dates';
 
 describe('currentPayrollPeriod', () => {
   it('returns the month of the given instant as AAAA-MM', () => {
@@ -56,27 +56,5 @@ describe('formatPeriodLabel', () => {
 
   it('drops the Spanish preposition so the cell reads "Marzo 2026"', () => {
     expect(formatPeriodLabel('2026-03')).toBe('Marzo 2026');
-  });
-});
-
-describe('formatIsoDate', () => {
-  it('formats the first day of the month as that very day (AC18, D-12)', () => {
-    expect(formatIsoDate('2026-09-01')).toBe('01 sep 2026');
-  });
-
-  it('formats the first of january as january, never as december 31st', () => {
-    expect(formatIsoDate('2026-01-01')).toBe('01 ene 2026');
-  });
-
-  it('formats the last day of the year', () => {
-    expect(formatIsoDate('2026-12-31')).toBe('31 dic 2026');
-  });
-
-  it('keeps the day as written, with no timezone shift in either direction', () => {
-    expect(formatIsoDate('2026-06-15')).toContain('15');
-  });
-
-  it('is independent of the host clock: the same input always gives the same output', () => {
-    expect(formatIsoDate('2026-09-01')).toBe(formatIsoDate('2026-09-01'));
   });
 });

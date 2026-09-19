@@ -1,6 +1,35 @@
 import { describe, expect, it } from 'vitest';
 
-import { cn, escapeLikePattern, isUniqueViolation, slugify, uniqueViolationTarget } from './utils';
+import {
+  cn,
+  escapeLikePattern,
+  formatDayKey,
+  isUniqueViolation,
+  slugify,
+  uniqueViolationTarget,
+} from './utils';
+
+describe('formatDayKey', () => {
+  it('formats the first day of the month as that very day, with no timezone shift', () => {
+    expect(formatDayKey('2026-09-01')).toBe('01 sep 2026');
+  });
+
+  it('formats the first of january as january, never as december 31st', () => {
+    expect(formatDayKey('2026-01-01')).toBe('01 ene 2026');
+  });
+
+  it('formats the last day of the year', () => {
+    expect(formatDayKey('2026-12-31')).toBe('31 dic 2026');
+  });
+
+  it('keeps the day as written, with no shift in either direction', () => {
+    expect(formatDayKey('2026-06-15')).toBe('15 jun 2026');
+  });
+
+  it('is independent of the host clock: the same input always gives the same output', () => {
+    expect(formatDayKey('2026-09-01')).toBe(formatDayKey('2026-09-01'));
+  });
+});
 
 describe('escapeLikePattern', () => {
   it('returns the input unchanged when it has no LIKE wildcards', () => {

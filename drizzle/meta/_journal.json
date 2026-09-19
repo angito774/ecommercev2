@@ -57,6 +57,13 @@
       "when": 1789661740810,
       "tag": "0007_lovely_dakota_north",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1789785319059,
+      "tag": "0008_bizarre_hellion",
+      "breakpoints": true
     }
   ]
 }

@@ -4,9 +4,10 @@ import type { ColumnDef } from '@tanstack/react-table';
 import { BanknoteX } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
+import { formatDayKey } from '@/lib/utils';
 import { formatPrice } from '@/modules/products/lib/price';
 
-import { formatIsoDate, formatPeriodLabel } from '../lib/payroll-dates';
+import { formatPeriodLabel } from '../lib/payroll-dates';
 import type { PayrollPaymentRow } from '../types/payroll.types';
 
 import { PaymentStatusBadge } from './payment-status-badge';
@@ -54,7 +55,7 @@ export function getPayrollPaymentColumns({
       // Desde la cadena, sin `new Date()`: un pago del día 1 se pintaría como el último
       // del mes anterior en cualquier huso negativo (D-12, AC18).
       cell: ({ row }) => (
-        <span className="whitespace-nowrap tabular-nums">{formatIsoDate(row.original.paidAt)}</span>
+        <span className="whitespace-nowrap tabular-nums">{formatDayKey(row.original.paidAt)}</span>
       ),
     },
     {

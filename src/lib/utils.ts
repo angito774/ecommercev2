@@ -16,6 +16,37 @@ export function slugify(input: string): string {
     .replace(/^-+|-+$/g, '');
 }
 
+const MONTH_NAMES = [
+  'ene',
+  'feb',
+  'mar',
+  'abr',
+  'may',
+  'jun',
+  'jul',
+  'ago',
+  'sep',
+  'oct',
+  'nov',
+  'dic',
+];
+
+/**
+ * '2026-09-01' → '01 sep 2026', partiendo la cadena y **sin** construir ningún `Date`.
+ * `new Date('2026-09-01')` se interpreta como medianoche UTC, así que en Lima (−05:00)
+ * se pintaría como 31 de agosto: un bug silencioso que solo aparece en producción y
+ * solo para los días 1.
+ *
+ * Vive aquí y no en un módulo de dominio porque tiene tres consumidores —nómina,
+ * gastos e inventario— y ese es el umbral que fija CLAUDE.md §6 para extraer
+ * (spec 020, D-17). Se conserva la implementación de nómina, que no toca `Date`, y no
+ * la de gastos, que construía uno a mediodía UTC para pasárselo a `Intl`.
+ */
+export function formatDayKey(dayKey: string): string {
+  const [year, month, day] = dayKey.split('-');
+  return `${day} ${MONTH_NAMES[Number(month) - 1]} ${year}`;
+}
+
 // `%` y `_` son comodines de LIKE, no texto. Sin escaparlos, `?q=%` se traduce en
 // `ilike '%%%'` y devuelve la tabla entera como si fuera un resultado de búsqueda, y
 // `?q=_` casa con cualquier carácter. No es inyección —el valor sigue viajando como

@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-import { isFutureReportingDay } from '../lib/finance-range';
+import { isFutureReportingDay } from '@/lib/reporting';
 
 // Origen único de las categorías de gasto: el enum de Postgres las declara para la
 // columna y esta tupla para TypeScript y para Zod. Las dos listas tienen que decir lo

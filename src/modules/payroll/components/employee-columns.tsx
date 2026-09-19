@@ -5,9 +5,9 @@ import { BanknoteArrowUp, Pencil, UserMinus } from 'lucide-react';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { formatDayKey } from '@/lib/utils';
 import { formatPrice } from '@/modules/products/lib/price';
 
-import { formatIsoDate } from '../lib/payroll-dates';
 import type { EmployeeRow } from '../types/employee.types';
 
 type EmployeeColumnsOptions = {
@@ -64,7 +64,7 @@ export function getEmployeeColumns({
       // Formateado desde la cadena, sin pasar por `new Date()`: con un huso negativo, el
       // día 1 se pintaría como el último del mes anterior (D-12, AC18).
       cell: ({ row }) => (
-        <span className="whitespace-nowrap tabular-nums">{formatIsoDate(row.original.hiredAt)}</span>
+        <span className="whitespace-nowrap tabular-nums">{formatDayKey(row.original.hiredAt)}</span>
       ),
     },
     {

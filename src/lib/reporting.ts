@@ -54,3 +54,16 @@ export function reportingDayStart(dayKey: string): Date {
 export function addReportingDays(dayKey: string, days: number): string {
   return toReportingDayKey(new Date(reportingDayStart(dayKey).getTime() + days * MS_PER_DAY));
 }
+
+// Comparación lexicográfica sobre dos `'YYYY-MM-DD'`: el formato es de ancho fijo, así
+// que el orden de cadena coincide con el cronológico. Se compara contra el día de hoy
+// **en Lima**, no contra el del servidor en UTC: entre las 19:00 y medianoche de Lima,
+// UTC ya va por el día siguiente y un documento fechado hoy se rechazaría por futuro.
+//
+// Vive aquí y no en finanzas —de donde vino (spec 020, D-16)— porque «hoy en la zona
+// con la que el negocio corta sus días» no es una propiedad de finanzas: la necesitan
+// también los gastos y las notas de inventario, y que inventario importara de finanzas
+// acoplaría dos dominios que no se conocen.
+export function isFutureReportingDay(dayKey: string, now: Date): boolean {
+  return dayKey > toReportingDayKey(now);
+}

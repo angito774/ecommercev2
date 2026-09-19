@@ -126,7 +126,7 @@ export function toErrorResponse(error: unknown, options: ErrorResponseOptions): 
   }
 
   if (error instanceof ConflictError) {
-    return NextResponse.json({ message: error.message }, { status: 409 });
+    return NextResponse.json({ message: error.message, ...error.details }, { status: 409 });
   }
 
   if (error instanceof UpstreamError) {

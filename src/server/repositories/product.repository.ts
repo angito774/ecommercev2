@@ -1,4 +1,4 @@
-import { and, asc, count, desc, eq, ilike, inArray, or, sql, type SQL } from 'drizzle-orm';
+import { and, asc, count, desc, eq, gte, ilike, inArray, or, sql, type SQL } from 'drizzle-orm';
 
 import { escapeLikePattern } from '@/lib/utils';
 import type {
@@ -310,6 +310,46 @@ export async function decrementStock(
   }
 
   return results;
+}
+
+export type StockChange = { productId: string; delta: number };
+
+// El `SET` como expresión sobre la columna y no un literal calculado en TypeScript: un
+// `stock: nuevoValor` leído antes obligaría a releer, y entre la lectura y la escritura
+// cabe otra transacción (spec 020, D-7). Exportada para compilarla con `PgDialect` en el
+// test, igual que los constructores de WHERE.
+export function buildStockChangeExpression(delta: number): SQL {
+  return sql`${products.stock} + ${delta}`;
+}
+
+// El guard `stock >= qty` va DENTRO del WHERE y **solo en las salidas**: un ingreso no
+// puede quedarse sin stock, y en una salida leer-comprobar-escribir dejaría una ventana
+// en la que dos salidas simultáneas del último producto pasarían ambas la comprobación.
+// Es el mismo patrón que sostiene la idempotencia del webhook de Stripe (D-7).
+export function buildStockChangeFilter({ productId, delta }: StockChange): SQL {
+  const conditions: SQL[] = [eq(products.id, productId)];
+  if (delta < 0) conditions.push(gte(products.stock, Math.abs(delta)));
+
+  return and(...conditions) as SQL;
+}
+
+// Devuelve el stock resultante, o `null` si el producto no existe o —cuando `delta` es
+// negativo— si ya no queda suficiente. Distinguir los dos casos es cosa del service,
+// que ya leyó los productos dentro de la misma transacción.
+//
+// No comparte camino con `decrementStock()` a propósito: aquel no lleva guard porque el
+// stock ya se cobró en Stripe y el negativo es evidencia de una sobreventa real (D-8).
+export async function applyStockChange(
+  tx: Tx,
+  change: StockChange,
+): Promise<{ stock: number } | null> {
+  const [updated] = await tx
+    .update(products)
+    .set({ stock: buildStockChangeExpression(change.delta) })
+    .where(buildStockChangeFilter(change))
+    .returning({ stock: products.stock });
+
+  return updated ?? null;
 }
 
 export async function findByIdWithCategory(id: string): Promise<ProductWithCategory | null> {

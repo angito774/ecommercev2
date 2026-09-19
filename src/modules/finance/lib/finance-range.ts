@@ -2,8 +2,7 @@ import { addReportingDays, reportingDayStart, toReportingDayKey } from '@/lib/re
 
 // El rango que elige una persona: dos días `'YYYY-MM-DD'`, ambos inclusive, tal y
 // como se leen en el `<input type="date">`. Se declara aquí, donde se produce, y
-// `types/finance.types.ts` lo reexporta para el contrato de la API: así no hay
-// ciclo entre el schema Zod (que consume `isFutureReportingDay`) y los tipos.
+// `types/finance.types.ts` lo reexporta para el contrato de la API.
 export type FinanceRange = { from: string; to: string };
 
 // El mismo rango ya traducido a los dos tipos de columna que hay que consultar:
@@ -60,12 +59,4 @@ export function resolveFinanceRange(
     from: reportingDayStart(fromDay),
     to: reportingDayStart(addReportingDays(toDay, 1)),
   };
-}
-
-// Comparación lexicográfica sobre dos `'YYYY-MM-DD'`: el formato es de ancho fijo,
-// así que el orden de cadena coincide con el cronológico. Se compara contra el día de
-// hoy **en Lima**, no contra el del servidor en UTC: entre las 19:00 y medianoche de
-// Lima, UTC ya va por el día siguiente y un gasto de hoy se rechazaría por futuro.
-export function isFutureReportingDay(dayKey: string, now: Date): boolean {
-  return dayKey > toReportingDayKey(now);
 }

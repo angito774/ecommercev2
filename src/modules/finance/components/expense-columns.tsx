@@ -5,6 +5,7 @@ import { Pencil, Trash2 } from 'lucide-react';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { formatDayKey } from '@/lib/utils';
 import { formatPrice } from '@/modules/products/lib/price';
 
 import { EXPENSE_CATEGORY_LABELS } from '../constants';
@@ -18,20 +19,6 @@ type ExpenseColumnsOptions = {
   onEdit: (expense: ExpenseRow) => void;
   onDelete: (expense: ExpenseRow) => void;
 };
-
-// `incurred_on` llega como `'YYYY-MM-DD'` y se formatea con los getters UTC sobre el
-// mediodía: construir un `Date` a partir del día suelto lo interpreta en UTC y, en un
-// huso negativo, `toLocaleDateString` lo pintaría un día antes.
-const dayFormatter = new Intl.DateTimeFormat('es-PE', {
-  day: '2-digit',
-  month: 'short',
-  year: 'numeric',
-  timeZone: 'UTC',
-});
-
-function formatDay(dayKey: string): string {
-  return dayFormatter.format(new Date(`${dayKey}T00:00:00.000Z`));
-}
 
 // Sin cabeceras ordenables: el orden es fijo (`incurred_on desc, created_at desc,
 // id desc`) porque un registro de gastos se lee por fecha (AC19).
@@ -48,7 +35,9 @@ export function getExpenseColumns({
       enableSorting: false,
       size: 130,
       cell: ({ row }) => (
-        <span className="whitespace-nowrap tabular-nums">{formatDay(row.original.incurredOn)}</span>
+        <span className="whitespace-nowrap tabular-nums">
+          {formatDayKey(row.original.incurredOn)}
+        </span>
       ),
     },
     {

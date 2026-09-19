@@ -1,5 +1,7 @@
 import axios, { AxiosError } from 'axios';
 
+import { ApiError } from '@/lib/errors';
+
 export const api = axios.create({
   baseURL: '/api',
   headers: { 'Content-Type': 'application/json' },
@@ -28,6 +30,12 @@ api.interceptors.response.use(
 
     const message =
       error.response?.data?.message ?? error.response?.data?.error ?? error.message;
-    return Promise.reject(new Error(message));
+
+    // `ApiError` y no `Error`: el mensaje sigue siendo lo que lee el 99% de las vistas,
+    // pero el status y el cuerpo quedan disponibles para los pocos casos que necesitan
+    // el dato estructurado (el 409 de stock trae el `productId` de la línea culpable).
+    return Promise.reject(
+      new ApiError(message, { status: error.response?.status, data: error.response?.data }),
+    );
   },
 );
