@@ -125,6 +125,17 @@ export const PERMISSIONS = [
     action: 'read',
     description: 'Ver el control de inventario y las alertas de stock.',
   },
+  // Lo reciben exactamente los tres roles que ya tienen `products.update`, es decir,
+  // los que hoy ya pueden reescribir un stock a mano desde el formulario de producto
+  // (spec 020, §5.5): el permiso no concede nada que esos roles no pudieran hacer ya
+  // peor. `audit` queda fuera —ve los documentos con `inventory.read`, no registra
+  // ninguno—.
+  {
+    code: 'inventory.move',
+    resource: 'inventory',
+    action: 'move',
+    description: 'Registrar notas de ingreso y de salida de inventario.',
+  },
   // Recurso propio y no `expenses.read`: lo que concede es el resultado del negocio
   // —ingresos menos gastos— y el listado de gastos es el detalle que hay detrás de
   // esa cifra, no un recurso que se consulte por separado (spec 017, D-2).
@@ -244,6 +255,7 @@ export const ROLE_PERMISSION_MATRIX: Record<RoleSlug, readonly PermissionCode[]>
     'audit_logs.read',
     'dashboard.read',
     'inventory.read',
+    'inventory.move',
     'finance.read',
     'expenses.create',
     'expenses.update',
@@ -270,6 +282,7 @@ export const ROLE_PERMISSION_MATRIX: Record<RoleSlug, readonly PermissionCode[]>
     'audit_logs.read',
     'dashboard.read',
     'inventory.read',
+    'inventory.move',
     'finance.read',
     'expenses.create',
     'expenses.update',
@@ -298,6 +311,9 @@ export const ROLE_PERMISSION_MATRIX: Record<RoleSlug, readonly PermissionCode[]>
     'roles.read',
     'dashboard.read',
     'inventory.read',
+    // Mueve stock por documento: `manager` ya podía reescribirlo desde
+    // `products.update`, así que esto solo le da una forma trazable de hacerlo.
+    'inventory.move',
   ],
   employee: [],
   customer: [],

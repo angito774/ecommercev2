@@ -2,10 +2,15 @@ import { describe, expect, it } from 'vitest';
 
 import {
   addReportingDays,
+  isFutureReportingDay,
   reportingDayStart,
   startOfReportingDay,
   toReportingDayKey,
 } from './reporting';
+
+// Mediodía de Lima: lejos de cualquier frontera de día, para que los casos que no
+// prueban el huso no dependan de en qué lado del corte cae el instante.
+const NOON_IN_LIMA = new Date('2026-09-16T17:00:00.000Z');
 
 describe('toReportingDayKey', () => {
   it('counts a sale made at 23:00 in Lima as that day, not the next', () => {
@@ -97,5 +102,28 @@ describe('addReportingDays', () => {
 
   it('returns the same day for zero', () => {
     expect(addReportingDays('2026-09-16', 0)).toBe('2026-09-16');
+  });
+});
+
+describe('isFutureReportingDay', () => {
+  it('rejects tomorrow (spec 017 AC13, spec 020 AC9)', () => {
+    expect(isFutureReportingDay('2026-09-17', NOON_IN_LIMA)).toBe(true);
+  });
+
+  it('accepts today', () => {
+    expect(isFutureReportingDay('2026-09-16', NOON_IN_LIMA)).toBe(false);
+  });
+
+  it('accepts yesterday', () => {
+    expect(isFutureReportingDay('2026-09-15', NOON_IN_LIMA)).toBe(false);
+  });
+
+  it('accepts today in Lima even when UTC has already rolled to the next day', () => {
+    // 2026-09-16 21:00 en Lima es 2026-09-17T02:00Z: en UTC ya es el 17.
+    expect(isFutureReportingDay('2026-09-16', new Date('2026-09-17T02:00:00.000Z'))).toBe(false);
+  });
+
+  it('compares across years without special-casing', () => {
+    expect(isFutureReportingDay('2027-01-01', new Date('2026-12-31T17:00:00.000Z'))).toBe(true);
   });
 });

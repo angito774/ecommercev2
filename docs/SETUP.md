@@ -413,6 +413,59 @@ octubre no puede reescribir lo que se pagó en septiembre. **Nada de este módul
 borra**: el empleado se da de baja (`is_active = false`, con FK `restrict` desde los
 pagos) y el pago se anula (`voided_at`), conservando su importe intacto.
 
+### 5.5 Movimientos de inventario
+
+| Tabla | Propósito | Relaciones |
+|---|---|---|
+| `transacciones` | catálogo semilla de 6 tipos de movimiento: `idtrans`, `nomtrans`, `tipotrans` (`ingreso` \| `salida`) | 1—N `inventory_documents` |
+| `inventory_documents` | cabecera de la nota: correlativo, tipo, fecha de documento, documento de referencia y quién la registró | N—1 `transacciones`, N—1 `users`, 1—N `stock_movements` |
+| `stock_movements` | detalle append-only: producto, unidades y stock con el que quedó | N—1 `inventory_documents`, N—1 `products` |
+
+Construido a 2026-09-18: las tres tablas y el enum `tipo_transaccion` (spec 020,
+migración `0008`). Es el libro mayor de movimientos que el spec 016 §11 dejó anunciado.
+
+**`transacciones` es la única tabla del esquema con nombres físicos en castellano, y es
+deliberado** (spec 020, D-2): el requerimiento nombra la tabla y sus tres campos de forma
+literal, así que las columnas de Postgres son exactamente `idtrans`, `nomtrans` y
+`tipotrans`, mientras que las propiedades de Drizzle son las idiomáticas del resto del
+repo (`id`, `name`, `direction`). El mapeo columna↔propiedad es justo para lo que existe
+el primer argumento de `varchar()`, y la excepción queda confinada a
+`src/server/db/schema/transaccion.ts`. `direction` y no `type` porque los dos valores
+describen un sentido y `type` competiría con la palabra reservada en cada `type X = …`
+del módulo.
+
+Se comporta exactamente como `permissions`: catálogo en código
+(`src/lib/inventory-transactions.ts`), filas en la base, `db:seed` idempotente con
+`onConflictDoUpdate`, y `isTransactionTypeCode()` descartando lo que no está en el código.
+Su PK es de **texto** y no `uuid` (D-3): son 6 filas inmutables, el código es estable, el
+seed es idempotente sobre la propia PK sin una cuarta columna que el requerimiento no
+lista, y el tipo de TypeScript es la unión literal de los 6 códigos en vez de `string`.
+Por eso **no hay endpoint para el catálogo** (D-4): el cliente lo conoce por ese módulo
+puro y valida con `z.enum`, de modo que un tipo desconocido es `400` en el borde y no un
+`500` por violación de clave foránea.
+
+`doc_date` es `date` con `mode: 'string'` y no `timestamptz`, igual que
+`expenses.incurred_on` y `payroll_payments.paid_at`: un documento se emite un día, no en
+un instante. `reference` es **nullable** a propósito (D-8): no toda salida tiene papel
+detrás. El correlativo `doc_number` es una **identidad de Postgres** y no un `MAX()+1` en
+la aplicación (D-6) —la secuencia es lo único que aguanta dos altas simultáneas sin
+carrera—, es único y compartido entre ingresos y salidas, y **deja huecos** cuando una
+transacción revierte: el documento que falló no existió.
+
+`stock_movements.quantity` es **siempre positiva** y el signo lo pone `tipotrans` del
+documento (D-5). Cada línea guarda además `stock_after`, tal y como lo devolvió el
+`RETURNING` del `UPDATE` (D-11): ya venía gratis, la línea se lee sola («salieron 5,
+quedaron 3») y cualquier divergencia con `products.stock` queda a la vista. Lleva el
+**segundo `CHECK` del esquema**, `quantity > 0`, y un índice único sobre
+`(document_id, product_id)`: sumar dos líneas del mismo SKU es un error de captura, no un
+caso de negocio. Las FK del detalle son `restrict` y no `cascade` como `order_items`
+(D-10), porque la propiedad que hay que dejar escrita aquí es la contraria: un documento
+con movimientos **no se puede borrar**.
+
+**Las dos tablas son append-only**, como `audit_logs`: sin `updated_at`, sin `voided_at`,
+sin `is_active` y sin ningún camino de `UPDATE` ni de `DELETE` desde la aplicación (D-9).
+Un libro de inventario se corrige asentando el documento contrario, no tachando.
+
 ---
 
 ## 6. Módulos funcionales
@@ -473,7 +526,8 @@ los tiene. Se editan en el Dashboard, en la propia clave.
 ### Administración
 Dashboard con métricas (Recharts: ventas, pedidos, top productos, stock bajo) ·
 CRUD de productos y categorías (TanStack Table: paginación, orden, filtros) ·
-gestión de pedidos y cambio de estado · control de inventario · resumen financiero
+gestión de pedidos y cambio de estado · control de inventario con notas de ingreso y
+salida · resumen financiero
 con registro de gastos operativos · personal y nómina · listado de clientes.
 
 Construido a 2026-09-02: categorías (spec 001), accesos y bitácora (spec 002) y
@@ -692,6 +746,75 @@ adelantos, préstamos, vacaciones y evaluaciones. La integración con el resumen
 financiero (spec 017) —los pagos de nómina como línea de gasto— queda documentada como
 deuda: el enganche es una lectura agregada desde el repositorio de nómina, expuesta por
 una función de servidor y casteando a `::bigint`, nunca un import de tabla cruzado.
+
+Construido a 2026-09-18: **notas de ingreso y de salida de inventario** (spec 020), con
+migración `0008` (§5.5) y **un** permiso nuevo —el catálogo pasa de 25 a 26 códigos—:
+`inventory.move`, para `super_admin`, `admin` y `manager`. La lectura de documentos
+reutiliza `inventory.read`, así que `audit` ve los movimientos y no registra ninguno. Los
+tres roles que reciben `inventory.move` son exactamente los que ya tenían
+`products.update`, es decir, los que ya podían reescribir un stock a mano: el permiso no
+concede nada que esos roles no pudieran hacer ya peor, solo una forma trazable de hacerlo.
+
+Esto es lo que el spec 016 dejó fuera a propósito. Hasta aquí la única forma de corregir
+un stock era teclear el entero final en `ProductFormDialog`, que deja un `product.updated`
+en la bitácora pero no responde **por qué** un producto pasó de 40 a 3, con qué documento
+y contra qué referencia.
+
+Tres endpoints y ninguno de escritura más: `GET`/`POST
+/api/admin/inventory/documents` y `GET /api/admin/inventory/documents/[id]`. **No hay
+`PATCH` ni `DELETE`**: los documentos no se editan, no se borran y no se anulan, y la
+corrección es una nota en sentido contrario (spec 020, D-9). El listado pagina por offset
+(20 por página, orden `doc_date desc, doc_number desc`) y filtra por dirección —centinela
+`all`—, por rango de días con ambos extremos inclusivos y por `reference` con
+`escapeLikePattern`. Los agregados por documento (`itemCount`, `totalQuantity`) salen de
+una **segunda consulta agrupada** sobre los ids de la página y no de un `LEFT JOIN …
+GROUP BY` sobre la principal (D-14), que es la clase de bug del spec 015.
+
+El `POST` es la única mutación y vive en `src/server/services/inventory-document.service.ts`
+y no en el handler (D-12), porque cruza tres repositorios —`product`,
+`inventory-document` y `audit-log`— y tiene reglas propias. Corre en **una sola
+`db.transaction`** con `logAudit()` dentro (`inventory_document.created`,
+`severity: 'info'`): el efecto en stock, la cabecera, sus líneas y la bitácora son cuatro
+escrituras de la misma transacción, y si una revierte revierten todas. En la bitácora se
+registra el documento —número, tipo, fecha y nº de líneas—, **nunca las cantidades por
+producto** (D-19): el detalle vive en `stock_movements`, que es permanente, mientras que
+un log `info` se purga a los 180 días.
+
+El efecto en stock es un `UPDATE … SET stock = stock + $delta WHERE id = $id AND stock >=
+$qty`, con el guard **solo en las salidas** y **dentro del `WHERE`** (D-7): leer, comprobar
+en TypeScript y luego escribir dejaría una ventana en la que dos salidas simultáneas del
+último producto pasarían las dos comprobaciones. Una salida sin stock suficiente es `409`
+nombrando el producto, su stock y lo pedido, y **bloquea**: el stock nunca queda negativo
+por esta vía (D-8). Es lo contrario de `decrementStock` en el webhook de Stripe, y a
+propósito: allí el cobro ya ocurrió y el negativo es evidencia de una sobreventa real;
+aquí hay una persona tecleando y una salida mayor que el stock es casi siempre un dígito
+de más. Las líneas se aplican **ordenadas por `productId`** (D-18) para que dos documentos
+simultáneos tomen los bloqueos en la misma secuencia y no se maten por deadlock.
+
+**El webhook de Stripe sigue sin escribir en `stock_movements`** (D-13), y es una deuda
+declarada, no un olvido: tocar el camino del cobro —idempotente, probado y con dinero real
+detrás— para estrenar tres tablas es cambiar lo que funciona por lo que aún no tiene
+rodaje. La consecuencia es que `sum(stock_movements)` **no** reconstruye el stock actual,
+solo explica los movimientos manuales, y nadie debe programar como si lo hiciera;
+`stock_after` hace visible la divergencia en la propia línea. El enganche natural es
+`order-fulfillment.service.ts`, que ya corre en transacción y ya llama a `decrementStock`.
+
+`/admin/inventory` pasa a tener **dos pestañas** —«Alertas de stock», intacta, y
+«Movimientos»— y ninguna ruta ni entrada de navegación nueva (D-20): son dos vistas del
+mismo dominio y del mismo permiso de lectura, igual que Personal y Pagos en nómina. La
+pestaña activa es estado local, sin Zustand y sin parámetro en la URL. El documento se
+registra desde un modal multi-línea con un buscador de producto que usa `Command` **en
+línea**, sin `Popover` (D-15): un desplegable con el catálogo entero es inutilizable y no
+hace falta ningún componente de shadcn nuevo. Los botones «Nota de ingreso» y «Nota de
+salida» filtran los tipos ofrecidos por dirección, y la dirección **no viaja al servidor**:
+la deriva del catálogo.
+
+Fuera de alcance por decisión: edición, borrado y anulación de documentos; ajustes sin
+documento («merma», «conteo») más allá de los 6 tipos del requerimiento; vínculo de la
+salida por venta con su pedido; correlativo por serie; kardex por producto como pantalla;
+valorización del inventario (`products` no tiene columna de costo, así que este módulo no
+alimenta el resumen financiero del spec 017); almacenes múltiples; filtro por tipo
+concreto, búsqueda por número de documento, exportación a CSV e impresión de la nota.
 
 Gestión de accesos: CRUD de roles, matriz rol × permiso, asignación de roles a
 usuarios · bitácora de auditoría filtrable por actor, entidad, acción y fecha.

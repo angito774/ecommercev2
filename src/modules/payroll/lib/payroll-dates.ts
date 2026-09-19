@@ -35,28 +35,6 @@ export function formatPeriodLabel(period: string): string {
   return clean.charAt(0).toUpperCase() + clean.slice(1);
 }
 
-const MONTH_NAMES = [
-  'ene',
-  'feb',
-  'mar',
-  'abr',
-  'may',
-  'jun',
-  'jul',
-  'ago',
-  'sep',
-  'oct',
-  'nov',
-  'dic',
-];
-
-/**
- * '2026-09-01' → '01 sep 2026', partiendo la cadena y **sin** construir un `Date`
- * (D-12, AC18). `new Date('2026-09-01')` se interpreta como medianoche UTC, así que en
- * Lima (−05:00) se pintaría como 31 de agosto: un bug silencioso que solo aparece en
- * producción y solo para los pagos del día 1.
- */
-export function formatIsoDate(value: string): string {
-  const [year, month, day] = value.split('-');
-  return `${day} ${MONTH_NAMES[Number(month) - 1]} ${year}`;
-}
+// `formatIsoDate()` vivía aquí y se mudó a `formatDayKey()` en `src/lib/utils.ts` al
+// aparecer su tercer consumidor (spec 020, D-17). El módulo la sigue usando desde allí;
+// lo que queda en este archivo es lo que solo la nómina necesita: el periodo mensual.

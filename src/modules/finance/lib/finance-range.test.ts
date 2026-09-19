@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { currentMonthRange, isFutureReportingDay, resolveFinanceRange } from './finance-range';
+import { currentMonthRange, resolveFinanceRange } from './finance-range';
 
 const MS_PER_HOUR = 60 * 60 * 1000;
 
@@ -123,28 +123,5 @@ describe('resolveFinanceRange', () => {
     const late = resolveFinanceRange({}, new Date('2026-09-17T04:59:59.999Z'));
 
     expect(early).toEqual(late);
-  });
-});
-
-describe('isFutureReportingDay', () => {
-  it('rejects tomorrow (AC13)', () => {
-    expect(isFutureReportingDay('2026-09-17', NOON_IN_LIMA)).toBe(true);
-  });
-
-  it('accepts today', () => {
-    expect(isFutureReportingDay('2026-09-16', NOON_IN_LIMA)).toBe(false);
-  });
-
-  it('accepts yesterday', () => {
-    expect(isFutureReportingDay('2026-09-15', NOON_IN_LIMA)).toBe(false);
-  });
-
-  it('accepts today in Lima even when UTC has already rolled to the next day', () => {
-    // 2026-09-16 21:00 en Lima es 2026-09-17T02:00Z: en UTC ya es el 17.
-    expect(isFutureReportingDay('2026-09-16', new Date('2026-09-17T02:00:00.000Z'))).toBe(false);
-  });
-
-  it('compares across years without special-casing', () => {
-    expect(isFutureReportingDay('2027-01-01', new Date('2026-12-31T17:00:00.000Z'))).toBe(true);
   });
 });

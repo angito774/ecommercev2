@@ -45,6 +45,14 @@ export const AUDIT_ACTIONS = [
     label: 'Pago de nómina anulado',
     entityType: 'payroll_payment',
   },
+  // La única del módulo de movimientos de inventario (spec 020). El detalle de lo que
+  // se movió vive en `stock_movements`, que es permanente; el log solo dice qué
+  // documento se registró (spec 020, D-19).
+  {
+    code: 'inventory_document.created',
+    label: 'Documento de inventario registrado',
+    entityType: 'inventory_document',
+  },
 ] as const;
 
 const ACTION_LABELS = new Map<string, string>(
@@ -65,6 +73,7 @@ const ENTITY_TYPE_LABELS: Record<string, string> = {
   // deliberadamente independientes (spec 018, D-1).
   employee: 'Empleado',
   payroll_payment: 'Pago de nómina',
+  inventory_document: 'Documento de inventario',
 };
 
 export function entityTypeLabel(entityType: string): string {
@@ -94,6 +103,7 @@ export const AUDIT_ENTITY_OPTIONS = [
   { value: 'order', label: 'Pedidos' },
   { value: 'employee', label: 'Personal' },
   { value: 'payroll_payment', label: 'Pagos de nómina' },
+  { value: 'inventory_document', label: 'Documentos de inventario' },
 ] as const;
 
 export const AUDIT_ACTION_OPTIONS = [
@@ -127,6 +137,12 @@ const FIELD_LABELS: Record<string, string> = {
   // La bitácora dice que el salario cambió, no de cuánto a cuánto: la cifra vive en la
   // tabla del dominio, protegida por `payroll.read` (spec 018, D-8).
   salaryChanged: 'Salario modificado',
+  // Los cuatro campos del `after` de `inventory_document.created` (spec 020, D-19).
+  // `itemCount` y no las cantidades por producto: ese detalle es de `stock_movements`.
+  docNumber: 'Número de documento',
+  transaccionId: 'Tipo de transacción',
+  docDate: 'Fecha del documento',
+  itemCount: 'Líneas',
 };
 
 export function auditFieldLabel(field: string): string {

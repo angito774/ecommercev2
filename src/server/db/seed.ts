@@ -1,6 +1,7 @@
 import { config } from 'dotenv';
 import { desc, eq, sql } from 'drizzle-orm';
 
+import { TRANSACTION_TYPES } from '../../lib/inventory-transactions';
 import { PERMISSIONS, ROLE_DEFINITIONS, ROLE_PERMISSION_MATRIX } from '../../lib/permissions';
 
 config({ path: '.env.local' });
@@ -256,6 +257,27 @@ async function seedPermissions({ db, schema }: SeedDeps): Promise<void> {
   console.log(`Permisos: ${upserted.length} sincronizados sobre ${PERMISSIONS.length}.`);
 }
 
+// Mismo reparto que `seedPermissions`: la fuente de verdad son las 6 entradas de
+// `TRANSACTION_TYPES`, la tabla existe para la integridad referencial de
+// `inventory_documents.transaccion_id` y para que la base sea legible sin el repo
+// (spec 020, D-1). `onConflictDoUpdate` sobre la propia PK de texto (`idtrans`) hace
+// el seed idempotente sin una columna `code` adicional (D-3, AC18): re-ejecutarlo
+// refresca el nombre y la dirección sin borrar ninguna fila ni romper las FKs.
+async function seedTransacciones({ db, schema }: SeedDeps): Promise<void> {
+  const upserted = await db
+    .insert(schema.transacciones)
+    .values(TRANSACTION_TYPES.map((type) => ({ ...type })))
+    .onConflictDoUpdate({
+      target: schema.transacciones.id,
+      set: { name: sql`excluded.nomtrans`, direction: sql`excluded.tipotrans` },
+    })
+    .returning({ id: schema.transacciones.id });
+
+  console.log(
+    `Tipos de transacción: ${upserted.length} sincronizados sobre ${TRANSACTION_TYPES.length}.`,
+  );
+}
+
 async function seedRoles({ db, schema }: SeedDeps): Promise<void> {
   const upserted = await db
     .insert(schema.roles)
@@ -406,6 +428,7 @@ async function main() {
   await seedPermissions(deps);
   await seedRoles(deps);
   await seedRolePermissions(deps);
+  await seedTransacciones(deps);
   await bootstrapSuperAdmin(deps);
 }
 
