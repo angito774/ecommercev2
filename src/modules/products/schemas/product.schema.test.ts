@@ -5,6 +5,7 @@ import {
   COMPARE_AT_PRICE_MESSAGE,
   createProductSchema,
   isValidComparePrice,
+  POSITIVE_PRICE_MESSAGE,
   productFormSchema,
   productIdSchema,
   productQuerySchema,
@@ -260,13 +261,21 @@ describe('createProductSchema', () => {
       ).toThrow();
     });
 
-    it('accepts zero', () => {
-      const result = createProductSchema.parse({
-        ...validProductPayload,
-        priceCents: 0,
-        compareAtPriceCents: 1,
-      });
-      expect(result.priceCents).toBe(0);
+    // Un producto gratis produciría una línea de comprobante gravada al 18 % con valor de
+    // venta 0, que ante SUNAT es otra cosa —una transferencia a título gratuito— con su
+    // propio código de operación. El catálogo no lo admite (spec 022, D-22).
+    it('rejects zero', () => {
+      expect(() =>
+        createProductSchema.parse({
+          ...validProductPayload,
+          priceCents: 0,
+          compareAtPriceCents: 1,
+        }),
+      ).toThrow(POSITIVE_PRICE_MESSAGE);
+    });
+
+    it('rejects zero on the PATCH schema too', () => {
+      expect(() => updateProductSchema.parse({ priceCents: 0 })).toThrow(POSITIVE_PRICE_MESSAGE);
     });
 
     it('accepts the maximum admitted value', () => {
@@ -605,6 +614,14 @@ describe('productFormSchema', () => {
     it('accepts a whole amount without decimals', () => {
       const result = productFormSchema.parse({ ...validFormPayload, price: '1300' });
       expect(result.price).toBe('1300');
+    });
+
+    // El mismo invariante que la API, para que el error salga junto al campo en vez de
+    // llegar como un 400 genérico del servidor (spec 022, D-22).
+    it.each(['0', '0.00'])('rejects "%s": the catalog sells nothing for free', (price) => {
+      expect(() =>
+        productFormSchema.parse({ ...validFormPayload, price, compareAtPrice: null }),
+      ).toThrow(POSITIVE_PRICE_MESSAGE);
     });
   });
 

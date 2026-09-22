@@ -1,16 +1,20 @@
 'use client';
 
+import { zodResolver } from '@hookform/resolvers/zod';
 import { Loader2, Lock, ShoppingBag } from 'lucide-react';
 import Link from 'next/link';
+import { useForm, useWatch } from 'react-hook-form';
 
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useCartHydrated, useCartStore } from '@/modules/cart/store/cart.store';
+import { BuyerDocumentFields } from '@/modules/invoicing/components/buyer-document-fields';
 import { formatPrice } from '@/modules/products/lib/price';
 import { ProductMedia } from '@/modules/storefront/components/product-media';
 
 import { useCreateCheckout } from '../hooks/use-create-checkout';
 import { calculateOrderTotals } from '../lib/totals';
+import { buyerFormSchema, toBuyerPayload } from '../schemas/checkout.schema';
 
 // El carrito vive en `localStorage`: hasta que `persist` rehidrata, `lines` está
 // vacío y pintar el estado vacío ahí acusaría de carrito vacío a quien sí tiene uno.
@@ -48,21 +52,38 @@ export function CheckoutSummary() {
   const lines = useCartStore((state) => state.lines);
   const { mutate, isPending } = useCreateCheckout();
 
+  // El formulario se declara antes de los early returns: los hooks no pueden ir detrás de
+  // un `return` condicional. `defaultValues` arranca en boleta porque es el caso común y
+  // porque elegirlo no pide ningún campo extra.
+  const { control, formState, handleSubmit, register } = useForm({
+    resolver: zodResolver(buyerFormSchema),
+    defaultValues: { documentType: 'dni' as const, documentNumber: '', legalName: '' },
+  });
+
+  // `useWatch` y no `watch()`: suscribe solo a este campo en vez de re-renderizar el
+  // resumen entero en cada pulsación del documento, y es la API que el lint de React Hook
+  // Form admite —`watch()` no se puede memoizar con seguridad—.
+  const documentType = useWatch({ control, name: 'documentType' });
+
+  // El precio de estas líneas es la instantánea del carrito y puede haber envejecido. Solo
+  // se pinta: el importe que se cobra lo relee el servidor de `products` y el request ni
+  // siquiera transporta un precio (spec 007, AC3).
+  const startPayment = handleSubmit((values) => {
+    mutate({
+      lines: lines.map((line) => ({ productId: line.productId, quantity: line.quantity })),
+      // `toBuyerPayload` mapea `legalName: ''` a `undefined` en un solo sitio: `''` es
+      // exactamente lo que el `CHECK orders_buyer_legal_name_requires_ruc` no admite en una
+      // boleta (spec 022, §6.1).
+      buyer: toBuyerPayload(values),
+    });
+  });
+
   if (!hydrated) return <SummarySkeleton />;
   if (lines.length === 0) return <EmptyCart />;
 
   // Los mismos helpers que usa el servidor para calcular lo que cobra Stripe: si el
   // resumen y el importe real divergieran, sería porque hay dos aritméticas (D-8).
   const { subtotalCents, shippingCents, amountTotalCents } = calculateOrderTotals(lines);
-
-  // El precio de estas líneas es la instantánea del carrito y puede haber
-  // envejecido. Solo se pinta: el importe que se cobra lo relee el servidor de
-  // `products` y el request ni siquiera transporta un precio (AC3).
-  const startPayment = () => {
-    mutate({
-      lines: lines.map((line) => ({ productId: line.productId, quantity: line.quantity })),
-    });
-  };
 
   return (
     <div className="grid items-start gap-[clamp(1.5rem,3vw,2.5rem)] lg:grid-cols-[minmax(0,1fr)_minmax(0,380px)]">
@@ -98,8 +119,25 @@ export function CheckoutSummary() {
         ))}
       </ul>
 
-      <div className="border-border bg-card rounded-[22px] border p-[clamp(1.25rem,3vw,1.75rem)] lg:sticky lg:top-[calc(var(--nx-header-h)+1rem)]">
+      {/* `<form>` y no un `onClick` suelto: así el Enter dentro del documento envía, la
+          validación de React Hook Form corre antes de la mutación y el navegador marca los
+          campos inválidos sin que haya que replicar el foco a mano. */}
+      <form
+        noValidate
+        onSubmit={startPayment}
+        className="border-border bg-card rounded-[22px] border p-[clamp(1.25rem,3vw,1.75rem)] lg:sticky lg:top-[calc(var(--nx-header-h)+1rem)]"
+      >
         <h2 className="text-[17px] font-semibold tracking-[-0.025em]">Resumen del pedido</h2>
+
+        <div className="mt-5">
+          <BuyerDocumentFields
+            control={control}
+            register={register}
+            errors={formState.errors}
+            documentType={documentType}
+            disabled={isPending}
+          />
+        </div>
 
         <dl className="text-muted-foreground mt-5 space-y-2.5 text-sm">
           <div className="flex items-center justify-between gap-3">
@@ -118,12 +156,7 @@ export function CheckoutSummary() {
           </div>
         </dl>
 
-        <Button
-          type="button"
-          onClick={startPayment}
-          disabled={isPending}
-          className="mt-6 h-12 w-full rounded-full"
-        >
+        <Button type="submit" disabled={isPending} className="mt-6 h-12 w-full rounded-full">
           {isPending ? (
             <>
               <Loader2 className="size-4 animate-spin" aria-hidden />
@@ -165,7 +198,7 @@ export function CheckoutSummary() {
             Seguir comprando
           </Link>
         </div>
-      </div>
+      </form>
     </div>
   );
 }

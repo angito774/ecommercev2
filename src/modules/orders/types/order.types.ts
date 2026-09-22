@@ -5,6 +5,8 @@ import type { InferSelectModel } from 'drizzle-orm';
 import type { orderItems } from '@/server/db/schema/order-item';
 import type { orders, orderStatus } from '@/server/db/schema/order';
 
+import type { ElectronicDocumentRow } from '@/modules/invoicing/types/electronic-document.types';
+
 import type { ShippingAddress } from '../schemas/admin-order.schema';
 
 export type Order = InferSelectModel<typeof orders>;
@@ -43,6 +45,15 @@ export type OrderHistoryEntry = Omit<OrderSummary, 'createdAt' | 'items'> & {
   items: OrderLineDisplay[];
   /** `status === 'paid'` y con payment intent. Evita publicar el id de Stripe (D-4). */
   receiptAvailable: boolean;
+  /**
+   * Comprobantes SUNAT del pedido, ordenados por `created_at` (spec 022). Array vacío
+   * —nunca `undefined`— para que la vista no tenga que distinguir «no tiene» de «no vino»:
+   * un pedido sin pagar y uno anterior a la migración `0010` se pintan igual.
+   *
+   * Misma forma que la del panel (D-12): no hay ningún campo del comprobante que el
+   * administrador pueda ver y el comprador no, porque es su propio comprobante.
+   */
+  documents: ElectronicDocumentRow[];
 };
 
 export type OrderHistoryResponse = {
@@ -94,13 +105,23 @@ export type AdminOrderDetail = Omit<AdminOrderRow, 'itemCount'> & {
   shippingAddress: ShippingAddress | null;
   stripeCheckoutSessionId: string | null;
   stripePaymentIntentId: string | null;
+  /**
+   * Comprobantes SUNAT del pedido, ordenados por `created_at` (spec 022, AC21). **Ni
+   * `buyerDocumentNumber` ni `buyerLegalName` entran aquí**: son PII del comprador y no
+   * salen por ninguna API de este spec (AC22).
+   */
+  documents: ElectronicDocumentRow[];
 };
 
 export type AdminOrderDetailResponse = {
   data: AdminOrderDetail;
   // El sheet tiene su propia consulta: si dependiera del `meta` del listado
   // quedaría acoplado al orden de carga de otra query (D-11).
-  meta: { canUpdateStatus: boolean };
+  meta: {
+    canUpdateStatus: boolean;
+    /** Resuelto en servidor: la UI solo oculta controles, no decide permisos (AC20). */
+    canIssueInvoice: boolean;
+  };
 };
 
 export type OrderStatusChangeResult = Pick<Order, 'id' | 'status'> & { updatedAt: string };

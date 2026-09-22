@@ -1,6 +1,7 @@
 import { config } from 'dotenv';
 import { desc, eq, sql } from 'drizzle-orm';
 
+import { DOCUMENT_SERIES_KEYS, type DocumentSeriesKey } from '../../lib/electronic-documents';
 import { TRANSACTION_TYPES } from '../../lib/inventory-transactions';
 import { PERMISSIONS, ROLE_DEFINITIONS, ROLE_PERMISSION_MATRIX } from '../../lib/permissions';
 
@@ -278,6 +279,84 @@ async function seedTransacciones({ db, schema }: SeedDeps): Promise<void> {
   );
 }
 
+// Las seis series son configuración del emisor, no del código: el RUC de otra empresa
+// tiene otras series dadas de alta en Nubefact. El mapa clave → variable vive aquí y no
+// en `invoicing-config.ts` porque **solo el seed las lee**: en runtime la serie vigente
+// sale de `document_series`, que es la fila que también lleva el correlativo (spec 022,
+// §5.5).
+const SERIES_ENV_VAR: Record<DocumentSeriesKey, string> = {
+  boleta: 'NUBEFACT_SERIES_BOLETA',
+  factura: 'NUBEFACT_SERIES_FACTURA',
+  nota_credito_boleta: 'NUBEFACT_SERIES_NOTA_CREDITO_BOLETA',
+  nota_credito_factura: 'NUBEFACT_SERIES_NOTA_CREDITO_FACTURA',
+  nota_debito_boleta: 'NUBEFACT_SERIES_NOTA_DEBITO_BOLETA',
+  nota_debito_factura: 'NUBEFACT_SERIES_NOTA_DEBITO_FACTURA',
+};
+
+// Una letra de tipo y tres dígitos, que es la forma que SUNAT admite y la anchura de la
+// columna. Se valida aquí y se lanza, en vez de avisar y seguir como hace
+// `seedProducts()`: una serie mal tecleada no es un producto que falte en el catálogo,
+// es el identificador con el que la empresa numera sus comprobantes ante SUNAT, y
+// descubrirlo en el primer rechazo permanente sería tarde.
+const SERIES_PATTERN = /^[A-Z][A-Z0-9]{3}$/;
+
+async function seedDocumentSeries({ db, schema }: SeedDeps): Promise<void> {
+  const rows = DOCUMENT_SERIES_KEYS.map((key) => {
+    const variable = SERIES_ENV_VAR[key];
+    const series = process.env[variable]?.trim().toUpperCase();
+
+    if (!series) {
+      throw new Error(`${variable} no está definida. Copia .env.example a .env.local.`);
+    }
+    if (!SERIES_PATTERN.test(series)) {
+      throw new Error(
+        `${variable}="${series}" no es una serie válida: una letra y tres caracteres alfanuméricos (B001, FC01).`,
+      );
+    }
+
+    return { key, series };
+  });
+
+  // `onConflictDoNothing` y **no** `onConflictDoUpdate` como el resto de catálogos, que es
+  // la diferencia que importa de esta semilla: una fila ya creada conserva su `series` y
+  // su `last_number` intactos. Reescribir la serie manteniendo el correlativo dejaría la
+  // numeración continuando bajo otra letra, que es un hueco ante SUNAT; y reiniciar el
+  // correlativo haría que el siguiente comprobante repitiera un número ya emitido.
+  // Cambiar de serie es una operación deliberada, no un efecto de volver a sembrar.
+  const inserted = await db
+    .insert(schema.documentSeries)
+    .values(rows)
+    .onConflictDoNothing({ target: schema.documentSeries.key })
+    .returning({ key: schema.documentSeries.key });
+
+  const existing = await db
+    .select({
+      key: schema.documentSeries.key,
+      series: schema.documentSeries.series,
+      lastNumber: schema.documentSeries.lastNumber,
+    })
+    .from(schema.documentSeries);
+
+  const seriesByKey = new Map(existing.map((row) => [row.key, row.series]));
+  const drifted = rows.filter((row) => seriesByKey.get(row.key) !== row.series);
+
+  if (drifted.length > 0) {
+    // No se corrige solo, pero tiene que verse: significa que la variable de entorno y la
+    // base dicen series distintas, y los comprobantes saldrán con la de la base.
+    console.warn(
+      `Series de comprobante: la base no coincide con el entorno en ${drifted
+        .map((row) => `${row.key} (.env=${row.series}, base=${seriesByKey.get(row.key)})`)
+        .join(', ')}. Se conserva la de la base para no romper la correlatividad.`,
+    );
+  }
+
+  console.log(
+    `Series de comprobante: ${inserted.length} creadas, ${existing.length - inserted.length} ya existían; correlativos ${existing
+      .map((row) => `${row.series}=${row.lastNumber}`)
+      .join(' ')}.`,
+  );
+}
+
 async function seedRoles({ db, schema }: SeedDeps): Promise<void> {
   const upserted = await db
     .insert(schema.roles)
@@ -429,6 +508,7 @@ async function main() {
   await seedRoles(deps);
   await seedRolePermissions(deps);
   await seedTransacciones(deps);
+  await seedDocumentSeries(deps);
   await bootstrapSuperAdmin(deps);
 }
 

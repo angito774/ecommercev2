@@ -1,5 +1,6 @@
 'use client';
 
+import { Loader2 } from 'lucide-react';
 import { useState } from 'react';
 
 import { Button } from '@/components/ui/button';
@@ -12,6 +13,10 @@ import {
   SheetTitle,
 } from '@/components/ui/sheet';
 import { Skeleton } from '@/components/ui/skeleton';
+import { ISSUE_BUTTON_LABEL } from '@/modules/invoicing/constants';
+import { OrderDocuments } from '@/modules/invoicing/components/order-documents';
+import { useIssueDocument } from '@/modules/invoicing/hooks/use-issue-document';
+import type { ElectronicDocumentRow } from '@/modules/invoicing/types/electronic-document.types';
 import { formatPrice } from '@/modules/products/lib/price';
 
 import { ADMIN_ORDER_STATUS_LABELS } from '../constants';
@@ -71,12 +76,52 @@ function StripeReference({ label, value }: { label: string; value: string | null
   );
 }
 
+// La acción vive aquí y no dentro de `OrderDocuments` porque `OrderDocuments` es
+// presentacional y lo comparte «Mis compras», donde no hay ninguna emisión que disparar
+// (D-11). Se inyecta como `renderAction`.
+function IssueDocumentButton({
+  document,
+  orderId,
+}: {
+  document: ElectronicDocumentRow;
+  orderId: string;
+}) {
+  const mutation = useIssueDocument();
+
+  // Un documento `issued` no se reemite y uno `voided` lo anuló el spec 023 a propósito: el
+  // estado lo decide el mismo conjunto que el `WHERE` del reclamo en el servidor, así que
+  // la UI no ofrece algo que la API vaya a rechazar con un 409 (AC19).
+  if (document.status !== 'pending' && document.status !== 'failed') return null;
+
+  return (
+    <Button
+      size="sm"
+      variant={document.status === 'failed' ? 'outline' : 'default'}
+      disabled={mutation.isPending}
+      onClick={() => mutation.mutate({ documentId: document.id, orderId })}
+    >
+      {mutation.isPending ? (
+        <>
+          <Loader2 className="size-4 animate-spin" aria-hidden />
+          Emitiendo…
+        </>
+      ) : (
+        // Mismo rótulo para el primer intento y para el décimo: sin automatismo detrás son
+        // literalmente la misma acción sobre la misma fila (D-10).
+        ISSUE_BUTTON_LABEL
+      )}
+    </Button>
+  );
+}
+
 function OrderDetailBody({
   order,
   canUpdateStatus,
+  canIssueInvoice,
 }: {
   order: AdminOrderDetail;
   canUpdateStatus: boolean;
+  canIssueInvoice: boolean;
 }) {
   const [confirmOpen, setConfirmOpen] = useState(false);
 
@@ -128,6 +173,22 @@ function OrderDetailBody({
             <dd className="tabular-nums">{formatPrice(order.amountTotalCents)}</dd>
           </div>
         </dl>
+
+        <section className="space-y-2">
+          <h3 className="text-sm font-medium">Comprobantes electrónicos</h3>
+          {/* `renderAction` solo se pasa con el permiso resuelto en servidor (AC20). Ocultar
+              el botón no es la frontera —el `POST` la vuelve a poner con su propio
+              `authorize('invoicing.issue')` (AC18)—, solo evita ofrecer algo que la API va a
+              rechazar. */}
+          <OrderDocuments
+            documents={order.documents}
+            renderAction={
+              canIssueInvoice
+                ? (document) => <IssueDocumentButton document={document} orderId={order.id} />
+                : undefined
+            }
+          />
+        </section>
 
         <section className="space-y-2">
           <h3 className="text-sm font-medium">Dirección de envío</h3>
@@ -189,6 +250,7 @@ export function AdminOrderDetailSheet({ orderId, onOpenChange }: AdminOrderDetai
           <OrderDetailBody
             order={query.data.data}
             canUpdateStatus={query.data.meta.canUpdateStatus}
+            canIssueInvoice={query.data.meta.canIssueInvoice}
           />
         ) : (
           <div className="space-y-3 px-4">

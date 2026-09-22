@@ -6,6 +6,8 @@ import { db, type Tx } from '@/server/db';
 import * as orderRepository from '@/server/repositories/order.repository';
 import * as productRepository from '@/server/repositories/product.repository';
 
+import { queueOriginalDocument } from './electronic-document.service';
+
 const AUDIT_SOURCE = 'stripe.webhook';
 
 // Solo identificadores de la transacción: nunca el payload del evento, ni datos de
@@ -93,6 +95,22 @@ export async function fulfillCheckoutSession(
 
     const order = await orderRepository.findByIdWithItems(orderId, tx);
     if (order) await decrementStockAndAudit(tx, order.items, session, eventId, orderId);
+
+    // Dentro de la misma transacción y **sin ninguna llamada de red** (spec 022, AC7,
+    // D-7): lo único que hace es consumir un correlativo e insertar una fila `pending`
+    // sobre la conexión que ya está abierta, así que no compite con el corte de ~10 s del
+    // webhook. Deja el comprobante listo para que alguien lo emita desde el panel; **no lo
+    // emite** (D-8).
+    //
+    // Si lanzara, revertiría también el `markPaid` y Stripe reintentaría el evento, que es
+    // el comportamiento correcto: un pedido cobrado sin comprobante en cola es peor que un
+    // reintento. Por eso `queueOriginalDocument` no traga ningún error: los casos que no
+    // deben revertir —pedido sin documento del comprador, importe no positivo— se
+    // resuelven antes, dejando constancia en la bitácora (AC8).
+    await queueOriginalDocument(tx, paid, order?.items ?? [], {
+      eventId,
+      sessionId: session.id,
+    });
 
     await logAudit(tx, {
       actorId: null,

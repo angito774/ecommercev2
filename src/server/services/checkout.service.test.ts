@@ -45,8 +45,11 @@ function buildProduct(overrides: Partial<Product> = {}): Product {
   };
 }
 
+// El comprador es obligatorio desde el spec 022 (D-3): no existe la rama «boleta sin
+// documento». Ninguna de las tres funciones bajo prueba lo mira —`buildOrderItems` releía
+// y sigue releyendo solo el catálogo—, así que el fixture usa el caso mínimo válido.
 function buildCheckoutInput(lines: CheckoutInput['lines']): CheckoutInput {
-  return { lines };
+  return { lines, buyer: { documentType: 'dni', documentNumber: '41281230' } };
 }
 
 function buildPreparedOrder(overrides: Partial<PreparedOrder> = {}): PreparedOrder {

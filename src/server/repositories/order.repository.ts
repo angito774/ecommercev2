@@ -137,8 +137,12 @@ const HISTORY_ORDER_COLUMNS = {
   stripePaymentIntentId: orders.stripePaymentIntentId,
 } as const;
 
+// Sin `documents`: los comprobantes de toda la página se leen de una sola vez desde
+// `electronic-document.repository` y el handler los reparte (spec 022, T27). Se declara con
+// `Omit` en vez de con un tipo paralelo para que añadir un campo a `OrderHistoryEntry`
+// obligue a decidir de qué lado cae, en vez de dejar los dos tipos divergiendo en silencio.
 export type OrderHistoryPage = {
-  data: OrderHistoryEntry[];
+  data: Array<Omit<OrderHistoryEntry, 'documents'>>;
   truncated: boolean;
 };
 
@@ -411,10 +415,13 @@ const ADMIN_ORDER_DETAIL_COLUMNS = {
   stripePaymentIntentId: orders.stripePaymentIntentId,
 } as const;
 
+// Sin `documents`, por lo mismo que `OrderHistoryPage`: los comprobantes los lee su propio
+// repositorio y el handler compone (spec 022, T26). Así `order.repository.ts` no adquiere
+// una dependencia del módulo de facturación para una columna que no es suya.
 export async function findByIdForAdmin(
   id: string,
   reader: Reader = db,
-): Promise<AdminOrderDetail | null> {
+): Promise<Omit<AdminOrderDetail, 'documents'> | null> {
   const [row] = await reader
     .select(ADMIN_ORDER_DETAIL_COLUMNS)
     .from(orders)
@@ -452,6 +459,78 @@ export async function findByIdForAdmin(
     shippingAddress: parseShippingAddress(row.shippingAddress),
     stripeCheckoutSessionId: row.stripeCheckoutSessionId,
     stripePaymentIntentId: row.stripePaymentIntentId,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Facturación electrónica (spec 022)
+// ---------------------------------------------------------------------------
+
+// Todo lo que hace falta para construir el comprobante y **nada más**: los datos fiscales
+// del comprador, los importes del pedido y el nombre con el que identificarlo. Proyección
+// propia y no una de las de admin, por la razón contraria a la habitual: aquí sí salen
+// `buyer_document_number` y `buyer_legal_name`, que son PII y **no se publican por ninguna
+// API** (AC22). Lo consume un solo llamador —`electronic-document.service.ts`— y su único
+// destino legítimo es el cuerpo que se envía a Nubefact (§10).
+const ORDER_FISCAL_COLUMNS = {
+  id: orders.id,
+  status: orders.status,
+  amountTotalCents: orders.amountTotalCents,
+  shippingCents: orders.shippingCents,
+  buyerDocumentType: orders.buyerDocumentType,
+  buyerDocumentNumber: orders.buyerDocumentNumber,
+  buyerLegalName: orders.buyerLegalName,
+  customerFirstName: users.firstName,
+  customerLastName: users.lastName,
+  customerEmail: users.email,
+} as const;
+
+export type OrderFiscalSnapshot = {
+  id: string;
+  status: Order['status'];
+  amountTotalCents: number;
+  shippingCents: number;
+  buyerDocumentType: Order['buyerDocumentType'];
+  buyerDocumentNumber: string | null;
+  buyerLegalName: string | null;
+  /** `firstName` + `lastName` de Clerk; `null` si no dio ninguno. */
+  customerName: string | null;
+  customerEmail: string;
+  items: OrderLineDisplay[];
+};
+
+export async function findFiscalSnapshot(
+  orderId: string,
+  reader: Reader = db,
+): Promise<OrderFiscalSnapshot | null> {
+  const [row] = await reader
+    .select(ORDER_FISCAL_COLUMNS)
+    .from(orders)
+    .innerJoin(users, eq(users.id, orders.userId))
+    .where(eq(orders.id, orderId))
+    .limit(1);
+
+  if (!row) return null;
+
+  const items = await loadItems(row.id, reader);
+
+  return {
+    id: row.id,
+    status: row.status,
+    amountTotalCents: row.amountTotalCents,
+    shippingCents: row.shippingCents,
+    buyerDocumentType: row.buyerDocumentType,
+    buyerDocumentNumber: row.buyerDocumentNumber,
+    buyerLegalName: row.buyerLegalName,
+    customerName: toCustomerName(row.customerFirstName, row.customerLastName),
+    customerEmail: row.customerEmail,
+    items: items.map((line) => ({
+      id: line.id,
+      nameSnapshot: line.nameSnapshot,
+      imageUrlSnapshot: line.imageUrlSnapshot,
+      priceCentsSnapshot: line.priceCentsSnapshot,
+      quantity: line.quantity,
+    })),
   };
 }
 

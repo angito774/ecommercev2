@@ -32,8 +32,9 @@ describe('unitMargin', () => {
     expect(unitMargin(1, 99_999_999).marginCents).toBe(-99_999_998);
   });
 
-  // `createProductSchema` admite `priceCents = 0` (`.min(0)`, verificado), así que el
-  // caso es real y no teórico: sin base no hay porcentaje (D-7).
+  // `createProductSchema` ya no admite `priceCents = 0` (spec 022, D-22), pero la columna
+  // sigue siendo un `integer` sin `CHECK` y una fila anterior a esa regla puede valer 0: sin
+  // base no hay porcentaje (D-7).
   it('returns a negative marginCents and a null marginPercent when the price is 0', () => {
     expect(unitMargin(0, 5_000)).toEqual({ marginCents: -5_000, marginPercent: null });
   });

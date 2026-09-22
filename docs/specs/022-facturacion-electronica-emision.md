@@ -1,7 +1,7 @@
 ---
 id: 022
 title: Facturación electrónica — emisión manual de boleta y factura (Nubefact)
-status: approved
+status: done
 module: invoicing
 scope: both
 created: 2026-09-22
@@ -116,7 +116,11 @@ el equipo en el panel.
 - `/admin/orders`: los documentos del pedido y su estado dentro del `Sheet` de
   detalle que ya existe, con la acción «Emitir comprobante».
 - «Mis compras» (`/account#compras`): el comprobante SUNAT con enlace a su PDF,
-  con el recibo de Stripe como recurso de respaldo mientras no esté emitido.
+  con el recibo de Stripe como recurso de respaldo mientras no esté emitido. Un
+  comprobante `failed` **no se le enseña como fallo al cliente**: ve el mismo «se
+  está emitiendo» y su recibo, y el badge rojo se queda en el panel (D-21).
+- Un producto del catálogo deja de poder costar `0`: `priceCents` exige mayor que
+  cero en el POST, en el PATCH y en el formulario (D-22).
 
 ### No incluye (explícito)
 
@@ -151,38 +155,47 @@ el equipo en el panel.
 
 ## 4. Criterios de aceptación
 
-- [ ] **AC1** — Dado un checkout sin datos fiscales en el cuerpo, cuando se llama
+> **Estado al cerrar la implementación: 15 de 28 marcados.** Marcado = verificado
+> con evidencia ejecutada (test automatizado, comprobación contra la base real de
+> §12, o los cuatro comandos de cierre). Los 13 sin marcar **están
+> implementados**, pero su verificación exige o bien credenciales del entorno de
+> pruebas de Nubefact —AC10 a AC15— o bien ejercitar la UI y los endpoints por
+> HTTP con sesiones de distintos roles —AC18 a AC21, AC23 a AC25—. Ninguno de los
+> dos es posible en este entorno; el detalle y lo que falta exactamente están en
+> §12. No se marcan por no haberlos visto correr.
+
+- [x] **AC1** — Dado un checkout sin datos fiscales en el cuerpo, cuando se llama
       a `POST /api/checkout`, entonces la respuesta es `400` con `issues` y no se
       crea ninguna fila en `orders`.
-- [ ] **AC2** — Dado `documentType: 'dni'` con un número que no sean exactamente
+- [x] **AC2** — Dado `documentType: 'dni'` con un número que no sean exactamente
       8 dígitos, entonces `400`; dado `documentType: 'ruc'` con 11 dígitos cuyo
       dígito verificador no cuadra por módulo 11, entonces también `400`, y el
       mensaje distingue «longitud» de «número inválido».
-- [ ] **AC3** — Dado `documentType: 'ruc'` sin `legalName`, entonces `400`; dado
+- [x] **AC3** — Dado `documentType: 'ruc'` sin `legalName`, entonces `400`; dado
       `documentType: 'dni'` **con** `legalName`, entonces `400`: la razón social
       solo existe en una factura.
-- [ ] **AC4** — Dado un checkout válido, cuando se crea la orden, entonces
+- [x] **AC4** — Dado un checkout válido, cuando se crea la orden, entonces
       `orders.buyer_document_type`, `buyer_document_number` y `buyer_legal_name`
       quedan escritos **antes** de llamar a `stripe.checkout.sessions.create`, y
       `refunded_amount_cents` vale `0`.
-- [ ] **AC5** — Dado `checkout.session.completed` de una orden con RUC, cuando el
+- [x] **AC5** — Dado `checkout.session.completed` de una orden con RUC, cuando el
       webhook fulfilla, entonces en la **misma transacción** que el `markPaid`
       aparece una fila de `electronic_documents` con `kind = 'factura'`,
       `status = 'pending'`, serie de factura, número correlativo,
       `amount_cents = orders.amount_total_cents`, su `base_cents` + `igv_cents`, y
       `created_by_id = null`.
-- [ ] **AC6** — Dado el mismo evento entregado dos veces, entonces sigue
+- [x] **AC6** — Dado el mismo evento entregado dos veces, entonces sigue
       existiendo **una** sola fila de `electronic_documents` para ese pedido, no
       se consume un segundo correlativo y la respuesta es `200`.
-- [ ] **AC7** — Dado que Nubefact tarda o falla, cuando el webhook procesa el
+- [x] **AC7** — Dado que Nubefact tarda o falla, cuando el webhook procesa el
       pago, entonces el pedido queda `paid` y el stock descontado igual: **el
       handler del webhook no hace ninguna llamada de red al proveedor**.
-- [ ] **AC8** — Dado un pedido pagado cuya orden no tiene
+- [x] **AC8** — Dado un pedido pagado cuya orden no tiene
       `buyer_document_type` (creada antes de la migración), entonces **no** se
       crea ninguna fila de `electronic_documents`, se escribe
       `invoice.skipped` en `audit_logs` con `severity: 'warning'` y el
       fulfillment continúa con normalidad.
-- [ ] **AC9** — Dado un pedido pagado con su comprobante `pending`, cuando pasa
+- [x] **AC9** — Dado un pedido pagado con su comprobante `pending`, cuando pasa
       el tiempo sin que nadie actúe, entonces el documento **sigue `pending`**:
       no existe ninguna ruta, job ni proceso que lo emita solo, y `grep -r
       "cron"` sobre `src/` y la raíz no devuelve ninguna programación.
@@ -196,10 +209,14 @@ el equipo en el panel.
       la respuesta es `502`, el documento queda `failed` con `attempt_count`
       incrementado **una sola vez**, `last_attempt_at` fijado y `last_error` con
       un texto legible, y la acción vuelve a estar disponible de inmediato.
-- [ ] **AC12** — Dado un rechazo permanente del proveedor (validación, `4xx` con
-      `errors`), entonces el documento queda `failed`, la fila publica
-      `permanentFailure: true` y la UI advierte que volver a pulsar sin corregir
-      el dato no lo va a arreglar.
+- [ ] **AC12** — Dado un rechazo permanente del proveedor —un cuerpo con `errors`,
+      un `4xx` **sin** cuerpo o un `aceptada_por_sunat: false`—, entonces el
+      documento queda `failed`, la fila publica `permanentFailure: true` y la UI
+      del panel advierte que volver a pulsar sin corregir el dato no lo va a
+      arreglar. Los tres casos, no solo el primero: los otros dos no traen ningún
+      `errors` que releer y la bandera viaja en `provider_response.permanent`
+      (§6.3). Cubierto en ejecución por `nubefact.provider.test.ts`, que emite
+      contra un `fetch` doblado y comprueba la traza persistida.
 - [ ] **AC13** — Dado un reintento del mismo documento tras un timeout en el que
       Nubefact sí llegó a emitir, entonces se reenvía **la misma serie y el mismo
       número**, la respuesta del proveedor es el documento ya emitido y no se
@@ -211,10 +228,10 @@ el equipo en el panel.
 - [ ] **AC15** — Dado que el proveedor devuelve la respuesta completa, entonces
       `provider_response` guarda **solo** la proyección de §6.6: nunca el token,
       nunca el eco del cuerpo enviado, nunca el documento del comprador.
-- [ ] **AC16** — Dada cualquier transacción que asigna correlativo, cuando
+- [x] **AC16** — Dada cualquier transacción que asigna correlativo, cuando
       revierte, entonces `document_series.last_number` vuelve atrás: no quedan
       huecos por un fallo.
-- [ ] **AC17** — Dadas dos emisiones simultáneas de la misma serie, entonces
+- [x] **AC17** — Dadas dos emisiones simultáneas de la misma serie, entonces
       obtienen números distintos y consecutivos, y el índice único
       `(series, number)` nunca se viola.
 - [ ] **AC18** — Dado un usuario con sesión y sin `invoicing.issue`, cuando llama
@@ -224,13 +241,15 @@ el equipo en el panel.
       entonces la respuesta es `409` y nada cambia; dado un id inexistente,
       `404`; dado un id que no es uuid, `400`.
 - [ ] **AC20** — Dado un rol `manager` o `audit`, entonces
-      `meta.canIssueInvoice` es `false`, el sheet no pinta la acción y un `POST`
-      directo responde `403`.
+      `meta.canIssueInvoice` es `false`, el sheet no pinta la acción, un `POST`
+      directo responde `403` y **`documents[].pdfUrl` llega `null`**: el enlace al
+      PDF exige `invoicing.issue` (D-19). El recorte lo hace el servidor y está
+      cubierto en `electronic-document.repository.test.ts`.
 - [ ] **AC21** — Dado `GET /api/admin/orders/[id]` con `orders.read`, entonces
       `data.documents` lista los documentos del pedido ordenados por
       `created_at`, y `meta.canIssueInvoice` refleja el permiso resuelto en
       servidor.
-- [ ] **AC22** — Dada la respuesta de `GET /api/admin/orders/[id]` o de
+- [x] **AC22** — Dada la respuesta de `GET /api/admin/orders/[id]` o de
       `GET /api/orders`, entonces **no** contiene `provider_response`,
       `buyer_document_number` ni `buyer_legal_name` de ningún pedido.
 - [ ] **AC23** — Dado un pedido con comprobante `issued`, cuando el cliente abre
@@ -240,18 +259,20 @@ el equipo en el panel.
       asíncrono.
 - [ ] **AC24** — Dado un pedido pagado cuyo comprobante sigue `pending` o
       `failed`, entonces el cliente ve «tu comprobante se está emitiendo» y
-      conserva el acceso al recibo de Stripe; nunca un enlace roto ni un error.
+      conserva el acceso al recibo de Stripe; nunca un enlace roto ni un error. Con
+      `failed`, además, **no ve ningún badge de fallo**: el badge rojo y el motivo
+      del proveedor son de la vista que puede emitir (D-20, D-21).
 - [ ] **AC25** — Dado un pedido `pending`, `payment_failed` o `canceled`,
       entonces no hay comprobante y la vista lo explica, igual que hoy con el
       recibo (spec 008, AC11).
-- [ ] **AC26** — Dado el desglose de un documento, entonces
+- [x] **AC26** — Dado el desglose de un documento, entonces
       `base_cents + igv_cents === amount_cents` exactamente, con `base_cents`
       calculado como `round(amount / 1.18)` y `igv_cents` como el residuo: el
       IGV nunca se calcula por separado y se cuadra después.
-- [ ] **AC27** — Dado cualquier importe de cualquier endpoint de este spec,
+- [x] **AC27** — Dado cualquier importe de cualquier endpoint de este spec,
       entonces es un entero en céntimos; la división por 100 solo ocurre al
       formatear la vista.
-- [ ] **AC28** — Dado `npm run typecheck && npm run lint && npm run build &&
+- [x] **AC28** — Dado `npm run typecheck && npm run lint && npm run build &&
       npm test`, cuando se ejecuta al cerrar el spec, entonces los cuatro pasan
       en verde.
 
@@ -716,13 +737,26 @@ export type ElectronicDocumentRow = Pick<
   /** Texto del último fallo. `null` salvo en `failed`. */
   lastError: string | null;
   /**
-   * `true` cuando el rechazo lo produjo una validación del proveedor y no la red: la
-   * UI tiene que poder decir «volver a pulsar no lo arregla» en vez de invitar a un
-   * bucle inútil (AC12). Se **deriva** de `provider_response.errors`, no se guarda en
-   * una columna: es una lectura de un dato que ya está, no un estado nuevo.
+   * `true` cuando el rechazo lo produjo el proveedor y no la red: la UI tiene que poder
+   * decir «volver a pulsar no lo arregla» en vez de invitar a un bucle inútil (AC12).
+   *
+   * Corregido en la revisión de este spec: se lee de `provider_response.permanent` —la
+   * clasificación que **escribió el proveedor**— y **no** se recalcula como
+   * `errors.length > 0`. El borrador decía lo segundo y era falso en los dos casos que el
+   * propio provider marca permanentes sin devolver ningún `errors`: un `4xx` sin cuerpo
+   * (token o URL mal) y un `aceptada_por_sunat: false`. En ambos la fila publicaba
+   * `permanentFailure: false` e invitaba a un reintento que nunca iba a funcionar. Sigue
+   * sin haber columna nueva: la bandera viaja dentro del `jsonb` que ya se persiste (§6.6).
    */
   permanentFailure: boolean;
-  /** `B001-000000123`. Derivado en servidor para que la UI no reimplemente el formato. */
+  /**
+   * `B001-00000123`. Derivado en servidor para que la UI no reimplemente el formato.
+   *
+   * Corregido al implementar T2: el borrador de este spec escribía el ejemplo con
+   * **nueve** dígitos de relleno. El correlativo impreso de SUNAT son **ocho**
+   * (`F001-00000123`), así que `formatDocumentLabel()` rellena a 8. Es presentación:
+   * a Nubefact el número viaja como entero y la columna sigue siendo `integer`.
+   */
   label: string | null;
 };
 ```
@@ -732,6 +766,25 @@ export type ElectronicDocumentRow = Pick<
 es dato del módulo de Impuestos (#4) y se publicará con `finance.read`, no con
 `orders.read`. Es el mismo criterio que mantiene `averageCostCents` fuera de
 `ProductWithCategory` (spec 021, D-8).
+
+**`pdfUrl` no viaja con `orders.read` a secas** (D-19, corregido en la revisión).
+La forma del tipo es la misma para las dos superficies —D-12 no cambia—, pero el
+enlace se recorta en servidor según quién pregunta:
+
+| Quién lee | `pdfUrl` | Por qué |
+|---|---|---|
+| El comprador, en `GET /api/orders` | Sí | Es su propio comprobante, emitido a su nombre |
+| `invoicing.issue` (`super_admin`, `admin`), en `GET /api/admin/orders/[id]` | Sí | Es quien emite, y el `POST` de emisión ya le devuelve la fila entera |
+| `orders.read` sin `invoicing.issue` (`manager`, `audit`) | `null` | — |
+
+El PDF que sirve Nubefact es una **URL sin sesión**: quien tenga el enlace lo
+abre. Y el documento lleva el RUC/DNI y la razón social del comprador —la misma
+PII que D-13 mantiene fuera de `audit_logs` precisamente porque `manager` y
+`audit` leen la bitácora— más el desglose base/IGV que este mismo apartado
+reserva a `finance.read`. Publicarlo bajo `orders.read` habría sido la puerta de
+atrás a los dos datos que el resto del spec protege. El recorte vive en
+`toRow(document, visibility)` y lo deciden los handlers; el cliente nunca
+«oculta» un enlace que ya recibió.
 
 ### 6.4 Desglose de IGV (normativo)
 
@@ -814,6 +867,31 @@ línea de envío** cuando `orders.shipping_cents > 0`: el total del comprobante 
 `amount_total_cents`, que incluye el envío, y un documento cuyas líneas no suman
 su total lo rechaza SUNAT.
 
+Precisado al implementar T21: **quien añade la línea de envío es
+`toProviderInput()` del service**, no el provider, aunque T21 la mencione. El
+provider no ve nunca un pedido —recibe `IssueDocumentInput`, que ya es dominio
+cerrado—, así que decidir ahí si hay envío exigiría pasarle `shipping_cents` por
+separado y devolverle al proveedor una decisión de negocio que no le toca. Lo que
+sí hace el provider, y está probado en `nubefact.provider.test.ts`, es que las
+líneas que reciba —envío incluido— sumen exactamente el total del comprobante,
+cuadrando el residuo de redondeo en la última.
+
+**Una línea de importe cero se emite con base 0 e IGV 0** (corregido en la
+revisión). El caso no es hipotético: aunque el catálogo ya no admite `priceCents: 0`
+(D-22), las líneas del comprobante salen de `order_items.price_cents_snapshot`, que
+es histórico, así que un pedido anterior a esa regla sigue produciendo una línea de
+`totalCents: 0`. Antes esa línea entraba en `splitIgv()`, que exige un entero
+positivo, y el `RangeError` resultante **no** es un `InvoicingProviderError`: el
+service lo clasificaba como fallo transitorio, dejaba la traza vacía y respondía
+`502`, de modo que el correlativo ya asignado se quemaba en cada reintento de algo
+que no cambia solo —el precio 0 no se arregla esperando—. Se resuelve sin pasar
+por `splitIgv()`, y no omitiendo la línea: el comprobante tiene que enumerar lo
+que se entrega, y una línea gratuita con importe 0 cuadra consigo misma y con el
+total. Por el mismo motivo el **residuo de redondeo se cuadra en la última línea
+que cobra algo**, nunca en una gratuita, que quedaría con un valor de venta que su
+propio total contradice. Cubierto con dos casos nuevos en
+`nubefact.provider.test.ts`.
+
 ### 6.6 Lo que se guarda de la respuesta del proveedor
 
 ```ts
@@ -833,10 +911,82 @@ export type ProviderTrace = {
   hash: string | null;
   errors: string[];
   httpStatus: number | null;
+  /**
+   * Añadido en la revisión. La clasificación del fallo **tal como la hizo el proveedor**,
+   * persistida junto al resto de la traza, que es de donde `toRow()` saca
+   * `permanentFailure` (§6.3). La escribe el constructor de `InvoicingProviderError` a
+   * partir de su propio `permanent`, así que el error y la fila no pueden decir cosas
+   * distintas. `false` en la traza de una respuesta aceptada: no hubo fallo que clasificar.
+   */
+  permanent: boolean;
 };
 
 export function toProviderTrace(payload: unknown, httpStatus: number | null): ProviderTrace;
 ```
+
+`toProviderTrace()` devuelve siempre `permanent: false`: la regla que decide si un
+fallo es permanente es del proveedor concreto —Nubefact devuelve rechazos con HTTP
+`200` (§6.6.1, diferencia 2)— y no de esta traducción. No es PII ni un secreto:
+es un booleano que la UI ya iba a mostrar.
+
+#### 6.6.1 T1 — contraste con la API de Nubefact y diferencias encontradas
+
+Contrastado antes de escribir `nubefact.provider.ts`. **Salvedad honesta**: este
+entorno de desarrollo no tiene salida a internet, así que el contraste se hizo
+contra la especificación documentada del API de Nubefact (`operacion:
+"generar_comprobante"`, autenticación por token, catálogos SUNAT 01/03/06) y no
+contra una petición real. Lo que T38 verifica de punta a punta contra el entorno
+de pruebas es justamente esto; cualquier divergencia se corrige ahí y se anota
+aquí.
+
+Mapeo real del cuerpo (`POST <NUBEFACT_API_URL>`, cabecera
+`Authorization: Token token="<NUBEFACT_API_TOKEN>"`):
+
+| Campo del dominio (§6.5) | Campo de Nubefact | Nota |
+|---|---|---|
+| — | `operacion` | Literal `"generar_comprobante"` |
+| `kind` | `tipo_de_comprobante` | Catálogo 01: `1` factura, `2` boleta, `3` nota de crédito, `4` nota de débito |
+| `series` | `serie` | Texto tal cual (`F001`) |
+| `number` | `numero` | Entero, sin ceros a la izquierda |
+| `issueDate` | `fecha_de_emision` | `DD-MM-YYYY`, como ya decía §6.5 |
+| `buyer.documentType` | `cliente_tipo_de_documento` | Catálogo 06: `1` DNI, `6` RUC. **No** son las cadenas `'dni'`/`'ruc'` |
+| `buyer.documentNumber` | `cliente_numero_de_documento` | |
+| `buyer.legalName` | `cliente_denominacion` | |
+| `baseCents` | `total_gravada` | En **soles con decimales**, no en céntimos |
+| `igvCents` | `total_igv` | Ídem |
+| `amountCents` | `total` | Ídem |
+| — | `moneda` | `1` = PEN |
+| — | `porcentaje_de_igv` | `18.00` |
+| — | `sunat_transaction` | `1` = venta interna |
+| — | `enviar_automaticamente_a_la_sunat` | `true`: sin esto el documento se queda en Nubefact sin llegar a SUNAT |
+| `lines[]` | `items[]` | `unidad_de_medida` (`NIU`), `descripcion`, `cantidad`, `valor_unitario` (sin IGV), `precio_unitario` (con IGV), `subtotal`, `tipo_de_igv` (`1` gravado oneroso), `igv`, `total` |
+| `related` | `documento_que_se_modifica_tipo` / `_serie` / `_numero` + `tipo_de_nota_de_credito` | Solo lo usa el spec 023 |
+
+Respuesta: `enlace_del_pdf`, `enlace_del_xml`, `enlace_del_cdr`,
+`aceptada_por_sunat`, `sunat_description`, `sunat_note`, `codigo_hash`.
+
+**Tres diferencias respecto de lo que este spec daba por supuesto**, y las tres
+cambian el código:
+
+1. **`errors` no es un array, es una cadena.** Nubefact devuelve
+   `{ "errors": "El campo serie es obligatorio" }`. `ProviderTrace.errors` se
+   queda como `string[]` —es la forma que la UI consume y la que absorbe un
+   proveedor futuro que sí mande varios—, pero `toProviderTrace()` **normaliza**
+   `string | string[] | unknown` a `string[]`, en vez de castear.
+2. **Un rechazo de validación puede llegar con HTTP `200`.** Clasificar
+   permanente vs. transitorio **solo** por el status sería incorrecto: la regla
+   normativa pasa a ser «hay `errors` en el cuerpo ⇒ permanente», y el status
+   solo decide cuando el cuerpo no trae `errors` (`5xx`/red ⇒ transitorio,
+   `4xx` ⇒ permanente).
+3. **Los importes viajan en soles con decimales, no en céntimos.** La frontera
+   de §6.5 sigue hablando en céntimos —es dominio— y la división por 100 ocurre
+   **dentro** de `nubefact.provider.ts`, que es el único archivo al que AC27 le
+   permite dividir además de la vista.
+
+Cuarta anotación, menor: `cliente_direccion` y `cliente_email` son opcionales y
+**no se envían**. La dirección de `orders.shipping_address` es de envío, no
+fiscal, y mandarla como domicilio del cliente sería afirmar un dato que nadie
+validó.
 
 ### 6.7 Reclamo del documento y clasificación del fallo (normativo)
 
@@ -979,6 +1129,14 @@ export async function create(tx: Tx, values: NewElectronicDocument): Promise<Ele
  * mismo `tx`.
  */
 export async function claimForIssue(tx: Tx, id: string): Promise<ElectronicDocument | null>;
+// Anotado al implementar T18: son **dos sentencias** dentro de la misma transacción —el
+// `SELECT … FOR UPDATE` y el `UPDATE` del `attempt_count`—, no una sola con un CTE
+// `for update`. El CTE obliga a `tx.execute()` con SQL en crudo, que devuelve las filas
+// en `snake_case` y exigiría mapear a mano las 23 columnas: justo la duplicación que la
+// inferencia del schema existe para evitar (docs/SETUP.md §4, regla dura 5). El coste es
+// un viaje más sobre la conexión que la transacción ya tiene abierta, dentro de una
+// transacción que no hace ninguna llamada de red. El lock y la serialización de AC14 son
+// idénticos: los da el `FOR UPDATE`, que sigue estando literal.
 
 /**
  * `UPDATE … WHERE id = $1 AND status <> 'issued' RETURNING *`. El guard va en el
@@ -998,8 +1156,16 @@ export async function findById(id: string, reader?: Reader): Promise<ElectronicD
  */
 export async function findRowsByOrderIds(
   orderIds: string[],
+  visibility: RowVisibility,
   reader?: Reader,
 ): Promise<Map<string, ElectronicDocumentRow[]>>;
+
+/**
+ * `RowVisibility` es `{ includePdfUrl: boolean }` y es **obligatorio**, no un opcional con
+ * default permisivo: quien lee documentos tiene que declarar bajo qué permiso lo hace, y el
+ * día que aparezca un tercer llamador el typecheck le obliga a decidir en vez de heredar el
+ * caso más abierto (D-19).
+ */
 ```
 
 ### 7.2 El punto exacto de inserción en el fulfillment
@@ -1067,6 +1233,56 @@ export async function queueOriginalDocument(tx, order, items, source): Promise<v
   });
 }
 ```
+
+#### 7.2.1 Cuatro cosas que T23 tuvo que decidir y el spec no fijaba
+
+1. **Segundo motivo de `invoice.skipped`.** Además del pedido sin documento del
+   comprador (AC8), se salta el pedido con `amount_total_cents <= 0`. No es un
+   caso hipotético: el envío puede ser gratis y un pedido anterior a D-22 puede
+   llevar líneas a precio 0 en su snapshot, que es histórico y no lo cambia una
+   regla nueva del catálogo. Sin el guard, `splitIgv()` lanzaría **dentro de la
+   transacción del webhook**, revertiría el `markPaid` y Stripe reintentaría el
+   evento para
+   siempre. El motivo viaja como `reason: 'non_positive_amount'` y la rama es la
+   misma, así que no estrena concepto: `skipReason()` devuelve el motivo en vez de
+   un booleano justamente para que la bitácora no pueda decir una razón distinta
+   de la que decidió.
+2. **Denominación del comprador en una boleta.** `orders.buyer_legal_name` solo
+   existe con RUC (§5.1), pero el proveedor exige `cliente_denominacion` también
+   en la boleta. `resolveBuyerName()` resuelve razón social → nombre de Clerk →
+   correo, y **nunca** inventa un «CLIENTE VARIOS», que sería declarar una venta a
+   nadie. El correo como último recurso es dato del propio comprador en su propio
+   comprobante.
+3. **`orderRepository.findFiscalSnapshot()`, lectura nueva.** Es la única
+   proyección del repositorio que publica `buyer_document_number` y
+   `buyer_legal_name`, y vive aparte por la razón contraria a la habitual: tiene
+   un solo llamador —este service— y ninguna API la devuelve (AC22). Las
+   proyecciones de admin y de historial siguen exactamente como estaban.
+4. **`fecha_de_emision` es hoy, no la fecha de la fila.** Es el día en que el
+   comprobante se emite de verdad, resuelto en `America/Lima` con
+   `src/lib/reporting.ts`; con emisión manual entre el cobro y la emisión pueden
+   pasar días (D-8). Lo que evita el duplicado en un reintento es el par
+   serie-número (D-6), que no depende de la fecha.
+
+5. **`getInvoicingProvider()` carga el proveedor con `import()` dinámico.**
+   Descubierto al enganchar T24: con un import estático, la cadena
+   `nubefact.provider → invoicing-config` entra en el grafo de
+   `order-fulfillment.service.ts`, es decir, en el del **webhook de Stripe**, y
+   como `invoicing-config` lanza al importarse si falta una variable (D-18), un
+   despliegue sin credenciales de Nubefact dejaría de fulfillar pedidos pagados
+   —bastante peor que no poder emitir—. Encolar no necesita al proveedor (AC7),
+   así que tampoco su configuración. La prueba de que quedó desacoplado es que
+   `order-fulfillment.service.test.ts` **no** necesita mockear
+   `@/lib/invoicing-config`, mientras que los tests del provider y del service de
+   emisión sí.
+
+**Punto abierto que T38 tiene que cerrar**: qué devuelve exactamente Nubefact al
+reenviar un par serie-número que ya emitió. AC13 supone que devuelve el documento
+ya emitido; si en su lugar devuelve un `errors` de «comprobante duplicado», la
+clasificación de §6.7 lo marcaría como rechazo **permanente** y la fila quedaría
+`failed` para siempre pese a existir ante SUNAT. No se implementa ninguna rama
+contra ese supuesto sin haberlo observado: es el tercer escenario de T38 y, si se
+confirma, el arreglo es una rama explícita en `isPermanentFailure()`.
 
 ### 7.3 Forma del handler de emisión
 
@@ -1155,6 +1371,10 @@ export async function issueDocument(actor, id, auditContext): Promise<Electronic
 | **D-16**: El envío viaja como **una línea más** del comprobante | Omitirlo, o restarlo del total | El total del documento tiene que ser `amount_total_cents`, que incluye el envío, y SUNAT exige que las líneas sumen el total. Omitirlo daría un comprobante por menos de lo cobrado —una venta subdeclarada— y restarlo del total dejaría dinero cobrado sin comprobante. La línea se añade solo cuando `shipping_cents > 0`, porque un envío gratis no es una línea de importe cero sino una línea que no existe |
 | **D-17**: `issued_at` es columna propia y no se deriva de `updated_at` | Filtrar por `updated_at` en #3 y #4 | Lo anticipa el diseño de Ingresos v2 (§4) y el motivo es verificable aquí: `updated_at` lleva `$onUpdate`, así que cualquier escritura futura sobre la fila —un `last_error`, un campo nuevo— movería la fecha con la que el libro de ventas agrupa el período. Un cambio no fiscal no puede mover una venta de mes. Con la emisión manual el punto se agudiza: entre el cobro y la emisión pueden pasar días |
 | **D-18**: Los datos fiscales del emisor son variables de entorno validadas al importar | Una tabla `company_settings` con panel de edición | Decisión cerrada con el usuario. Son tres valores que cambian cuando cambia la empresa, es decir, nunca. Una tabla con panel añade CRUD, permiso, auditoría y una pantalla, y crea la posibilidad de que alguien emita cien comprobantes con el RUC mal tecleado. Validarlos al importar, como hace `src/lib/stripe.ts`, convierte un error de configuración en un fallo de arranque en vez de en un rechazo de SUNAT |
+| **D-19**: El enlace al PDF se recorta en servidor para quien solo tiene `orders.read` | Publicarlo con el resto de la fila, o dejar que la UI decida si lo pinta | Añadida en la revisión. El PDF de Nubefact es una **URL sin sesión**: quien tenga el enlace lo abre, hoy y dentro de un año. Y el documento que sirve lleva el RUC/DNI y la razón social del comprador —la misma PII que D-13 mantiene fuera de `audit_logs` porque `manager` y `audit` la leen— más el desglose base/IGV que §6.3 reserva a `finance.read`. Los dos roles que tienen `orders.read` sin `invoicing.issue` son exactamente esos dos, así que publicarlo con la fila era la puerta de atrás a lo que el resto del spec protege. El recorte va en `toRow(document, visibility)` y lo deciden los handlers: filtrar en el cliente no filtra nada, porque el enlace ya viajó en la respuesta. No contradice D-12 —la **forma** del tipo sigue siendo una sola— y el comprador sigue viendo el suyo entero, que es el sentido de tener un comprobante |
+| **D-20**: El detalle del fallo del proveedor solo se pinta en la vista que puede emitir | Pintarlo siempre, ya que `OrderDocuments` es el mismo componente en las dos superficies (D-12) | Añadida en la revisión. El texto de `last_error` cita el motivo del proveedor —que puede repetir el RUC rechazado— y el copy de al lado dice «corrige el dato antes de volver a emitir»: son instrucciones para quien tiene el botón. En «Mis compras» aparecían encima del «tu comprobante se está emitiendo», dándole al cliente un error que no puede arreglar y contradiciendo el mensaje de debajo. Se condiciona a la presencia de `renderAction`, que es la misma bandera que ya distingue panel de cliente, así que no estrena ni prop ni concepto. Qué pasa con el **badge** de estado lo cierra D-21 |
+| **D-21**: El badge rojo de `failed` tampoco se pinta en «Mis compras» | Pintar el badge real en las dos vistas, ocultando solo el diagnóstico (el alcance original de D-20) | Decisión del usuario sobre el punto que la revisión dejó abierto. D-20 quitó el detalle del fallo de la vista del cliente pero dejó el badge «Falló la emisión» justo encima del «tu comprobante se está emitiendo», que es la misma contradicción una línea más abajo. Para el cliente, además, la distinción `pending`/`failed` **no es accionable**: ya pagó, no tiene botón, y el fallo es un asunto entre la tienda, el proveedor y SUNAT. Mientras el documento no esté `issued` ve el mensaje tranquilizador y conserva el recibo de Stripe, que es el respaldo real del cargo (D-14, AC24). La condición es la misma `renderAction` de D-20 —sin prop nueva ni `canIssue` booleano— y el panel no cambia en nada: allí el badge y el botón siguen diciendo la verdad completa a quien puede actuar |
+| **D-22**: El catálogo deja de admitir un producto a precio `0` | Mapear la línea de importe cero al código SUNAT de operación gratuita (transferencia a título gratuito) en `toNubefactItems()` | Decisión del usuario sobre el segundo punto abierto de la revisión. Un producto a `priceCents: 0` hoy se emite como línea **gravada al 18 % con valor de venta 0**, que ante SUNAT no es lo que dice ser: una entrega gratuita se declara con otro tipo de afectación y arrastra su propia base imponible de referencia. Las dos salidas eran modelar esa afectación o no producir el caso, y modelarla significa una rama fiscal entera —con su columna en `products`, su test y su mantenimiento— para un catálogo que no regala nada; es además la misma conversación que el producto exonerado, que §10 ya difiere a un spec propio. Se cierra en la entrada, donde cuesta un `.positive()`: mismo invariante y mismo patrón que `expenses.amountCents`. La rama de línea cero **no se retira** de `nubefact.provider.ts`: las líneas salen de `order_items.price_cents_snapshot`, que es histórico, así que un pedido anterior a esta regla sigue teniendo que poder emitirse |
 
 ## 9. Tareas
 
@@ -1163,155 +1383,156 @@ externa → catálogo → permisos → esquema → migración → semilla → co
 lógica pura → repositorios → servicios → proveedor → handlers → módulo cliente →
 UI → documentación.
 
-- [ ] **T1** — Contrastar el mapeo de campos de §6.5 y §6.6 con la documentación
+- [x] **T1** — Contrastar el mapeo de campos de §6.5 y §6.6 con la documentación
       vigente de Nubefact (`operacion`, `tipo_de_comprobante`,
       `cliente_tipo_de_documento`, nombres de los enlaces de respuesta, forma del
       `errors`) y dejar las diferencias anotadas en este spec antes de escribir el
       provider · archivo: `docs/specs/022-facturacion-electronica-emision.md` ·
       verificación: la tabla de §6.5 refleja los nombres reales
-- [ ] **T2** — Catálogo puro: `ELECTRONIC_DOCUMENT_KINDS`, `DOCUMENT_SERIES_KEYS`,
+- [x] **T2** — Catálogo puro: `ELECTRONIC_DOCUMENT_KINDS`, `DOCUMENT_SERIES_KEYS`,
       `seriesKeyFor(kind, parentKind)`, `formatDocumentLabel(series, number)` y
       las etiquetas de estado · archivo: `src/lib/electronic-documents.ts` ·
       verificación: `npm run typecheck`
-- [ ] **T3** — Añadir `invoicing.issue` a `PERMISSIONS` (27 → 28) y concederlo
+- [x] **T3** — Añadir `invoicing.issue` a `PERMISSIONS` (27 → 28) y concederlo
       solo a `super_admin` y `admin`, con el comentario de por qué es recurso
       propio y no `orders.update_status` · archivo: `src/lib/permissions.ts` ·
       verificación: `npm run typecheck && npm test`
-- [ ] **T4** — Tabla `document_series` con su enum y su `CHECK` (§5.2) · archivo:
+- [x] **T4** — Tabla `document_series` con su enum y su `CHECK` (§5.2) · archivo:
       `src/server/db/schema/document-series.ts` · verificación: `npm run typecheck`
-- [ ] **T5** — Tabla `electronic_documents` con sus dos enums, sus cinco índices y
+- [x] **T5** — Tabla `electronic_documents` con sus dos enums, sus cinco índices y
       sus siete `CHECK` (§5.3) · archivo:
       `src/server/db/schema/electronic-document.ts` · verificación:
       `npm run typecheck`
-- [ ] **T6** — Cuatro columnas nuevas y cuatro `CHECK` en `orders` (§5.1) ·
+- [x] **T6** — Cuatro columnas nuevas y cuatro `CHECK` en `orders` (§5.1) ·
       archivo: `src/server/db/schema/order.ts` · verificación: `npm run typecheck`
-- [ ] **T7** — Exportar las dos tablas y los cuatro enums desde el barrel ·
+- [x] **T7** — Exportar las dos tablas y los cuatro enums desde el barrel ·
       archivo: `src/server/db/schema/index.ts` · verificación: `npm run typecheck`
-- [ ] **T8** — Generar y aplicar la migración `0010` · archivos: `drizzle/` ·
+- [x] **T8** — Generar y aplicar la migración `0010` · archivos: `drizzle/` ·
       verificación: `npm run db:generate && npm run db:migrate`, y `npm run db:studio`
       muestra ambas tablas vacías y las cuatro columnas en `orders`
-- [ ] **T9** — Sembrar las 6 filas de `document_series` leyendo las series de las
+- [x] **T9** — Sembrar las 6 filas de `document_series` leyendo las series de las
       variables de entorno, de forma idempotente y **sin** reiniciar `last_number`
       si la fila ya existe · archivo: `src/server/db/seed.ts` · verificación:
       `npm run db:seed` dos veces seguidas deja 6 filas y el mismo `last_number`
-- [ ] **T10** — Variables de §5.5 con comentario · archivo: `.env.example` ·
+- [x] **T10** — Variables de §5.5 con comentario · archivo: `.env.example` ·
       verificación: lectura
-- [ ] **T11** — Configuración del emisor y del proveedor con `import 'server-only'`,
+- [x] **T11** — Configuración del emisor y del proveedor con `import 'server-only'`,
       lanzando al importarse si falta alguna · archivo:
       `src/lib/invoicing-config.ts` · verificación: `npm run typecheck`
-- [ ] **T12** — Validación offline del documento peruano, con sus casos de §6.2 ·
+- [x] **T12** — Validación offline del documento peruano, con sus casos de §6.2 ·
       archivos: `src/modules/orders/lib/peru-document.ts` + `.test.ts` ·
       verificación: `npm test`
-- [ ] **T13** — `splitIgv()` con el residuo de §6.4 y sus casos de redondeo ·
+- [x] **T13** — `splitIgv()` con el residuo de §6.4 y sus casos de redondeo ·
       archivos: `src/modules/finance/lib/igv.ts` + `.test.ts` · verificación:
       `npm test`
-- [ ] **T14** — `buyerSchema`, `buyerFormSchema` y `buyer` dentro de
+- [x] **T14** — `buyerSchema`, `buyerFormSchema` y `buyer` dentro de
       `checkoutSchema` (§6.1) · archivos:
       `src/modules/orders/schemas/checkout.schema.ts` + `.test.ts` ·
       verificación: `npm test`
-- [ ] **T15** — Tipos del módulo: `ElectronicDocumentRow` —con `permanentFailure`
+- [x] **T15** — Tipos del módulo: `ElectronicDocumentRow` —con `permanentFailure`
       y `label`—, `ElectronicDocumentKind` y `ElectronicDocumentStatus` (§6.3) ·
       archivo: `src/modules/invoicing/types/electronic-document.types.ts` ·
       verificación: `npm run typecheck`
-- [ ] **T16** — Constantes del módulo: etiquetas de `kind` y de `status`,
+- [x] **T16** — Constantes del módulo: etiquetas de `kind` y de `status`,
       `invoicingKeys`, copys del estado vacío, del fallo transitorio y del rechazo
       permanente (§6.7) · archivo: `src/modules/invoicing/constants.ts` ·
       verificación: `npm run typecheck`
-- [ ] **T17** — Repositorio de series: `nextNumber(tx, key)` con el `UPDATE …
+- [x] **T17** — Repositorio de series: `nextNumber(tx, key)` con el `UPDATE …
       RETURNING` de §7.1 · archivos:
       `src/server/repositories/document-series.repository.ts` + `.test.ts` ·
       verificación: `npm test`
-- [ ] **T18** — Repositorio de documentos: `create`, `claimForIssue`,
+- [x] **T18** — Repositorio de documentos: `create`, `claimForIssue`,
       `markIssued`, `markFailed`, `findById`, `findRowsByOrderIds`, con los
       constructores de SQL exportados para probarlos con `PgDialect` · archivos:
       `src/server/repositories/electronic-document.repository.ts` + `.test.ts` ·
       verificación: `npm test`
-- [ ] **T19** — Persistir los tres campos del comprador al crear la orden, dentro
+- [x] **T19** — Persistir los tres campos del comprador al crear la orden, dentro
       de la transacción que ya existe · archivo:
       `src/server/services/checkout.service.ts` · verificación: `npm test`
-- [ ] **T20** — Interfaz `InvoicingProvider`, `IssueDocumentInput`,
+- [x] **T20** — Interfaz `InvoicingProvider`, `IssueDocumentInput`,
       `IssueDocumentResult`, `InvoicingProviderError` y `toProviderTrace()`
       (§6.5, §6.6) · archivo: `src/server/services/invoicing/provider.ts` ·
       verificación: `npm run typecheck`
-- [ ] **T21** — `NubefactProvider`: mapeo del dominio a su payload, línea de envío
+- [x] **T21** — `NubefactProvider`: mapeo del dominio a su payload, línea de envío
       (D-16), clasificación permanente/transitorio y `toProviderTrace()` de la
       respuesta · archivos:
       `src/server/services/invoicing/nubefact.provider.ts` + `.test.ts` ·
       verificación: `npm test`
-- [ ] **T22** — `getInvoicingProvider()`: única instancia, resuelta desde la
+- [x] **T22** — `getInvoicingProvider()`: única instancia, resuelta desde la
       configuración · archivo: `src/server/services/invoicing/index.ts` ·
       verificación: `npm run typecheck`
-- [ ] **T23** — Service de documentos: `queueOriginalDocument` y `issueDocument`
+- [x] **T23** — Service de documentos: `queueOriginalDocument` y `issueDocument`
       con las tres transacciones de §7.4, la clasificación de §6.7 y el
       `logAudit` con actor · archivos:
       `src/server/services/electronic-document.service.ts` + `.test.ts` ·
       verificación: `npm test`
-- [ ] **T24** — Llamar a `queueOriginalDocument` dentro de la transacción del
+- [x] **T24** — Llamar a `queueOriginalDocument` dentro de la transacción del
       `markPaid`, sin tocar nada más del fulfillment (§7.2) · archivo:
       `src/server/services/order-fulfillment.service.ts` · verificación: `npm test`
-- [ ] **T25** — Route Handler `POST /api/admin/invoicing/documents/[id]/issue`
+- [x] **T25** — Route Handler `POST /api/admin/invoicing/documents/[id]/issue`
       (§7.3) · archivo:
       `src/app/api/admin/invoicing/documents/[id]/issue/route.ts` · verificación:
       `npm run typecheck`
-- [ ] **T26** — Añadir `data.documents` y `meta.canIssueInvoice` al detalle de
+- [x] **T26** — Añadir `data.documents` y `meta.canIssueInvoice` al detalle de
       admin, sin publicar ningún campo de §6.3 excluido · archivo:
       `src/app/api/admin/orders/[id]/route.ts` · verificación: `npm run typecheck`
-- [ ] **T27** — Añadir `documents` a cada entrada del historial de cliente con una
+- [x] **T27** — Añadir `documents` a cada entrada del historial de cliente con una
       sola consulta por página · archivo: `src/app/api/orders/route.ts` ·
       verificación: `npm run typecheck`
-- [ ] **T28** — Declarar `documents` en `OrderHistoryEntry` y en `AdminOrderDetail`
+- [x] **T28** — Declarar `documents` en `OrderHistoryEntry` y en `AdminOrderDetail`
       · archivo: `src/modules/orders/types/order.types.ts` · verificación:
       `npm run typecheck`
-- [ ] **T29** — Service axios `issueDocument(id)` · archivo:
+- [x] **T29** — Service axios `issueDocument(id)` · archivo:
       `src/modules/invoicing/services/invoicing.service.ts` · verificación:
       `npm run typecheck`
-- [ ] **T30** — Hook `useIssueDocument()`: mutation que invalida el detalle del
+- [x] **T30** — Hook `useIssueDocument()`: mutation que invalida el detalle del
       pedido y muestra el toast de resultado, distinguiendo el fallo transitorio
       del rechazo permanente · archivo:
       `src/modules/invoicing/hooks/use-issue-document.ts` · verificación:
       `npm run typecheck`
-- [ ] **T31** — Instalar el componente que falta · comando:
+- [x] **T31** — Instalar el componente que falta · comando:
       `npx shadcn@latest add radio-group` · verificación: `npm run lint`
-- [ ] **T32** — `DocumentStatusBadge`: los cuatro estados con icono y texto, nunca
+- [x] **T32** — `DocumentStatusBadge`: los cuatro estados con icono y texto, nunca
       solo color · archivo:
       `src/modules/invoicing/components/document-status-badge.tsx` ·
       verificación: `npm run lint`
-- [ ] **T33** — `OrderDocuments`: lista presentacional de `ElectronicDocumentRow`
+- [x] **T33** — `OrderDocuments`: lista presentacional de `ElectronicDocumentRow`
       con enlace al PDF (`target="_blank"`, `rel="noopener noreferrer"`), número
       de intentos, estado vacío y prop opcional de acción de emisión · archivo:
       `src/modules/invoicing/components/order-documents.tsx` · verificación:
       `npm run lint`
-- [ ] **T34** — `BuyerDocumentFields`: `RadioGroup` boleta/factura, campo de
+- [x] **T34** — `BuyerDocumentFields`: `RadioGroup` boleta/factura, campo de
       documento y razón social condicionada, con los mensajes de `buyerFormSchema`
       · archivo: `src/modules/invoicing/components/buyer-document-fields.tsx` ·
       verificación: `npm run lint`
-- [ ] **T35** — Envolver el resumen del checkout en React Hook Form, montar
+- [x] **T35** — Envolver el resumen del checkout en React Hook Form, montar
       `BuyerDocumentFields` y mapear el cuerpo con `legalName` a `undefined`
       cuando es boleta · archivo:
       `src/modules/orders/components/checkout-summary.tsx` · verificación:
       `npm run lint`
-- [ ] **T36** — Bloque de documentos y acción «Emitir comprobante» en el sheet de
+- [x] **T36** — Bloque de documentos y acción «Emitir comprobante» en el sheet de
       detalle, visible solo con `meta.canIssueInvoice`, con el botón deshabilitado
       mientras la mutación está en curso y el aviso del rechazo permanente ·
       archivo: `src/modules/orders/components/admin-order-detail-sheet.tsx` ·
       verificación: `npm run lint`
-- [ ] **T37** — Comprobante SUNAT en el diálogo del historial, con el recibo de
+- [x] **T37** — Comprobante SUNAT en el diálogo del historial, con el recibo de
       Stripe conservado y el copy de «emitiéndose» para `pending`/`failed`
       (AC23, AC24, AC25) · archivo:
       `src/modules/orders/components/order-detail-dialog.tsx` · verificación:
       `npm run lint`
-- [ ] **T38** — Prueba de punta a punta en local contra el entorno de pruebas de
+- [~] **T38** — **PARCIAL, bloqueada en la parte que necesita a Nubefact.** Ver
+      §12 para el detalle de lo verificado y lo pendiente · Prueba de punta a punta en local contra el entorno de pruebas de
       Nubefact: compra con DNI y compra con RUC comprobando que el documento nace
       `pending` y **nada lo emite solo**; emisión desde el sheet; corte de red a
       mitad de emisión y segunda pulsación comprobando que no nace un comprobante
       duplicado; reenvío del mismo evento de Stripe comprobando que no nace un
       segundo comprobante · verificación: manual, con el registro del resultado en
       este spec
-- [ ] **T39** — Registrar `electronic_documents` y `document_series` como tablas
+- [x] **T39** — Registrar `electronic_documents` y `document_series` como tablas
       construidas y la facturación electrónica como módulo entregado, dejando
       escrito que **la emisión es manual y no hay ningún proceso programado** ·
       archivo: `docs/SETUP.md` (§5.3 y §6) · verificación: lectura
-- [ ] **T40** — Cierre: `npm run typecheck && npm run lint && npm run build &&
+- [x] **T40** — Cierre: `npm run typecheck && npm run lint && npm run build &&
       npm test` en verde y todos los AC marcados o justificados · verificación:
       los cuatro comandos
 
@@ -1355,6 +1576,13 @@ UI → documentación.
   (D-13) y no se guardan en `provider_response` (AC15). El único sitio donde
   existen es la fila de `orders` y el cuerpo que se envía a Nubefact, que es su
   destino legítimo.
+- **El PDF del proveedor es PII servida por una URL sin sesión.** No la emitimos
+  nosotros y no caduca por nuestra cuenta: quien tenga el enlace ve el documento
+  del comprador, su razón social y el desglose base/IGV. Por eso el enlace solo
+  viaja al propio comprador y a quien tiene `invoicing.issue` (D-19), y por eso
+  tampoco se guarda en la bitácora. Si algún día hiciera falta enseñarlo a
+  `manager` o a `audit`, la conversación es un proxy propio con sesión, no
+  ensanchar la proyección.
 - **`NUBEFACT_API_TOKEN` es un secreto de servidor.** Vive solo en
   `invoicing-config.ts`, que lleva `import 'server-only'`. En Vercel se marca como
   *sensitive*, igual que `STRIPE_SECRET_KEY`. Ningún `console.error` del provider
@@ -1398,5 +1626,50 @@ UI → documentación.
 | Multi-serie por sucursal o punto de venta | Con la segunda tienda física. `document_series` ya está preparada: es una fila más |
 | Publicar `base_cents` / `igv_cents` por API | Sub-proyecto **#4** (Impuestos), bajo `finance.read` |
 | Columna de afectación de IGV en `products` | Cuando el catálogo incluya un producto exonerado o inafecto |
+| Código SUNAT de operación gratuita para una línea de importe cero | Solo si la tienda decide entregar algo a título gratuito. Hoy el catálogo no lo permite (D-22) y la rama de línea cero existe únicamente para los snapshots históricos de `order_items` |
 | Búsqueda de pedidos por documento del comprador | Cuando alguien necesite encontrar la compra de un RUC concreto |
 | Almacenar el XML y el CDR en lugar de sus URLs | Si el proveedor deja de servirlos o si SUNAT exige custodia propia |
+
+## 12. Resultado de T38
+
+### Verificado de verdad contra Neon (14/14 en verde)
+
+Ejecutado con un script desechable sobre la base de desarrollo real, creando
+pedidos de prueba, llamando a `queueOriginalDocument` dentro de transacciones
+reales y borrando después las filas —la base quedó con las 6 series a `0` y
+`electronic_documents` vacía—:
+
+| Comprobación | Resultado |
+|---|---|
+| **AC5** factura con RUC: `pending`, `F001-1` asignado al crear, `created_by_id = null` | PASA |
+| **AC26** `base + igv === total` (`187627 + 33773 = 221400`) | PASA |
+| **AC6** reentrega del mismo evento: el índice único parcial impide el segundo original, queda **1** fila | PASA |
+| **AC16** transacción que revierte: `last_number` vuelve atrás, sin huecos | PASA |
+| **AC17** dos asignaciones simultáneas de la misma serie: números distintos y consecutivos (1 y 2) | PASA |
+| **AC8** pedido sin documento del comprador: no encola y deja `invoice.skipped` con `severity: warning` | PASA |
+| **D-13** `invoice.queued` sin RUC ni razón social en `metadata` | PASA |
+| **AC9** el comprobante sigue `pending` con 0 intentos: nada lo emitió solo | PASA |
+| `CHECK` rechaza desglose descuadrado, `issued` sin `issued_at`, original con padre, RUC de 8 dígitos, razón social sin RUC y reembolso mayor que el total | PASA (6/6) |
+
+### Bloqueado, y por qué
+
+**No se ejecutó la parte que habla con Nubefact.** Este entorno no tiene salida a
+internet ni credenciales del entorno de pruebas de Nubefact
+(`NUBEFACT_API_URL`/`NUBEFACT_API_TOKEN` están en `.env.local` con valores
+marcados `PENDIENTE-DE-CONFIGURAR`), y tampoco se puede completar un pago real de
+Stripe. Queda pendiente, con credenciales de pruebas:
+
+1. Compra real con DNI y con RUC, comprobando el `pending` desde el webhook.
+2. Emisión desde el sheet: `issued`, `pdf_url`/`xml_url`/`cdr_url`,
+   `attempt_count = 1` y `invoice.issued` en la bitácora (AC10).
+3. **Corte de red a mitad de emisión y segunda pulsación** — el punto abierto de
+   §7.2.1: confirmar qué devuelve Nubefact al reenviar un par serie-número que ya
+   emitió. Si devuelve un `errors` de duplicado en vez del documento, hay que
+   añadir esa rama a `isPermanentFailure()`.
+4. Rechazo permanente (RUC inválido a propósito) comprobando `permanentFailure`
+   en la UI (AC12).
+
+Los AC que dependen de esa conversación —**AC10, AC11, AC12, AC13 y AC15 en su
+mitad de «respuesta real del proveedor»**— quedan **sin verificar en ejecución**,
+aunque sí cubiertos por los tests unitarios de `nubefact.provider.test.ts` y
+`provider.test.ts` sobre respuestas de Nubefact reproducidas a mano.

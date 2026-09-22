@@ -537,6 +537,69 @@ proyección. Las líneas de `ingreso_compra` **anteriores** a la migración se q
 `null` para siempre: **no hay backfill**, no se inventa ningún importe retroactivo, y ese
 hueco es exactamente lo que cubre el costo inicial manual.
 
+### 5.6 Facturación electrónica
+
+| Tabla | Propósito | Relaciones |
+|---|---|---|
+| `document_series` | catálogo semilla de 6 series con su correlativo: `key`, `series`, `last_number` | 1—N lógica con `electronic_documents` (sin FK: la serie viaja copiada a la fila) |
+| `electronic_documents` | comprobante SUNAT: tipo, serie-número, importes con su desglose de IGV, estado de emisión y rastro del proveedor | N—1 `orders`, N—1 `users` (`created_by_id`), self-FK `related_document_id` |
+
+Construido a 2026-09-22: las dos tablas, cuatro enums y cuatro columnas nuevas en `orders`
+(spec 022, migración `0010`). Es el primer documento **fiscal** del esquema: hasta aquí lo
+único que el cliente recibía era `Charge.receipt_url` de Stripe, que es un recibo del
+procesador y no un comprobante de pago.
+
+`orders` gana `buyer_document_type` (enum `dni`\|`ruc`), `buyer_document_number`,
+`buyer_legal_name` y `refunded_amount_cents`. Las tres primeras son **nullable a
+propósito** y no «notNull con default»: un default inventaría un DNI para los pedidos
+anteriores a la migración, y `null` significa literalmente «este pedido no se puede
+facturar». Llevan tres `CHECK` de fila —los tres datos viajan juntos o no viajan, la
+longitud cuadra con el tipo (8 con DNI, 11 con RUC) y la razón social solo existe con
+RUC—; el dígito verificador del RUC **no** es un `CHECK` porque es aritmética, y vive en
+`src/modules/orders/lib/peru-document.ts`. `refunded_amount_cents` nace aquí con su
+`CHECK` pero **la escribe el spec 023**: todo el esquema de las notas de crédito, las notas
+de débito y la comunicación de baja se crea en esta migración para que 023 no lleve
+ninguna, porque añadir un valor a un enum de Postgres es un `ALTER TYPE` que no puede
+correr en la misma transacción que lo usa.
+
+**El correlativo es nuestro y vive en `document_series`, no en una secuencia de Postgres**
+(spec 022, D-5). El motivo es que `nextval` **no revierte**: un consumo dentro de una
+transacción que después falla deja un hueco permanente en la numeración, y un hueco en la
+correlatividad de comprobantes es un problema ante SUNAT, no una curiosidad. `nextNumber()`
+es un `UPDATE … SET last_number = last_number + 1 … RETURNING`, que toma el lock de fila
+—dos emisiones simultáneas salen con números distintos y consecutivos— y revierte con su
+transacción. Exige `Tx` y no admite el `db` global. Verificado en la base: dos asignaciones
+en paralelo dieron 1 y 2, y una transacción revertida devolvió el contador a su valor
+previo. Seis claves y no cuatro porque SUNAT exige que la serie de una nota de crédito o de
+débito empiece por la misma letra que el comprobante que corrige.
+
+**Serie y número se asignan al crear la fila, no al recibir la respuesta del proveedor**
+(D-6). Es la idempotencia del reintento: si un timeout corta la respuesta de un documento
+que el OSE sí emitió, el siguiente intento manda **el mismo** par y el proveedor devuelve
+el documento existente en vez de crear un duplicado ante SUNAT. Con el número asignado
+después, cada intento sería un comprobante nuevo y la tienda declararía ventas que no
+ocurrieron.
+
+Cinco índices y siete `CHECK`. Los dos que sostienen el modelo:
+`electronic_documents_one_original_per_order_idx`, único y parcial sobre `order_id` where
+`kind in ('boleta','factura') and status <> 'voided'`, es la **barrera estructural de la
+idempotencia del webhook** —aunque el `markPaid` condicional fallara en absorber una
+reentrega, este índice impide la segunda boleta, y está comprobado en la base—; y
+`electronic_documents_series_number_idx`, único sobre `(series, number)` where
+`series is not null`, que es la correlatividad. El `CHECK` del desglose exige
+`base + igv = amount` exactamente, cierto **por construcción** porque `splitIgv()` calcula
+la base como `round(total / 1.18)` y el IGV como el **residuo**: calcular los dos por
+separado deja, en ciertos importes, una diferencia de un céntimo, y un comprobante que no
+cuadra consigo mismo lo rechaza SUNAT.
+
+`issued_at` es columna propia y **no se deriva de `updated_at`** (D-17): `updated_at` lleva
+`$onUpdate`, así que cualquier escritura futura sobre la fila movería la fecha con la que
+el libro de ventas agrupa el período, y un cambio no fiscal no puede mover una venta de
+mes. `provider_response` guarda una **proyección acotada** de la respuesta del proveedor
+—`aceptada_por_sunat`, descripción, nota, hash, errores y status— y nunca su cuerpo entero,
+que incluye el eco del cuerpo enviado con el documento del comprador dentro.
+`permanent_failure` **no es columna**: se deriva de `provider_response.errors`.
+
 ---
 
 ## 6. Módulos funcionales
@@ -600,7 +663,8 @@ CRUD de productos y categorías (TanStack Table: paginación, orden, filtros) ·
 gestión de pedidos y cambio de estado · control de inventario con notas de ingreso y
 salida · resumen financiero
 con registro de gastos operativos · precio unitario con costo promedio y margen por
-producto · personal y nómina · listado de clientes.
+producto · personal y nómina · emisión manual de comprobantes electrónicos ·
+listado de clientes.
 
 Construido a 2026-09-02: categorías (spec 001), accesos y bitácora (spec 002) y
 productos (spec 003). Pendiente: listado de clientes.
@@ -986,6 +1050,78 @@ costo promedio una vez tiene valor; valorización del inventario (`stock × cost
 de la pantalla y kardex valorizado; backfill del costo de las compras históricas;
 proveedores como entidad, precio de compra por proveedor, multimoneda y descuentos;
 gráficos y exportación; y ordenación configurable y filtro por categoría en la tabla.
+
+Construido a 2026-09-22: **facturación electrónica — emisión** (spec 022), con migración
+`0010` (§5.6) y **un** permiso nuevo —el catálogo pasa de 27 a 28 códigos—:
+`invoicing.issue`, solo para `super_admin` y `admin`. Recurso propio y no
+`orders.update_status`, que lo tiene `manager` y solo concede cancelar un pedido
+`pending`: emitir manda un documento fiscal a SUNAT con el RUC de la empresa, que es el
+mismo criterio restrictivo del resto de finanzas. **Ver** los comprobantes no estrena
+permiso: reutiliza `orders.read`.
+
+**La emisión es manual y no existe ningún proceso programado.** Es la decisión central del
+spec (D-8) y conviene que quede escrita aquí para que nadie la «arregle» más tarde: no hay
+cron, no hay cola, no hay `waitUntil()`, no hay `vercel.json` y no hay ninguna ruta
+`/api/cron/*`. El proyecto no tenía hoy ningún mecanismo de job y este módulo no estrena el
+primero: un cron no habría sido «usar lo que ya hay» sino inaugurar una categoría entera de
+infraestructura con su secreto compartido, su endpoint sin sesión y su ventana de
+solapamiento. Además, emitir un comprobante fiscal es una acción con responsable, y que
+quede registrado **quién** la disparó (`audit_logs.actor_id`) vale más que ahorrar un clic.
+El precio asumido es que un comprobante puede quedarse sin emitir si nadie mira; se mitiga
+mostrando su estado dentro del propio pedido, con la acción a un clic.
+
+El flujo va en dos tiempos. El **webhook de Stripe** encola: `fulfillCheckoutSession()`
+inserta la fila `pending` **dentro de la misma transacción** que el `markPaid` y **sin
+ninguna llamada de red** —consume un correlativo e inserta, dos consultas cortas sobre la
+conexión ya abierta—, así que no compite con el corte de ~10 s del webhook. Un pedido sin
+`buyer_document_type` —anterior a la migración— no encola nada: deja `invoice.skipped` con
+`severity: 'warning'` y el fulfillment sigue, porque emitir una boleta a nombre de nadie
+sería un comprobante falso. `src/server/services/invoicing/index.ts` carga el proveedor con
+`import()` **dinámico** justamente para que la cadena `nubefact.provider → invoicing-config`
+—que lanza al importarse si falta una variable— no entre en el grafo del webhook: un
+despliegue sin credenciales de Nubefact no debe dejar de fulfillar pedidos pagados.
+
+Después, **una persona emite** desde el `Sheet` de `/admin/orders` con
+`POST /api/admin/invoicing/documents/[id]/issue`, que es **la única puerta** y sirve por
+igual para el primer intento (`pending`) y para cualquiera posterior (`failed`): sin
+automatismo detrás son la misma operación sobre la misma fila, con el mismo par
+serie-número, así que dos endpoints serían dos copias con un `if` distinto. El service
+corre en **tres tramos y la llamada al proveedor nunca dentro de una transacción**: tx corta
+de reclamo (`SELECT … FOR UPDATE` a secas, sin `SKIP LOCKED` —no hay cola que recorrer y que
+el segundo administrador espere es lo correcto— más el incremento de `attempt_count`), la
+llamada HTTP **fuera de toda transacción** —una llamada de segundos dentro de
+`db.transaction` retiene una conexión del pool serverless de Neon, y un timeout revertiría
+el `attempt_count` dejando la pantalla en «0 intentos» tras haber intentado— y una tx corta
+que persiste el resultado con su `logAudit`.
+
+Nubefact vive detrás de `InvoicingProvider`, una interfaz de un método:
+**ningún nombre de campo suyo aparece fuera de `nubefact.provider.ts`**, que es también el
+único archivo que divide por 100 —la interfaz habla en céntimos enteros—. El fallo se
+clasifica en permanente o transitorio y la regla **no puede mirar solo el status**, porque
+Nubefact devuelve rechazos de validación con HTTP `200` y un `errors` en el cuerpo: hay
+`errors` ⇒ permanente; sin `errors`, `5xx` o red ⇒ transitorio, `4xx` ⇒ permanente. La UI
+usa esa distinción para decir «volver a pulsar no lo arregla» en vez de invitar a un bucle
+inútil. La bitácora registra pedido, tipo, serie, número y actor, y **nunca** el documento
+del comprador, su razón social ni el texto del error, que puede citar de vuelta el RUC
+rechazado: `audit` y `manager` leen la bitácora y la vista renderiza `metadata` íntegro.
+
+`buyer_document_number` y `buyer_legal_name` **no salen por ninguna API**: ni el detalle de
+admin ni el historial del cliente los publican, y la única proyección del repositorio que
+los lee (`findFiscalSnapshot`) tiene un solo llamador, el service de emisión, cuyo destino
+legítimo es el cuerpo que se envía a Nubefact. El comprobante se publica con la **misma
+forma** para el panel y para «Mis compras» —es el comprobante del propio comprador— y el
+recibo de Stripe **se conserva** junto a él: son dos cosas distintas, el documento fiscal y
+la constancia del cargo, y el recibo cubre además la ventana en que el comprobante sigue
+`pending`, que con emisión manual puede durar.
+
+Fuera de alcance por decisión: notas de crédito, notas de débito, comunicación de baja y
+reembolsos en Stripe (spec 023, cuyo esquema ya existe); cualquier proceso en segundo
+plano; emisión en lote; guías de remisión; validación en línea de RUC/DNI contra RENIEC o
+el padrón de SUNAT; panel de configuración del emisor —RUC, razón social y domicilio son
+variables de entorno validadas al importar—; reenvío del comprobante por correo; multiserie
+por sucursal; resumen diario de boletas; backfill de pedidos anteriores; y almacenar el XML
+y el CDR en vez de sus URLs. Asunción declarada: **todo el catálogo tributa al 18 %
+general**, sin exonerados ni inafectos.
 
 Gestión de accesos: CRUD de roles, matriz rol × permiso, asignación de roles a
 usuarios · bitácora de auditoría filtrable por actor, entidad, acción y fecha.

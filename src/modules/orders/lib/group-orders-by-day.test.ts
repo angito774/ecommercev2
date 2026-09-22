@@ -27,6 +27,9 @@ function buildEntry(overrides: Partial<OrderHistoryEntry> = {}): OrderHistoryEnt
     createdAt: new Date(2026, 8, 9, 10, 0).toISOString(),
     items: [],
     receiptAvailable: true,
+    // El agrupado por día no mira los comprobantes; el array vacío es el caso normal de un
+    // pedido cuyo comprobante todavía nadie emitió (spec 022).
+    documents: [],
     ...overrides,
   };
 }

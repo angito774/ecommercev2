@@ -16,6 +16,10 @@ export const skuSchema = z
   .max(60, 'El SKU no puede superar 60 caracteres')
   .regex(/^[A-Z0-9][A-Z0-9-]*$/, 'Solo mayúsculas, números y guiones');
 
+// El mensaje se comparte entre el POST, el PATCH y el formulario, mismo criterio que
+// `COMPARE_AT_PRICE_MESSAGE`: una sola redacción del mismo error.
+export const POSITIVE_PRICE_MESSAGE = 'El precio debe ser mayor que cero';
+
 // El formulario captura el precio en unidades y lo convierte a céntimos antes de
 // enviarlo: la API solo conoce enteros.
 const productFields = z.object({
@@ -35,10 +39,16 @@ const productFields = z.object({
     .url('Debe ser una URL válida')
     .max(500, 'La URL no puede superar 500 caracteres')
     .nullable(),
+  // Mayor que cero, mismo invariante que `expenses.amountCents`: un producto a precio 0
+  // produce una línea de comprobante gravada al 18 % con valor de venta 0, que ante SUNAT
+  // es una operación gratuita (transferencia a título gratuito) y se declara con otro
+  // código de tipo de operación. El catálogo de esta tienda no vende nada gratis, así que
+  // el caso se cierra en la entrada en vez de arrastrar una rama fiscal que nadie usa
+  // (spec 022, D-22).
   priceCents: z
     .number()
     .int('El precio debe expresarse en céntimos enteros')
-    .min(0, 'El precio no puede ser negativo')
+    .positive(POSITIVE_PRICE_MESSAGE)
     .max(MAX_PRICE_CENTS, 'El precio supera el máximo admitido'),
   // `null` no es "cero": significa que el producto no tiene precio anterior y por
   // tanto no lleva ni precio tachado ni badge de descuento (spec 004, §5.1).
@@ -133,10 +143,15 @@ export const productFormSchema = productFields
       .array(z.object({ key: z.string().trim().max(60), value: z.string().trim().max(200) }))
       .max(20, 'Como máximo 20 características'),
   })
-  // Mismo invariante que `createProductSchema`, reutilizando su predicado y su
-  // mensaje: aquí solo cambia que los precios llegan como texto. El formulario lo
+  // Mismos invariantes que `createProductSchema`, reutilizando sus predicados y sus
+  // mensajes: aquí solo cambia que los precios llegan como texto. El formulario los
   // comprueba para dar el error junto al campo, no como frontera de seguridad —esa
-  // es la del schema de la API.
+  // es la del schema de la API—. El `!PRICE_INPUT_PATTERN.test(...)` evita repetir el
+  // error del formato cuando el texto todavía no es un precio.
+  .refine((values) => !PRICE_INPUT_PATTERN.test(values.price) || toCents(values.price) > 0, {
+    message: POSITIVE_PRICE_MESSAGE,
+    path: ['price'],
+  })
   .refine(
     (values) =>
       values.compareAtPrice === null ||

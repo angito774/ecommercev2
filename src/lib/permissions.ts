@@ -192,6 +192,25 @@ export const PERMISSIONS = [
     action: 'set_initial_cost',
     description: 'Cargar el costo inicial de un producto que aún no tiene costo registrado.',
   },
+  // Recurso propio (`invoicing`) y **no** `orders.update_status` (spec 022, §5.4): ese
+  // permiso lo tiene `manager` y solo concede cancelar un pedido que sigue `pending`.
+  // Emitir manda un documento fiscal a SUNAT con el RUC de la empresa, que es el mismo
+  // criterio restrictivo del resto de finanzas (spec 017, D-3; spec 021, D-6): solo
+  // `super_admin` y `admin`.
+  //
+  // `issue` y no `retry`: sin ningún proceso automático detrás, la primera emisión y la
+  // décima son exactamente la misma acción de la misma persona sobre la misma fila, con
+  // el mismo par serie-número (D-6, D-10). Un permiso llamado «reintentar» describiría
+  // mal lo único que hace el sistema para emitir.
+  //
+  // **Ver** los documentos y su estado no estrena permiso: reutiliza `orders.read`, que
+  // ya es exactamente el alcance «ver este pedido entero».
+  {
+    code: 'invoicing.issue',
+    resource: 'invoicing',
+    action: 'issue',
+    description: 'Emitir ante SUNAT un comprobante electrónico pendiente o que falló.',
+  },
 ] as const;
 
 // `PermissionDefinition` es la entrada del catálogo en código, simétrica con
@@ -275,6 +294,7 @@ export const ROLE_PERMISSION_MATRIX: Record<RoleSlug, readonly PermissionCode[]>
     'payroll.read',
     'payroll.manage',
     'pricing.set_initial_cost',
+    'invoicing.issue',
   ],
   admin: [
     'categories.read',
@@ -303,6 +323,7 @@ export const ROLE_PERMISSION_MATRIX: Record<RoleSlug, readonly PermissionCode[]>
     'payroll.read',
     'payroll.manage',
     'pricing.set_initial_cost',
+    'invoicing.issue',
   ],
   // `manager` y `audit` quedan fuera del módulo financiero a propósito (spec 017,
   // D-3): es el primer módulo con datos de resultado y no de operación. `manager`

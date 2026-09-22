@@ -15,6 +15,7 @@ import type {
   OrderStatusChangeResult,
 } from '@/modules/orders/types/order.types';
 import { db } from '@/server/db';
+import * as electronicDocumentRepository from '@/server/repositories/electronic-document.repository';
 import * as orderRepository from '@/server/repositories/order.repository';
 
 type Context = RouteContext<'/api/admin/orders/[id]'>;
@@ -33,11 +34,31 @@ export async function GET(_request: Request, context: Context) {
     const order = await orderRepository.findByIdForAdmin(parsedId.data);
     if (!order) throw new NotFoundError(ADMIN_ORDER_NOT_FOUND_MESSAGE);
 
+    // Segunda consulta y no un join en la anterior: los comprobantes son 0..N por pedido y
+    // el join repetiría la cabecera por documento, obligando a deduplicarla al leer. Se
+    // lanza después de resolver el 404 para no consultarlos de un pedido que no existe.
+    //
+    // El enlace al PDF solo viaja con `invoicing.issue`: es una URL sin sesión y el PDF
+    // lleva el documento del comprador, su razón social y el desglose base/IGV, que §6.3
+    // reserva a finanzas. `manager` y `audit` tienen `orders.read` y ninguno de los dos
+    // alcanza (D-19). Se filtra aquí, en servidor, y no ocultándolo en el cliente.
+    const documents = await electronicDocumentRepository.findRowsByOrderId(order.id, {
+      includePdfUrl: can(granted, 'invoicing.issue'),
+    });
+
     const body: AdminOrderDetailResponse = {
-      data: order,
+      // `documents` trae la proyección de `ElectronicDocumentRow`, que **no** incluye
+      // `provider_response`; y ni `buyerDocumentNumber` ni `buyerLegalName` salen por aquí,
+      // porque `ADMIN_ORDER_DETAIL_COLUMNS` no los enumera (AC22).
+      data: { ...order, documents },
       // El sheet tiene su propia consulta: si leyera el `meta` del listado quedaría
-      // acoplado al orden de carga de otra query (D-11).
-      meta: { canUpdateStatus: can(granted, 'orders.update_status') },
+      // acoplado al orden de carga de otra query (D-11). `canIssueInvoice` se resuelve en
+      // servidor sobre el set efectivo: la UI solo oculta el botón, y el `POST` vuelve a
+      // comprobar el permiso por su cuenta (AC20).
+      meta: {
+        canUpdateStatus: can(granted, 'orders.update_status'),
+        canIssueInvoice: can(granted, 'invoicing.issue'),
+      },
     };
 
     return NextResponse.json(body);

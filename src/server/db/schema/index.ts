@@ -2,11 +2,17 @@
 // drizzle-kit lee este directorio completo para generar migraciones.
 export { auditLogs, auditSeverity } from './audit-log';
 export { categories } from './category';
+export { documentSeries, documentSeriesKey } from './document-series';
+export {
+  electronicDocumentKind,
+  electronicDocuments,
+  electronicDocumentStatus,
+} from './electronic-document';
 export { employees } from './employee';
 export { expenseCategory, expenses } from './expense';
 export { inventoryDocuments } from './inventory-document';
 export { orderItems } from './order-item';
-export { orders, orderStatus } from './order';
+export { buyerDocumentType, orders, orderStatus } from './order';
 export { payrollPayments } from './payroll-payment';
 export { paymentMethods } from './payment-method';
 export { permissions } from './permission';
