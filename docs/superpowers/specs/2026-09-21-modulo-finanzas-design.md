@@ -58,6 +58,12 @@ facturación electrónica y da valor inmediato (saber qué productos dejan
 margen real). El resto de sub-proyectos **no** se ha brainstormeado a este
 nivel de detalle todavía — quedan como roadmap, a retomar uno a la vez.
 
+**Actualización:** el sub-proyecto #0 (Facturación electrónica) ya tiene su
+propio diseño detallado, aprobado:
+[2026-09-21-facturacion-electronica-design.md](./2026-09-21-facturacion-electronica-design.md).
+Incluye boleta/factura, nota de crédito/débito, comunicación de baja y
+reembolso integrado con Stripe.
+
 ## 3. Diseño — Sub-proyecto #1: Precio Unitario
 
 ### 3.1 Modelo de datos
