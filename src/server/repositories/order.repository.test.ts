@@ -4,7 +4,14 @@ import { describe, expect, it } from 'vitest';
 
 import type { AdminOrderQueryParams } from '@/modules/orders/schemas/admin-order.schema';
 
-import { buildAdminOrderFilters } from './order.repository';
+import {
+  applyRefund,
+  buildAdminOrderFilters,
+  buildRefundGuard,
+  buildRefundIncrement,
+  findByIdForUpdate,
+  updateBuyer,
+} from './order.repository';
 
 // El dialecto real compila el árbol a texto y parámetros, así que las aserciones
 // miran el WHERE que llegaría a Postgres en vez de la forma interna del objeto. Sin
@@ -133,5 +140,55 @@ describe('buildAdminOrderFilters', () => {
     const query = compile(buildAdminOrderFilters({ ...NO_FILTERS, status: 'paid' }));
 
     expect(query.sql).not.toContain('stripe_checkout_session_id');
+  });
+});
+
+describe('buildRefundIncrement', () => {
+  it('adds against the column itself, so two concurrent adjustments never lose one (D-5)', () => {
+    const query = dialect.sqlToQuery(buildRefundIncrement(50_000));
+
+    expect(query.sql).toContain('"refunded_amount_cents"');
+    expect(query.sql).toContain('+');
+    expect(query.params).toEqual([50_000]);
+  });
+
+  it('sends the amount as a parameter, never interpolated into the SQL text', () => {
+    expect(dialect.sqlToQuery(buildRefundIncrement(50_000)).sql).not.toContain('50000');
+  });
+
+  it('accepts a zero increment: an adjustment with no money still checks the state', () => {
+    expect(dialect.sqlToQuery(buildRefundIncrement(0)).params).toEqual([0]);
+  });
+});
+
+describe('buildRefundGuard', () => {
+  const ORDER_ID = '44444444-4444-4444-8444-444444444444';
+
+  // Es el `WHERE` que resuelve la carrera en el motor: cero filas = alguien se adelantó, y
+  // la clave de idempotencia ya garantizó que Stripe creó un solo refund (AC9, AC10).
+  it('guards on the value the reading transaction saw, not only on the id', () => {
+    const query = dialect.sqlToQuery(buildRefundGuard(ORDER_ID, 100_000));
+
+    expect(query.sql).toContain('"id"');
+    expect(query.sql).toContain('"refunded_amount_cents"');
+    expect(query.params).toEqual([ORDER_ID, 100_000]);
+  });
+
+  it('guards on zero just as strictly as on any other previous amount', () => {
+    expect(dialect.sqlToQuery(buildRefundGuard(ORDER_ID, 0)).params).toEqual([ORDER_ID, 0]);
+  });
+
+  it('never compares the status: the refund state is derived, order_status does not move', () => {
+    expect(dialect.sqlToQuery(buildRefundGuard(ORDER_ID, 0)).sql).not.toContain('"status"');
+  });
+});
+
+describe('the adjustment mutators', () => {
+  // La firma es lo que impide escribir un reembolso fuera de la transacción de su entrada
+  // en la bitácora: ninguno acepta el `db` global, y se comprueba en el tipo.
+  it('take the transaction handle as their first parameter', () => {
+    expect(findByIdForUpdate.length).toBe(2);
+    expect(applyRefund.length).toBe(3);
+    expect(updateBuyer.length).toBe(3);
   });
 });

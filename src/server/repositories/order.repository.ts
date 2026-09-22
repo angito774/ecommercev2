@@ -413,6 +413,11 @@ const ADMIN_ORDER_DETAIL_COLUMNS = {
   shippingAddress: orders.shippingAddress,
   stripeCheckoutSessionId: orders.stripeCheckoutSessionId,
   stripePaymentIntentId: orders.stripePaymentIntentId,
+  // Solo en el detalle y no en el listado (spec 023, AC21): el saldo devolvible se lee
+  // junto al total del pedido, y una columna más en la tabla de 20 filas no responde
+  // ninguna pregunta que la tabla haga. Los tres campos fiscales del comprador siguen sin
+  // salir: son PII y no los publica ninguna API de este módulo.
+  refundedAmountCents: orders.refundedAmountCents,
 } as const;
 
 // Sin `documents`, por lo mismo que `OrderHistoryPage`: los comprobantes los lee su propio
@@ -459,6 +464,7 @@ export async function findByIdForAdmin(
     shippingAddress: parseShippingAddress(row.shippingAddress),
     stripeCheckoutSessionId: row.stripeCheckoutSessionId,
     stripePaymentIntentId: row.stripePaymentIntentId,
+    refundedAmountCents: row.refundedAmountCents,
   };
 }
 
@@ -581,4 +587,108 @@ export async function markPaymentFailed(tx: Tx, orderId: string): Promise<Order 
 // asíncrono ya cobrado, y ese pedido no debe volver atrás.
 export async function markCanceled(tx: Tx, orderId: string): Promise<Order | null> {
   return transitionFromPending(tx, orderId, { status: 'canceled' });
+}
+
+// ---------------------------------------------------------------------------
+// Ajuste del pedido (spec 023)
+// ---------------------------------------------------------------------------
+
+/**
+ * Fila completa **bajo lock**, que es la `tx A` de §6.4: toma el `FOR UPDATE`, se valida el
+ * estado y se suelta antes de hablar con Stripe (spec 022, D-9). Sin `SKIP LOCKED`, por lo
+ * mismo que el reclamo de un comprobante: no se recorre ninguna cola, así que que el
+ * segundo administrador espere —y encuentre el pedido ya ajustado— es el comportamiento
+ * correcto y no una contención que evitar.
+ *
+ * El lock por sí solo **no** basta para la carrera: entre la `tx A` y la `tx B` el estado
+ * puede moverse, y quien lo detecta es el `UPDATE` condicional de `applyRefund` (D-5).
+ */
+export async function findByIdForUpdate(tx: Tx, id: string): Promise<Order | null> {
+  const [order] = await tx
+    .select()
+    .from(orders)
+    .where(eq(orders.id, id))
+    .for('update')
+    .limit(1);
+
+  return order ?? null;
+}
+
+// El incremento como expresión sobre la propia columna y no como literal calculado en
+// TypeScript (mismo criterio que `buildNextNumberExpression`, spec 022 D-5): leer, sumar en
+// TypeScript y volver a escribir dejaría que dos ajustes concurrentes pasaran la
+// comprobación las dos veces y devolvieran el doble.
+//
+// Exportada para compilarla con `PgDialect` en el test: es la pieza con la regla, y el
+// resto de `applyRefund` es fontanería de Drizzle.
+export function buildRefundIncrement(refundCents: number): SQL {
+  return sql`${orders.refundedAmountCents} + ${refundCents}`;
+}
+
+/**
+ * El `WHERE` que resuelve la carrera **en el motor**: `refunded_amount_cents` tiene que
+ * seguir valiendo lo que valía cuando la `tx A` lo leyó. Cero filas significa «alguien se
+ * adelantó» y sale por 409 sin haber duplicado el reembolso, porque la clave de
+ * idempotencia ya garantizó que Stripe creó un solo refund (D-4, D-5, AC9).
+ */
+export function buildRefundGuard(orderId: string, refundedBefore: number): SQL {
+  return and(
+    eq(orders.id, orderId),
+    eq(orders.refundedAmountCents, refundedBefore),
+  ) as SQL;
+}
+
+export type ApplyRefundValues = {
+  /** El valor que la `tx A` leyó. Si ya no es ese, otro ajuste ganó la carrera. */
+  refundedBefore: number;
+  /** Puede ser `0`: un ajuste sin dinero también exige que el estado no se haya movido. */
+  refundCents: number;
+};
+
+/**
+ * `UPDATE orders SET refunded = refunded + $x WHERE id = $1 AND refunded = $refundedBefore`.
+ * `null` = 0 filas = conflicto.
+ *
+ * Se ejecuta **también con `refundCents = 0`** —corrección de comprador y cargo adicional—
+ * y no se salta con un `if`: la suma es un no-op, pero el `WHERE` sigue siendo la única
+ * comprobación de que el pedido no se movió entre las dos transacciones, y saltárselo
+ * dejaría esos dos ajustes sin defensa contra la concurrencia.
+ */
+export async function applyRefund(
+  tx: Tx,
+  orderId: string,
+  values: ApplyRefundValues,
+): Promise<Order | null> {
+  const [updated] = await tx
+    .update(orders)
+    .set({ refundedAmountCents: buildRefundIncrement(values.refundCents) })
+    .where(buildRefundGuard(orderId, values.refundedBefore))
+    .returning();
+
+  return updated ?? null;
+}
+
+/**
+ * Los tres campos fiscales del comprador, y solo esos: ni el importe, ni las líneas, ni la
+ * dirección (§3). Se escriben juntos porque el `CHECK orders_buyer_document_pair` exige que
+ * viajen juntos, y `legalName` llega ya normalizado a `null` —nunca `''`, que es lo que el
+ * `CHECK orders_buyer_legal_name_requires_ruc` no admite en una boleta—.
+ */
+export type BuyerFiscalValues = Pick<
+  NewOrder,
+  'buyerDocumentType' | 'buyerDocumentNumber' | 'buyerLegalName'
+>;
+
+export async function updateBuyer(
+  tx: Tx,
+  orderId: string,
+  values: BuyerFiscalValues,
+): Promise<Order | null> {
+  const [updated] = await tx
+    .update(orders)
+    .set(values)
+    .where(eq(orders.id, orderId))
+    .returning();
+
+  return updated ?? null;
 }

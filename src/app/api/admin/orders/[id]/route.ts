@@ -58,6 +58,10 @@ export async function GET(_request: Request, context: Context) {
       meta: {
         canUpdateStatus: can(granted, 'orders.update_status'),
         canIssueInvoice: can(granted, 'invoicing.issue'),
+        // Tres códigos distintos y no uno solo: `manager` tiene el primero y no los otros
+        // dos, y `audit` no tiene ninguno. El `POST` de ajuste vuelve a comprobarlo por su
+        // cuenta (AC3), así que esto solo evita ofrecer algo que la API va a rechazar.
+        canRefund: can(granted, 'orders.refund'),
       },
     };
 

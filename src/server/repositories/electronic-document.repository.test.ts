@@ -6,11 +6,14 @@ import type { ProviderTrace } from '@/server/services/invoicing/provider';
 import {
   buildAttemptIncrement,
   buildClaimableFilter,
+  buildIssuedOriginalFilter,
   buildNotIssuedFilter,
+  buildVoidableFilter,
   claimForIssue,
   create,
   markFailed,
   markIssued,
+  markVoided,
   toRow,
 } from './electronic-document.repository';
 
@@ -39,6 +42,8 @@ const WITH_PDF = { includePdfUrl: true } as const;
 function buildDocument(overrides: Partial<RowSource> = {}): RowSource {
   return {
     id: DOCUMENT_ID,
+    relatedDocumentId: null,
+    reasonCode: null,
     kind: 'boleta',
     status: 'pending',
     series: 'B001',
@@ -132,6 +137,8 @@ describe('toRow', () => {
       'number',
       'pdfUrl',
       'permanentFailure',
+      'reasonLabel',
+      'relatedDocumentId',
       'series',
       'status',
     ]);
@@ -245,5 +252,83 @@ describe('the mutators', () => {
     expect(claimForIssue.length).toBe(2);
     expect(markIssued.length).toBe(3);
     expect(markFailed.length).toBe(3);
+    expect(markVoided.length).toBe(2);
+  });
+});
+
+describe('buildIssuedOriginalFilter', () => {
+  const ORDER_ID = '44444444-4444-4444-8444-444444444444';
+
+  it('looks for the original of the order among the two original kinds', () => {
+    const query = dialect.sqlToQuery(buildIssuedOriginalFilter(ORDER_ID));
+
+    expect(query.params).toEqual([ORDER_ID, 'boleta', 'factura', 'issued']);
+  });
+
+  // AC5: no se puede acreditar un documento que SUNAT todavía no tiene, así que un original
+  // `pending` o `failed` no cuenta y el ajuste responde 409 dirigiendo a emitirlo primero.
+  it('demands issued, not merely "not voided" (AC5)', () => {
+    const query = dialect.sqlToQuery(buildIssuedOriginalFilter(ORDER_ID));
+
+    expect(query.params).toContain('issued');
+    expect(query.params).not.toContain('pending');
+    expect(query.sql).not.toContain('<>');
+  });
+
+  it('never matches a correction: only a boleta or a factura can be a parent', () => {
+    const query = dialect.sqlToQuery(buildIssuedOriginalFilter(ORDER_ID));
+
+    expect(query.params).not.toContain('nota_credito');
+    expect(query.params).not.toContain('comunicacion_baja');
+  });
+});
+
+describe('buildVoidableFilter', () => {
+  it('only voids a document that was actually issued before SUNAT', () => {
+    const query = dialect.sqlToQuery(buildVoidableFilter(DOCUMENT_ID));
+
+    expect(query.params).toEqual([DOCUMENT_ID, 'issued']);
+  });
+
+  // Es lo que mantiene exacta la equivalencia del CHECK corregido en la migración `0011`:
+  // un `pending` nunca alcanza `voided`, así que un `voided` siempre conserva su `issued_at`.
+  it('never voids a pending or a failed document', () => {
+    const query = dialect.sqlToQuery(buildVoidableFilter(DOCUMENT_ID));
+
+    expect(query.params).not.toContain('pending');
+    expect(query.params).not.toContain('failed');
+  });
+});
+
+describe('toRow — the two fields the adjustment publishes', () => {
+  it('publishes the parent id so the UI builds the tree without guessing by date (D-11)', () => {
+    const parentId = '11111111-1111-4111-8111-111111111111';
+    const row = toRow(
+      buildDocument({ kind: 'nota_credito', relatedDocumentId: parentId, reasonCode: '06' }),
+      WITH_PDF,
+    );
+
+    expect(row.relatedDocumentId).toBe(parentId);
+  });
+
+  it('leaves the parent id null on an original', () => {
+    expect(toRow(buildDocument(), WITH_PDF).relatedDocumentId).toBeNull();
+  });
+
+  it('publishes the reason already resolved against its catalog, never the bare code', () => {
+    const row = toRow(buildDocument({ kind: 'nota_credito', reasonCode: '06' }), WITH_PDF);
+
+    expect(row.reasonLabel).toBe('Devolución total');
+    expect(JSON.stringify(row)).not.toContain('"06"');
+  });
+
+  it('reads a debit note reason from catalog 10, which shares its digits with 09', () => {
+    const row = toRow(buildDocument({ kind: 'nota_debito', reasonCode: '01' }), WITH_PDF);
+
+    expect(row.reasonLabel).toBe('Intereses por mora');
+  });
+
+  it('leaves the reason null on an original, which carries none', () => {
+    expect(toRow(buildDocument(), WITH_PDF).reasonLabel).toBeNull();
   });
 });

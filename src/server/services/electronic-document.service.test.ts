@@ -24,6 +24,8 @@ import {
   skipReason,
   toIssueDate,
   toProviderInput,
+  toRelatedDocument,
+  toVoidProviderInput,
 } from './electronic-document.service';
 
 type Order = typeof orders.$inferSelect;
@@ -296,6 +298,167 @@ describe('toProviderInput', () => {
         buildClaimed(),
         buildSnapshot({ buyerDocumentType: null, buyerDocumentNumber: null }),
         issuedOn,
+      ),
+    ).toThrow();
+  });
+});
+
+describe('toRelatedDocument', () => {
+  const PARENT = { kind: 'boleta', series: 'B001', number: 12 } as const;
+
+  it('returns null for an original, which corrects nothing', () => {
+    expect(toRelatedDocument({ relatedDocumentId: null, reasonCode: null }, null)).toBeNull();
+  });
+
+  it('builds the block from the parent row and the reason of the correction', () => {
+    const related = toRelatedDocument(
+      { relatedDocumentId: '55555555-5555-4555-8555-555555555555', reasonCode: '06' },
+      PARENT,
+    );
+
+    expect(related).toEqual({ kind: 'boleta', series: 'B001', number: 12, reasonCode: '06' });
+  });
+
+  // Un documento que dice corregir algo y no puede decir a cuál lo rechaza SUNAT, y
+  // mandarlo igualmente quemaría el correlativo que ya tiene asignado.
+  it('refuses a correction whose parent could not be read', () => {
+    expect(() =>
+      toRelatedDocument(
+        { relatedDocumentId: '55555555-5555-4555-8555-555555555555', reasonCode: '06' },
+        null,
+      ),
+    ).toThrow();
+  });
+
+  it('refuses a correction whose parent has no series-number pair', () => {
+    expect(() =>
+      toRelatedDocument(
+        { relatedDocumentId: '55555555-5555-4555-8555-555555555555', reasonCode: '06' },
+        { kind: 'boleta', series: null, number: null },
+      ),
+    ).toThrow();
+  });
+
+  it('refuses a correction with no reason: the catalog code is not optional in a note', () => {
+    expect(() =>
+      toRelatedDocument(
+        { relatedDocumentId: '55555555-5555-4555-8555-555555555555', reasonCode: null },
+        PARENT,
+      ),
+    ).toThrow();
+  });
+});
+
+describe('toProviderInput — corrections (spec 023)', () => {
+  const issuedOn = new Date('2026-09-22T15:04:05.000Z');
+  const PARENT = buildClaimed({ id: '66666666-6666-4666-8666-666666666666', series: 'B001', number: 12 });
+
+  function buildNote(kind: 'nota_credito' | 'nota_debito', reasonCode: string) {
+    return buildClaimed({
+      kind,
+      reasonCode,
+      series: kind === 'nota_credito' ? 'BC01' : 'BD01',
+      number: 3,
+      relatedDocumentId: PARENT.id,
+      amountCents: 50_000,
+      baseCents: splitIgv(50_000).baseCents,
+      igvCents: splitIgv(50_000).igvCents,
+    });
+  }
+
+  it('attaches the related block to a credit note', () => {
+    const input = toProviderInput(buildNote('nota_credito', '06'), buildSnapshot(), issuedOn, PARENT);
+
+    expect(input.related).toEqual({
+      kind: 'boleta',
+      series: 'B001',
+      number: 12,
+      reasonCode: '06',
+    });
+  });
+
+  it('takes the note series and number from its own row, not from the parent', () => {
+    const input = toProviderInput(buildNote('nota_credito', '06'), buildSnapshot(), issuedOn, PARENT);
+
+    expect(input.series).toBe('BC01');
+    expect(input.number).toBe(3);
+  });
+
+  it('attaches the related block to a debit note too', () => {
+    const input = toProviderInput(buildNote('nota_debito', '02'), buildSnapshot(), issuedOn, PARENT);
+
+    expect(input.related?.reasonCode).toBe('02');
+  });
+
+  it('still sends no related block for an original, even if a parent is passed by mistake', () => {
+    expect(toProviderInput(buildClaimed(), buildSnapshot(), issuedOn, PARENT).related).toBeUndefined();
+  });
+});
+
+describe('toVoidProviderInput', () => {
+  const issuedOn = new Date('2026-09-22T15:04:05.000Z');
+  const PARENT = buildClaimed({ id: '66666666-6666-4666-8666-666666666666', series: 'B001', number: 12 });
+
+  const VOID_DOCUMENT = buildClaimed({
+    kind: 'comunicacion_baja',
+    reasonCode: '01',
+    relatedDocumentId: PARENT.id,
+    // Los tres `null` que exigen los `CHECK` de la tabla: la baja no lleva serie propia ni
+    // importe, porque no es un comprobante nuevo.
+    series: null,
+    number: null,
+    amountCents: null,
+    baseCents: null,
+    igvCents: null,
+  });
+
+  it('builds a void input that carries only the document it voids', () => {
+    const input = toVoidProviderInput(VOID_DOCUMENT, buildSnapshot(), issuedOn, PARENT);
+
+    expect(input.kind).toBe('comunicacion_baja');
+    expect(input.related).toEqual({
+      kind: 'boleta',
+      series: 'B001',
+      number: 12,
+      reasonCode: '01',
+    });
+  });
+
+  it('carries no series, number or amount of its own: the type makes it impossible', () => {
+    const input = toVoidProviderInput(VOID_DOCUMENT, buildSnapshot(), issuedOn, PARENT);
+
+    expect(input).not.toHaveProperty('series');
+    expect(input).not.toHaveProperty('amountCents');
+    expect(input).not.toHaveProperty('lines');
+  });
+
+  it('refuses a void with no parent instead of voiding nothing', () => {
+    expect(() => toVoidProviderInput(VOID_DOCUMENT, buildSnapshot(), issuedOn, null)).toThrow();
+  });
+});
+
+// La baja no puede pasar por el constructor de comprobante: no tiene serie, ni número, ni
+// importes. El tipo lo impide, y el guard lo confirma en tiempo de ejecución para el dato
+// que llegue de una fila corrupta.
+describe('toProviderInput refuses a comunicación de baja', () => {
+  it('throws instead of sending a comprobante with no series', () => {
+    const voidDocument = buildClaimed({
+      kind: 'comunicacion_baja',
+      reasonCode: '01',
+      relatedDocumentId: '66666666-6666-4666-8666-666666666666',
+      series: null,
+      number: null,
+      amountCents: null,
+      baseCents: null,
+      igvCents: null,
+    });
+
+    expect(() =>
+      toProviderInput(
+        voidDocument,
+        buildSnapshot(),
+        new Date('2026-09-22T15:04:05.000Z'),
+        buildClaimed({ id: '66666666-6666-4666-8666-666666666666' }),
       ),
     ).toThrow();
   });

@@ -13,7 +13,13 @@ import {
   SheetTitle,
 } from '@/components/ui/sheet';
 import { Skeleton } from '@/components/ui/skeleton';
-import { ISSUE_BUTTON_LABEL } from '@/modules/invoicing/constants';
+import {
+  ADJUST_ORDER_BUTTON_LABEL,
+  ISSUE_BUTTON_LABEL,
+  REFUNDABLE_AMOUNT_LABEL,
+  REFUNDED_AMOUNT_LABEL,
+} from '@/modules/invoicing/constants';
+import { AdjustOrderDialog } from '@/modules/invoicing/components/adjust-order-dialog';
 import { OrderDocuments } from '@/modules/invoicing/components/order-documents';
 import { useIssueDocument } from '@/modules/invoicing/hooks/use-issue-document';
 import type { ElectronicDocumentRow } from '@/modules/invoicing/types/electronic-document.types';
@@ -118,18 +124,28 @@ function OrderDetailBody({
   order,
   canUpdateStatus,
   canIssueInvoice,
+  canRefund,
 }: {
   order: AdminOrderDetail;
   canUpdateStatus: boolean;
   canIssueInvoice: boolean;
+  canRefund: boolean;
 }) {
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const [adjustOpen, setAdjustOpen] = useState(false);
 
   // Las dos condiciones: el estado lo decide la misma función que produce el 409 en
   // el servidor (D-10), y el permiso viaja resuelto en el `meta` (D-11). Ocultar el
   // botón no es la frontera —el PATCH la vuelve a poner (AC14)—, solo evita ofrecer
   // algo que la API va a rechazar.
   const showCancel = canUpdateStatus && canCancelOrder(order.status);
+
+  // Mismo criterio para el ajuste: solo tiene sentido sobre un pedido cobrado, y el
+  // permiso es `orders.refund`, que `manager` no tiene aunque sí tenga
+  // `orders.update_status` (spec 023, AC3). El `POST` lo vuelve a comprobar (AC2).
+  const showAdjust = canRefund && order.status === 'paid';
+  const refundedAmountCents = order.refundedAmountCents;
+  const refundableCents = order.amountTotalCents - refundedAmountCents;
 
   return (
     <>
@@ -172,6 +188,25 @@ function OrderDetailBody({
             <dt>Total</dt>
             <dd className="tabular-nums">{formatPrice(order.amountTotalCents)}</dd>
           </div>
+
+          {/* Solo cuando hubo devolución: en un pedido normal, una línea a cero no
+              informa de nada y sugiere que devolver es lo habitual. El estado de
+              reembolso se **deriva** de estas dos cifras y no de `order_status`, que no
+              crece (spec 023, §3, D-6). */}
+          {refundedAmountCents > 0 ? (
+            <>
+              <div className="border-border flex items-center justify-between gap-3 border-t pt-3">
+                <dt>{REFUNDED_AMOUNT_LABEL}</dt>
+                <dd className="text-destructive tabular-nums">
+                  −{formatPrice(refundedAmountCents)}
+                </dd>
+              </div>
+              <div className="flex items-center justify-between gap-3">
+                <dt>{REFUNDABLE_AMOUNT_LABEL}</dt>
+                <dd className="tabular-nums">{formatPrice(refundableCents)}</dd>
+              </div>
+            </>
+          ) : null}
         </dl>
 
         <section className="space-y-2">
@@ -204,16 +239,40 @@ function OrderDetailBody({
         </section>
       </div>
 
-      {showCancel ? (
+      {showCancel || showAdjust ? (
         <SheetFooter>
-          <Button variant="destructive" onClick={() => setConfirmOpen(true)}>
-            Cancelar pedido
-          </Button>
-          <CancelOrderDialog
-            open={confirmOpen}
-            onOpenChange={setConfirmOpen}
-            orderId={order.id}
-          />
+          {showAdjust ? (
+            <>
+              <Button variant="outline" onClick={() => setAdjustOpen(true)}>
+                {ADJUST_ORDER_BUTTON_LABEL}
+              </Button>
+              {/* Se monta solo cuando está abierto: así el formulario nace limpio en cada
+                  apertura y no conserva el importe tecleado en un intento anterior, que es
+                  lo último que debe reaparecer en una pantalla que devuelve dinero. */}
+              {adjustOpen ? (
+                <AdjustOrderDialog
+                  open={adjustOpen}
+                  onOpenChange={setAdjustOpen}
+                  orderId={order.id}
+                  amountTotalCents={order.amountTotalCents}
+                  refundedAmountCents={refundedAmountCents}
+                />
+              ) : null}
+            </>
+          ) : null}
+
+          {showCancel ? (
+            <>
+              <Button variant="destructive" onClick={() => setConfirmOpen(true)}>
+                Cancelar pedido
+              </Button>
+              <CancelOrderDialog
+                open={confirmOpen}
+                onOpenChange={setConfirmOpen}
+                orderId={order.id}
+              />
+            </>
+          ) : null}
         </SheetFooter>
       ) : null}
     </>
@@ -251,6 +310,7 @@ export function AdminOrderDetailSheet({ orderId, onOpenChange }: AdminOrderDetai
             order={query.data.data}
             canUpdateStatus={query.data.meta.canUpdateStatus}
             canIssueInvoice={query.data.meta.canIssueInvoice}
+            canRefund={query.data.meta.canRefund}
           />
         ) : (
           <div className="space-y-3 px-4">

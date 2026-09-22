@@ -30,25 +30,53 @@ export type IssueDocumentBuyer = {
   legalName: string;
 };
 
-export type IssueDocumentInput = {
+/** El documento que una corrección modifica, con el motivo por el que lo hace. */
+export type RelatedDocument = {
   kind: ElectronicDocumentKind;
   series: string;
   number: number;
+  /** Código del catálogo 09 (nota de crédito y baja) o 10 (nota de débito). */
+  reasonCode: string;
+};
+
+type IssueDocumentBase = {
   /** `DD-MM-YYYY` en la zona del emisor. */
   issueDate: string;
   buyer: IssueDocumentBuyer;
+};
+
+/** Boleta, factura, nota de crédito y nota de débito: todo lo que consume correlativo. */
+export type IssueComprobanteInput = IssueDocumentBase & {
+  kind: Exclude<ElectronicDocumentKind, 'comunicacion_baja'>;
+  series: string;
+  number: number;
   amountCents: number;
   baseCents: number;
   igvCents: number;
   lines: IssueDocumentLine[];
-  /** Solo en correcciones (spec 023): el documento que se modifica y el motivo. */
-  related?: {
-    kind: ElectronicDocumentKind;
-    series: string;
-    number: number;
-    reasonCode: string;
-  };
+  /** Presente en las dos notas (spec 023), ausente en el original. */
+  related?: RelatedDocument;
 };
+
+/**
+ * La comunicación de baja. **No lleva serie, ni número, ni importes, ni líneas**: no es un
+ * comprobante nuevo sino la anulación de uno existente, y así lo dicen también los `CHECK`
+ * `electronic_documents_void_has_no_series` y `_void_has_no_amount`.
+ *
+ * `related` es obligatorio aquí: una baja sin documento anulado no existe.
+ */
+export type IssueVoidInput = IssueDocumentBase & {
+  kind: 'comunicacion_baja';
+  related: RelatedDocument;
+};
+
+/**
+ * Unión discriminada por `kind` y no un objeto con esos campos opcionales (spec 023,
+ * §6.6.2): con campos opcionales habría que rellenar la serie y el importe de una baja con
+ * los del documento que anula, que compilaría y mentiría. **La interfaz
+ * `InvoicingProvider` no cambia**, que es lo que D-1 prometía.
+ */
+export type IssueDocumentInput = IssueComprobanteInput | IssueVoidInput;
 
 /**
  * Proyección **positiva** de la respuesta, con el mismo criterio que las proyecciones del

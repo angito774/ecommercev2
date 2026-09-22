@@ -1,14 +1,16 @@
 import { INVOICING_REQUEST_TIMEOUT_MS, invoicingConfig } from '@/lib/invoicing-config';
-import type { ElectronicDocumentKind } from '@/lib/electronic-documents';
+import { reasonLabelFor, type ElectronicDocumentKind } from '@/lib/electronic-documents';
 import { splitIgv, IGV_RATE } from '@/modules/finance/lib/igv';
 
 import {
   InvoicingProviderError,
   toProviderTrace,
   type InvoicingProvider,
+  type IssueComprobanteInput,
   type IssueDocumentInput,
   type IssueDocumentLine,
   type IssueDocumentResult,
+  type IssueVoidInput,
   type ProviderTrace,
 } from './provider';
 
@@ -24,8 +26,9 @@ const COMPROBANTE_CODE: Record<ElectronicDocumentKind, number> = {
   nota_credito: 3,
   nota_debito: 4,
   // La comunicación de baja no se genera con `generar_comprobante` sino con su propia
-  // operación (spec 023). Nace aquí para que el `Record` sea total y añadir un `kind` rompa
-  // el typecheck en vez de mandar `undefined` al proveedor.
+  // operación (`generar_anulacion`, §6.6.1), así que este valor **no se envía nunca**: el
+  // tipo que viaja en una baja es el del documento **anulado**. Sigue aquí para que el
+  // `Record` sea total y añadir un `kind` rompa el typecheck en vez de mandar `undefined`.
   comunicacion_baja: 0,
 };
 
@@ -120,11 +123,38 @@ export function toNubefactItems(
 }
 
 /**
+ * Cuerpo de `generar_anulacion` (spec 023, §6.6.1). **No es un comprobante**: el tipo, la
+ * serie y el número que viajan son los del documento **anulado**, no los de un documento
+ * nuevo, y por eso no hay `items`, ni totales, ni correlativo propio que consumir.
+ *
+ * `motivo` es texto libre y se manda la **etiqueta** del catálogo 09 del motivo elegido, no
+ * su código: es lo que una persona lee en el portal de SUNAT, y el código por sí solo no
+ * dice nada ahí.
+ */
+export function toNubefactVoidPayload(input: IssueVoidInput): Record<string, unknown> {
+  return {
+    operacion: 'generar_anulacion',
+    tipo_de_comprobante: COMPROBANTE_CODE[input.related.kind],
+    serie: input.related.series,
+    numero: input.related.number,
+    // El código desnudo como último recurso: un motivo fuera del catálogo es dato viejo, y
+    // mandar una cadena vacía dejaría la anulación sin justificar ante SUNAT.
+    motivo: reasonLabelFor(input.kind, input.related.reasonCode) ?? input.related.reasonCode,
+  };
+}
+
+/**
  * Cuerpo de `generar_comprobante`. **No se envían `cliente_direccion` ni `cliente_email`**,
  * que son opcionales: la dirección de `orders.shipping_address` es de envío y no fiscal, y
  * mandarla como domicilio del cliente sería afirmar un dato que nadie validó (§6.6.1).
+ *
+ * Las dos notas del spec 023 pasan por aquí sin ninguna rama nueva salvo el bloque
+ * `related`, que ya existía: una nota de crédito es un comprobante del catálogo 01 como
+ * cualquier otro, con su serie, su número y sus líneas.
  */
-export function toNubefactPayload(input: IssueDocumentInput): Record<string, unknown> {
+export function toNubefactComprobantePayload(
+  input: IssueComprobanteInput,
+): Record<string, unknown> {
   return {
     operacion: 'generar_comprobante',
     tipo_de_comprobante: COMPROBANTE_CODE[input.kind],
@@ -158,6 +188,17 @@ export function toNubefactPayload(input: IssueDocumentInput): Record<string, unk
         }
       : {}),
   };
+}
+
+/**
+ * Única puerta de traducción al proveedor. La rama la decide el `kind` del dominio y no un
+ * parámetro: son dos operaciones distintas del API, con cuerpos que no comparten un solo
+ * campo obligatorio, y el tipo de `input` ya las separa (§6.6.2).
+ */
+export function toNubefactPayload(input: IssueDocumentInput): Record<string, unknown> {
+  return input.kind === 'comunicacion_baja'
+    ? toNubefactVoidPayload(input)
+    : toNubefactComprobantePayload(input);
 }
 
 const TRANSIENT_MESSAGE = 'No se pudo contactar con el proveedor. Vuelve a intentarlo.';

@@ -1,7 +1,7 @@
 ---
 id: 023
 title: Ajustar pedido — reembolso en Stripe con nota de crédito, nota de débito y comunicación de baja
-status: approved
+status: done
 module: invoicing
 scope: admin
 created: 2026-09-22
@@ -111,25 +111,25 @@ del catálogo oficial.
 
 ## 4. Criterios de aceptación
 
-- [ ] **AC1** — Dado un usuario sin sesión, cuando llama a
+- [x] **AC1** — Dado un usuario sin sesión, cuando llama a
       `POST /api/admin/orders/[id]/adjust`, entonces `401` con `{ message }` y
       nunca un `307` a HTML.
-- [ ] **AC2** — Dado un usuario con `orders.read` y `orders.update_status` pero
+- [x] **AC2** — Dado un usuario con `orders.read` y `orders.update_status` pero
       sin `orders.refund`, entonces la respuesta es `403` aunque el cuerpo sea
       inválido: la autorización ocurre antes de leerlo.
-- [ ] **AC3** — Dado un rol `manager` o `audit`, entonces
+- [x] **AC3** — Dado un rol `manager` o `audit`, entonces
       `meta.canRefund` es `false`, el sheet no pinta «Ajustar pedido» y un `POST`
       directo responde `403`.
-- [ ] **AC4** — Dado un pedido que no está `paid`, entonces la respuesta es `409`
+- [x] **AC4** — Dado un pedido que no está `paid`, entonces la respuesta es `409`
       nombrando su estado actual y no se llama a Stripe.
-- [ ] **AC5** — Dado un pedido `paid` cuyo comprobante original **no** está
+- [x] **AC5** — Dado un pedido `paid` cuyo comprobante original **no** está
       `issued`, entonces la respuesta es `409`: no se puede acreditar un
       documento que SUNAT todavía no tiene. El mensaje dirige a emitir primero el
       original, que es una acción disponible en la misma pantalla.
-- [ ] **AC6** — Dada una `devolucion_parcial` por un importe mayor que
+- [x] **AC6** — Dada una `devolucion_parcial` por un importe mayor que
       `amount_total_cents − refunded_amount_cents`, entonces `400` con el saldo
       disponible en el mensaje y sin ninguna llamada a Stripe.
-- [ ] **AC7** — Dada una `devolucion_parcial` válida, entonces se crea un refund
+- [x] **AC7** — Dada una `devolucion_parcial` válida, entonces se crea un refund
       en Stripe por ese importe exacto, `refunded_amount_cents` crece en ese
       importe, nace una fila `nota_credito` `pending` con
       `related_document_id` = el original y `stripe_refund_id` relleno, y todo
@@ -145,15 +145,15 @@ del catálogo oficial.
       confirmó el refund, entonces la respuesta es `500`, `refunded_amount_cents`
       no cambia y **reintentar la misma acción** reutiliza el refund existente en
       vez de devolver el dinero otra vez.
-- [ ] **AC11** — Dado un método de pago que Stripe no permite reembolsar por API,
+- [x] **AC11** — Dado un método de pago que Stripe no permite reembolsar por API,
       entonces la respuesta es `502` con un mensaje que explica que el reembolso
       lo rechazó el proveedor, y ni `refunded_amount_cents` ni
       `electronic_documents` cambian.
-- [ ] **AC12** — Dada una `anulacion_total`, entonces se reembolsa exactamente el
+- [x] **AC12** — Dada una `anulacion_total`, entonces se reembolsa exactamente el
       saldo no reembolsado, `refunded_amount_cents` queda igual a
       `amount_total_cents` y el mecanismo elegido por el servidor es el de §6.2,
       nunca uno que venga en el cuerpo.
-- [ ] **AC13** — Dado un `reasonCode` que no pertenece al subconjunto de la
+- [x] **AC13** — Dado un `reasonCode` que no pertenece al subconjunto de la
       intención elegida, entonces `400`: el catálogo se valida contra la
       intención, no solo contra la lista completa.
 - [ ] **AC14** — Dado que una `comunicacion_baja`, o una `nota_credito` de
@@ -164,35 +164,56 @@ del catálogo oficial.
       cuando ese documento queda `issued`, se encola **automáticamente** un
       comprobante original nuevo con los datos corregidos y su propio correlativo
       —en estado `pending`, pendiente de emisión como cualquier otro—.
-- [ ] **AC16** — Dada una `correccion_comprador` sobre un pedido con
+- [x] **AC16** — Dada una `correccion_comprador` sobre un pedido con
       `refunded_amount_cents > 0`, entonces `409`: corregir datos y devolver
       dinero son dos historias que no se mezclan en una sola fila.
 - [ ] **AC17** — Dada una `anulacion_total`, entonces **no** se reencola ningún
       comprobante: el pedido quedó íntegramente devuelto.
-- [ ] **AC18** — Dado un `cargo_adicional`, entonces nace una `nota_debito`
+- [x] **AC18** — Dado un `cargo_adicional`, entonces nace una `nota_debito`
       `pending`, `refunded_amount_cents` **no** cambia y no se crea ningún cobro
       en Stripe.
-- [ ] **AC19** — Dado cualquier ajuste, entonces `audit_logs` registra el pedido,
+- [x] **AC19** — Dado cualquier ajuste, entonces `audit_logs` registra el pedido,
       la intención, el mecanismo, el motivo y el importe del ajuste, y **nunca**
       el documento del comprador ni el `client_secret` ni ningún objeto crudo de
       Stripe.
-- [ ] **AC20** — Dado cualquier ajuste, entonces el stock de los productos del
+- [x] **AC20** — Dado cualquier ajuste, entonces el stock de los productos del
       pedido **no** cambia y no aparece ninguna fila en `stock_movements`.
-- [ ] **AC21** — Dado el detalle de un pedido en `/admin/orders`, entonces se ve
+- [x] **AC21** — Dado el detalle de un pedido en `/admin/orders`, entonces se ve
       el árbol de documentos —original y correcciones, cada una bajo el documento
       que modifica—, el importe reembolsado acumulado y el saldo disponible.
-- [ ] **AC22** — Dado un ajuste recién confirmado, entonces el sheet se actualiza
+- [x] **AC22** — Dado un ajuste recién confirmado, entonces el sheet se actualiza
       sin recargar la página, el diálogo se cierra y el documento nuevo aparece
       `pending` **con su acción «Emitir comprobante» disponible**; ante un `409`
       o un `502`, el diálogo permanece abierto con el mensaje del servidor.
-- [ ] **AC23** — Dado un ajuste confirmado, entonces el documento de corrección
+- [x] **AC23** — Dado un ajuste confirmado, entonces el documento de corrección
       sigue `pending` mientras nadie lo emita: **no existe ningún camino de
       emisión propio de este spec** ni ningún proceso que lo dispare, y la UI lo
       advierte porque el dinero ya salió de Stripe.
-- [ ] **AC24** — Dado cualquier importe de la API de este spec, entonces es un
+- [x] **AC24** — Dado cualquier importe de la API de este spec, entonces es un
       entero en céntimos; la división por 100 solo ocurre al formatear.
-- [ ] **AC25** — Dado `npm run typecheck && npm run lint && npm run build &&
+- [x] **AC25** — Dado `npm run typecheck && npm run lint && npm run build &&
       npm test`, entonces los cuatro pasan en verde.
+
+> **Los seis sin marcar —AC8, AC9, AC10, AC14, AC15 y AC17— esperan a T21**, que no
+> se ejecutó (ver §9). No es que estén sin construir: los seis están implementados y
+> su parte pura tiene test —la clave de idempotencia derivada del estado, el
+> `WHERE` optimista del `UPDATE`, `voidsParent()` y la comparación
+> `refunded < total` que decide el reencolado—. Lo que falta es la única
+> comprobación que ningún test unitario puede dar: que **Stripe** devuelve el mismo
+> refund ante la misma clave, y que la secuencia `markIssued` → `markVoided` →
+> `queueOriginalDocument` cabe de verdad en una transacción contra Postgres sin
+> violar el índice único de original vigente. Justo ahí estaba el defecto que
+> obligó a la migración `0011` (§5.0), así que declararlos verificados por lectura
+> sería exactamente el error que ese defecto ya demostró posible.
+>
+> **Tras la revisión, los dos caminos que la lectura no había cubierto sí tienen
+> test**, porque eran los dos donde el defecto no era «falta verificar» sino
+> «estaba mal»: dos ajustes concurrentes con **importes distintos** desde el mismo
+> estado (AC9, `order-adjustment.service.test.ts`, la clave ya no lleva el importe
+> dentro — §6.4) y dos correcciones seguidas sobre el **mismo original ya anulado**
+> (AC14, `electronic-document.service.void.test.ts`, `markVoided()` devolviendo
+> `null` corta el reencolado en vez de reventar el índice único). T21 sigue abierta
+> para lo que solo el proveedor real puede decir.
 
 ## 5. Modelo de datos
 
@@ -220,9 +241,73 @@ Lo que este spec **estrena** de ese esquema ya existente:
 se descubriera que la migración `0010` no incluyó esa cláusula, **es un defecto
 de 022 y se corrige allí**, no con una migración nueva aquí.
 
+### 5.0 Corrección al implementar: el `CHECK` que impedía anular (migración `0011`)
+
+**Este spec sí lleva una migración, y es una corrección de un defecto de 022, no
+una necesidad propia.** Se declara aquí en lugar de esconderla, porque contradice
+la primera línea de esta sección.
+
+Comprobado en la base antes de asumir nada:
+`orders.refunded_amount_cents` **existe** (`integer NOT NULL DEFAULT 0`, con su
+`CHECK (>= 0 AND <= amount_total_cents)`), y las seis claves de `document_series`
+sirven tal cual. Nada de eso necesita esquema nuevo, como decía §5.
+
+Lo que sí lo necesitaba es el `CHECK electronic_documents_issued_at_matches_status`
+que creó la migración `0010`:
+
+```sql
+CHECK ((status = 'issued') = (issued_at is not null))
+```
+
+El original que se anula es, por definición, un documento `issued`, así que lleva
+`issued_at` relleno. `markVoided()` hace `UPDATE … SET status = 'voided'`, y la
+fila queda con `status = 'voided'` e `issued_at IS NOT NULL`: lado izquierdo
+`false`, lado derecho `true`, **violación del constraint**. Es decir, AC14 y AC15
+eran inalcanzables tal como estaba el esquema. Nadie pudo verlo en 022 porque
+ninguno de sus caminos escribe `voided`, y los tests unitarios no lo alcanzan: el
+`CHECK` solo dispara contra Postgres real.
+
+Las dos salidas, y por qué se eligió la segunda:
+
+1. **Poner `issued_at = null` al anular.** Pasa el `CHECK` sin migración y respeta
+   la letra de §5, pero **destruye la fecha en la que ese comprobante se emitió
+   ante SUNAT**. Un documento anulado sí se emitió, y esa fecha es la que #3 usa
+   para agrupar el libro de ventas por período (022, D-17). Es dato fiscal borrado
+   para contentar a un constraint mal escrito.
+2. **Corregir el `CHECK`**, que es lo que el párrafo de arriba contempla para el
+   índice parcial: «es un defecto de 022 y se corrige allí».
+
+`drizzle/0011_icy_maggott.sql`, de dos sentencias:
+
+```sql
+ALTER TABLE "electronic_documents" DROP CONSTRAINT "electronic_documents_issued_at_matches_status";
+ALTER TABLE "electronic_documents" ADD CONSTRAINT "electronic_documents_issued_at_matches_status"
+  CHECK (("status" in ('issued', 'voided')) = ("issued_at" is not null));
+```
+
+La equivalencia sigue siendo exacta porque `markVoided()` lleva
+`WHERE status = 'issued'` en su propio `WHERE`: un `pending` o un `failed` nunca
+alcanzan `voided`, así que un `voided` siempre conserva su `issued_at`. Aplicada y
+verificada contra Neon:
+
+```
+CHECK (((status = ANY (ARRAY['issued', 'voided'])) = (issued_at IS NOT NULL)))
+```
+
+**Ninguna tabla nueva, ninguna columna nueva, ningún valor de enum nuevo.** El
+resto de §5 se mantiene tal cual.
+
 ### 5.1 Catálogo de permisos
 
 `npm run db:seed`, idempotente. El catálogo pasa de **28 a 29** códigos.
+
+**Ejecutado y verificado contra Neon** (lo había quedado pendiente y la revisión lo
+encontró: el código estaba en `permissions.ts` y la base seguía en 28, así que
+`orders.refund` no existía y **ni `super_admin` lo tenía**). Salida del seed:
+«Permisos: 29 sincronizados sobre 29 · Matriz rol × permiso: 2 asignaciones nuevas
+sobre 80». Comprobado después con una consulta directa: `count(*) = 29` en
+`permissions` y `orders.refund` presente en `role_permissions` **solo** para
+Super administrador y Administrador, que es la matriz de abajo.
 
 ```ts
 // src/lib/permissions.ts — una entrada nueva en PERMISSIONS
@@ -472,15 +557,16 @@ tx A — lectura bajo lock
 (sin transacción)  solo si plan.refundCents > 0
   stripe.refunds.create(
     { payment_intent, amount: plan.refundCents },
-    { idempotencyKey: `refund:${orderId}:${refundedBefore}:${plan.refundCents}` },
+    { idempotencyKey: `refund:${orderId}:${refundedBefore}` },   ← sin el importe dentro
   )
 
 tx B — escritura
   update orders
      set refunded_amount_cents = refunded_amount_cents + $refund
    where id = $1 and refunded_amount_cents = $refundedBefore   ← 0 filas = alguien se adelantó
-  · si 0 filas → ConflictError (409). El refund de arriba fue el mismo objeto que
-    creó el ajuste ganador: la clave compartida impide el segundo cobro (AC9)
+  · si 0 filas → ConflictError (409). El perdedor no creó ningún refund propio: con la
+    clave compartida Stripe le devolvió el del ganador, o le rechazó la petición por
+    reuso de clave con parámetros distintos (AC9)
   · documentSeriesRepository.nextNumber(tx, seriesKeyFor(plan.kind, original.kind))
   · electronicDocumentRepository.create(tx, { …plan, relatedDocumentId: original.id,
       stripeRefundId, status: 'pending', createdById: actor.id })
@@ -501,6 +587,36 @@ clave también lo es y no se bloquea. Un uuid generado en el cliente no daría l
 segunda propiedad sin persistirlo, y persistirlo exigiría una columna que este
 spec se comprometió a no añadir.
 
+**Y por qué el importe del refund NO entra en la clave.** Corrección tras la
+revisión: la primera versión usaba
+`refund:${orderId}:${refundedBefore}:${plan.refundCents}` y eso era una fuga de
+dinero. Dos administradores que leen el mismo `refundedBefore = 0` y piden
+importes distintos —100 y 200— producen claves **distintas**, así que Stripe crea
+**dos** refunds reales. Gana la `tx B` del primero, el segundo sale por `409` y su
+`stripeRefundId` se descarta en silencio: dinero fuera, sin fila, sin bitácora y
+sin rastro.
+
+Sin el importe, los dos comparten clave y Stripe resuelve el caso en el único
+sitio donde puede resolverse —el suyo—: si los parámetros coinciden devuelve el
+mismo refund, y si no coinciden **rechaza** el segundo por reuso de clave. El
+perdedor recibe un error explícito en vez de mover dinero que nadie registra, que
+es exactamente el intercambio que hay que querer.
+
+El precio es acotado y deliberado: dos ajustes legítimos por importes distintos
+desde el mismo estado no pueden ocurrir a la vez —solo uno gana la `tx B`— y el
+segundo, una vez confirmado el primero, parte de un `refundedBefore` distinto y
+tiene su propia clave.
+
+**Y el hueco complementario, el refund huérfano.** Si la `tx B` falla después de
+que Stripe confirmó el reembolso, la referencia `re_…` no llega a ninguna fila.
+No hay forma de arreglarlo dentro de la petición —el dinero ya salió y el destino
+donde anotarlo es justo lo que falló—, así que `adjustOrder()` envuelve el
+`persist()` y escribe `console.error('adjustOrder.orphanRefund', orderId,
+stripeRefundId, refundCents)` antes de relanzar el error tal cual. No cambia lo
+que ve el administrador; deja el rastro mínimo para conciliarlo a mano en el
+Dashboard de Stripe, que es lo único que esta arquitectura puede ofrecer sin la
+columna de referencia que §5 se comprometió a no añadir.
+
 ### 6.5 Anulación del padre y reencolado
 
 Ocurre cuando el documento de corrección se emite, es decir, cuando alguien pulsa
@@ -512,7 +628,14 @@ Ocurre cuando el documento de corrección se emite, es decir, cuando alguien pul
   if (!issued) return;
 
   if (!voidsParent(issued)) return;      // puro: baja, o nota de crédito con motivo 01/02
-  await electronicDocumentRepository.markVoided(tx, issued.relatedDocumentId);
+
+  // `null` = el padre ya estaba `voided` por una corrección anterior. Es «ya está hecho» y
+  // se corta aquí: seguir de largo encolaría un segundo original sobre un pedido que ya
+  // tiene el reemitido vigente, violando el índice único parcial con un 500 genérico
+  // **después** de que el proveedor emitió este documento —que quedaría `pending` para
+  // siempre repitiendo el mismo error—. El JSDoc de `markVoided()` ya lo documentaba.
+  const voided = await electronicDocumentRepository.markVoided(tx, issued.relatedDocumentId);
+  if (!voided) return;
 
   // El pedido sigue cobrado ⇒ sigue necesitando comprobante. Esta comparación es lo que
   // distingue una anulación total —donde `refunded == total` y no hay que reemitir
@@ -551,6 +674,100 @@ Los nombres exactos de los campos se confirman en **T1**, igual que en el spec
 022 (T1): son lo único de este spec que depende de documentación externa que no
 está en el repositorio.
 
+#### 6.6.1 T1 — resultado del contraste
+
+**Salvedad honesta, la misma que declaró el spec 022 en su §6.6.1: este entorno de
+desarrollo no tiene salida a internet.** Ni el agente que implementa dispone de
+herramienta de navegación, así que el contraste se hizo contra (a) la
+especificación documentada del API de Nubefact ya verificada y **en uso** en
+`nubefact.provider.ts` desde el spec 022, (b) los catálogos 09 y 10 de SUNAT tal
+como los publica el Anexo 9 del reglamento de comprobantes de pago, y **no**
+contra una petición real ni contra la norma descargada en el momento. Lo que T21
+verifica de punta a punta contra el entorno de pruebas es justamente esto;
+cualquier divergencia se corrige ahí y se anota aquí.
+
+**(a) Comunicación de baja — NO confirmado. La regla se queda en `false` (D-12).**
+No hay forma de resolver en este entorno la contradicción que §10 declara entre el
+documento de diseño («solo boletas, nunca facturas») y la lectura de la norma
+(«baja para facturas dentro de una ventana corta desde la emisión; las boletas se
+anulan por resumen diario»). Lo que **sí** queda cerrado, porque no depende de la
+fuente externa:
+
+- `canVoidWithCommunication()` devuelve `false` de forma incondicional, y su test
+  lo fija como comportamiento esperado para boleta y para factura, dentro y fuera
+  de cualquier ventana. Consecuencia: **el sistema emite siempre nota de crédito**,
+  que es el mecanismo general y nunca es inválido.
+- El argumento es `original.issuedAt` y no la fecha del pedido, y el test lo
+  comprueba pasando dos instantes distintos: cuando la regla se active, el plazo se
+  contará desde la **emisión** del original, que con la emisión manual (022, D-8)
+  puede estar días por detrás del cobro.
+- Activar la baja el día que la regla se confirme es editar **un solo archivo puro
+  con su test**: ni el service, ni el provider, ni el diálogo cambian. Se comprueba
+  porque `comunicacion_baja` ya está implementada de punta a punta —plan, serie
+  `null`, importe `null`, payload del proveedor y anulación del padre—, y lo único
+  que hoy no la alcanza es este `false`.
+
+**(b) Campos de §6.6 — confirmados contra el mapeo ya verificado en 022, salvo la
+operación de anulación.** Las notas de crédito y de débito **no estrenan ningún
+campo**: `documento_que_se_modifica_tipo` / `_serie` / `_numero`,
+`tipo_de_nota_de_credito` y `tipo_de_nota_de_debito` ya estaban escritos y
+probados en `toNubefactPayload()` desde el spec 022 (su §6.6.1, última fila de la
+tabla, anotada «solo lo usa el spec 023»). Lo único nuevo es la comunicación de
+baja, que **no** es un `generar_comprobante`:
+
+| Campo | Valor | Estado |
+|---|---|---|
+| `operacion` | `"generar_anulacion"` | Documentado, sin verificar contra el entorno de pruebas (T21) |
+| `tipo_de_comprobante` | catálogo 01 del documento **anulado** (`1` factura, `2` boleta) | Confirmado: mismo catálogo que ya usa el comprobante |
+| `serie` / `numero` | los del documento **anulado** | Confirmado: la baja no tiene serie propia, y por eso `seriesKeyFor('comunicacion_baja')` devuelve `null` y el `CHECK electronic_documents_void_has_no_series` lo exige |
+| `motivo` | texto libre; se envía la **etiqueta** del catálogo 09 del motivo elegido | Confirmado como texto libre; el texto concreto es decisión nuestra |
+
+Por eso la baja **no puede compartir la forma del comprobante**: no lleva serie,
+ni número, ni importes, ni `items`. Se modeló como rama propia de
+`IssueDocumentInput` (§6.6.2) en lugar de rellenar esos campos con los del padre,
+que compilaría y mentiría. **La interfaz `InvoicingProvider` no cambia.**
+
+**(c) Catálogos 09 y 10 — confirmados; los códigos de §6.2 se dejan tal cual.**
+Catálogo 09 (nota de crédito): `01` anulación de la operación, `02` anulación por
+error en el RUC, `03` corrección por error en la descripción, `04` descuento
+global, `05` descuento por ítem, `06` devolución total, `07` devolución por ítem,
+`08` bonificación, `09` disminución en el valor, `10` otros conceptos. Catálogo 10
+(nota de débito): `01` intereses por mora, `02` aumento en el valor, `03`
+penalidades u otros conceptos. El subconjunto de §6.2 es correcto y no se toca. Se
+descartan `05` y `08` del 09 por lo mismo que `07` se admite solo en la devolución
+parcial: este spec ajusta **un monto** del pedido, no una línea (§3).
+
+#### 6.6.2 Forma del input del proveedor
+
+`IssueDocumentInput` pasa a ser una **unión discriminada por `kind`**, por lo que
+acaba de decir (b): una comunicación de baja no tiene serie, ni número, ni
+importes, ni líneas, y declararlos obligatorios obligaría a inventarlos.
+
+```ts
+export type IssueComprobanteInput = IssueDocumentBase & {
+  kind: Exclude<ElectronicDocumentKind, 'comunicacion_baja'>;
+  series: string; number: number;
+  amountCents: number; baseCents: number; igvCents: number;
+  lines: IssueDocumentLine[];
+  /** Presente en las dos notas; ausente en el original. */
+  related?: RelatedDocument;
+};
+
+export type IssueVoidInput = IssueDocumentBase & {
+  kind: 'comunicacion_baja';
+  /** **Obligatorio**: una baja sin documento anulado no existe. */
+  related: RelatedDocument;
+};
+
+export type IssueDocumentInput = IssueComprobanteInput | IssueVoidInput;
+```
+
+`InvoicingProvider.issue(input: IssueDocumentInput)` conserva su firma, que es lo
+que D-1 de 022 prometía. El service construye la rama que toca con dos funciones
+distintas —`toProviderInput()` y `toVoidProviderInput()`— en vez de una con un
+`if` dentro: así el tipo de retorno de cada una es exacto y ninguna puede devolver
+un documento a medio rellenar.
+
 ## 7. Arquitectura y archivos afectados
 
 - `src/lib/permissions.ts` — `orders.refund` (28 → 29) y su fila en la matriz.
@@ -580,7 +797,7 @@ está en el repositorio.
 - `src/server/repositories/electronic-document.repository.ts` — **nuevo**:
   `findIssuedOriginal(orderId, reader)`, `markVoided(tx, id)`.
 - `src/server/services/order-adjustment.service.ts` + `.test.ts` — **nuevo**:
-  `adjustOrder(actor, orderId, input, auditContext)`.
+  `adjustOrder(actor, orderId, input, auditContext, visibility)`.
 - `src/server/services/electronic-document.service.ts` — anulación del padre y
   reencolado dentro de `persistSuccess()` (§6.5).
 - `src/server/services/invoicing/nubefact.provider.ts` — mapeo de los tres
@@ -591,10 +808,38 @@ está en el repositorio.
 - `docs/SETUP.md` — §6: el panel de pedidos deja de ser de solo lectura frente a
   Stripe, y la nota de «fuera de alcance: reembolsos» del spec 014 se sustituye.
 
-**Sin tocar** `src/app/api/admin/invoicing/documents/[id]/issue/route.ts` ni
-`issueDocument()`: las correcciones se emiten por el camino que ya existe (D-13).
-Y, como en 022, no se crea ningún archivo de despliegue ni ningún proceso
-programado.
+**Sin tocar** `src/app/api/admin/invoicing/documents/[id]/issue/route.ts`: las
+correcciones se emiten por el camino que ya existe, con el mismo handler, el
+mismo permiso y el mismo botón (D-13). Y, como en 022, no se crea ningún archivo
+de despliegue ni ningún proceso programado.
+
+Cinco archivos más de los que §7 anticipaba, y ninguno amplía el alcance:
+
+- `drizzle/0011_icy_maggott.sql` y `src/server/db/schema/electronic-document.ts`
+  — la corrección del `CHECK` de §5.0. Es lo único de este spec que toca el
+  esquema, y es un defecto de 022.
+- `src/modules/invoicing/lib/document-tree.ts` + `.test.ts` — **nuevo**:
+  `buildDocumentTree()`. La anidación por `relatedDocumentId` salió del componente
+  porque es una transformación de datos con reglas propias, y fuera se prueba sin
+  montar React (T19).
+- `src/server/services/invoicing/provider.ts` — `IssueDocumentInput` pasa a ser la
+  unión discriminada de §6.6.2. **La interfaz `InvoicingProvider` no cambia**, que
+  era lo que D-1 de 022 prometía.
+- `src/server/services/electronic-document.service.ts` — además del bloque de
+  §6.5, `toProviderInput()` gana el parámetro `parent` (con valor por defecto, así
+  que ningún llamador de un original cambia) y nace `toVoidProviderInput()` para
+  la rama de la baja.
+- `src/server/services/electronic-document.service.void.test.ts` — **nuevo**, tras
+  la revisión: `voidParentAndReissue()` con dobles de los dos repositorios.
+  Archivo aparte y no dentro de `electronic-document.service.test.ts` porque aquel
+  no mockea nada —son funciones puras— y meter ahí los `vi.mock` le quitaría esa
+  propiedad a todas sus pruebas.
+
+Y una desviación de la firma de §7.1: `adjustOrder()` recibe un quinto argumento,
+`{ includePdfUrl }`. El enlace al PDF depende de `invoicing.issue` y no de
+`orders.refund`, así que lo resuelve el handler sobre el set efectivo (spec 022,
+D-19). Que hoy los dos permisos vayan a los mismos dos roles (§5.1) es una
+decisión de la matriz, no una propiedad de la que el service pueda depender.
 
 Flujo, capa por capa:
 
@@ -634,7 +879,15 @@ export async function POST(request: Request, context: Context) {
     // Sin un solo `if` de traducción: el service lanza `NotFoundError` (404),
     // `ConflictError` (409), `ValidationError` (400) y `UpstreamError` (502), y
     // `toErrorResponse()` los mapea igual que en el resto de la API de admin.
-    const result = await adjustOrder(actor, parsedId.data, body.data, getAuditContext(request));
+    const result = await adjustOrder(
+      actor,
+      parsedId.data,
+      body.data,
+      getAuditContext(request),
+      // El enlace al PDF depende de `invoicing.issue` y no de `orders.refund`: se
+      // resuelve aquí, sobre el set efectivo, y no dentro del service (spec 022, D-19).
+      { includePdfUrl: can(granted, 'invoicing.issue') },
+    );
 
     return NextResponse.json(result);
   } catch (error) {
@@ -658,7 +911,7 @@ externo, dos transacciones y la bitácora. Es exactamente el caso que
 | **D-1**: El reembolso en Stripe y el **registro** del documento SUNAT ocurren en una sola acción de administrador | Dos pantallas: reembolsar por un lado, registrar la nota por otro | Decisión cerrada con el usuario. Separarlas garantiza que tarde o temprano alguien devuelva dinero y no registre la nota, y esa divergencia solo se descubre en la declaración del mes siguiente. Un flujo que hace las dos cosas no puede quedarse a medias por descuido, solo por fallo, y el fallo está cubierto por D-4. Lo que sí queda en un paso aparte es la **emisión** ante SUNAT, por D-13 |
 | **D-2**: La entrada es una **unión discriminada** por intención | Un objeto con `amountCents`, `buyer` y `reasonCode` opcionales | Con campos opcionales, un `cargo_adicional` con `buyer` dentro compila y el service tiene que decidir qué ignorar en silencio. La unión hace que cada intención declare exactamente lo que admite y que lo que sobra sea un `400` de Zod, sin un solo `if` de saneamiento |
 | **D-3**: El **servidor** decide el mecanismo (baja vs nota de crédito); la UI solo elige la intención | Un `Select` de tipo de documento en el diálogo | Elegir el mecanismo equivocado emite un documento que SUNAT rechaza o, peor, acepta cuando no debía. Es una regla fiscal, no una preferencia: vive en `planAdjustment()`, se prueba sin base de datos y es imposible saltársela desde el cuerpo de la petición |
-| **D-4**: La clave de idempotencia del refund se **deriva del estado** (`orderId` + `refundedBefore` + importe) | Un uuid generado en el cliente, o no usar clave | Sin clave, un fallo de la `tx B` deja el dinero devuelto y la base sin enterarse, y reintentar devuelve el dinero **otra vez** (AC10). Un uuid del cliente cubre el reintento del mismo botón pero no dos administradores simultáneos, y habría que persistirlo —una columna que 022 se comprometió a no necesitar—. La clave derivada cubre los dos casos: la misma operación produce la misma clave y una operación distinta parte de un `refundedBefore` distinto (AC8, AC9) |
+| **D-4**: La clave de idempotencia del refund se **deriva del estado** y **solo del estado**: `orderId` + `refundedBefore`, **sin el importe** | Un uuid generado en el cliente, no usar clave, o incluir el importe en ella | Sin clave, un fallo de la `tx B` deja el dinero devuelto y la base sin enterarse, y reintentar devuelve el dinero **otra vez** (AC10). Un uuid del cliente cubre el reintento del mismo botón pero no dos administradores simultáneos, y habría que persistirlo —una columna que 022 se comprometió a no necesitar—. **Incluir el importe era peor que las dos**: dos ajustes concurrentes desde el mismo estado por cantidades distintas producían claves distintas y Stripe creaba dos refunds reales, de los que el `409` del perdedor descartaba el segundo en silencio. Sin el importe los dos comparten clave, así que Stripe devuelve el mismo refund o rechaza el segundo por reuso con parámetros distintos: el peor caso es un error explícito, nunca dinero de más (AC8, AC9). Corregido tras la revisión; el razonamiento completo está en §6.4 |
 | **D-5**: `UPDATE orders SET refunded = refunded + $x WHERE refunded = $refundedBefore` | Leer, sumar en TypeScript y escribir | Un read-then-write entre dos ajustes concurrentes pasa la comprobación las dos veces y devuelve el doble. El `WHERE` optimista resuelve la carrera en el motor: 0 filas significa «alguien se adelantó» y sale por `409` sin haber duplicado el reembolso, porque la clave de idempotencia ya garantizó que Stripe solo creó uno |
 | **D-6**: La reemisión se decide comparando `refunded_amount_cents` con `amount_total_cents`, no con una columna de intención | Guardar la intención del ajuste en `electronic_documents` | La pregunta real es «¿este pedido sigue cobrado?», y la respuesta ya está en los dos importes. Una columna `adjustment_intent` sería un dato derivado que hay que mantener sincronizado con los importes, y el día que discrepen habría que decidir cuál manda. Además exigiría migración, que es justo lo que §5 evita |
 | **D-7**: `correccion_comprador` exige `refunded_amount_cents = 0` | Permitirla sobre un pedido con devolución parcial previa | Con una devolución parcial ya aplicada, el comprobante reemitido tendría que ser por el neto y no por el total, y el neto no coincide con ninguna línea del pedido: habría que inventar el desglose. Prohibirlo con un `409` claro es honesto; el camino para ese caso es anular del todo y volver a facturar fuera del sistema |
@@ -675,80 +928,80 @@ Orden de dependencia: verificación externa → permisos → catálogos puros �
 pura → schemas → repositorios → servicios → proveedor → handlers → módulo cliente
 → UI → documentación.
 
-- [ ] **T1** — **Bloqueante.** Confirmar contra la normativa SUNAT vigente y la
+- [x] **T1** — **Bloqueante.** Confirmar contra la normativa SUNAT vigente y la
       documentación de Nubefact: (a) a qué tipo de comprobante y con qué plazo
       aplica la comunicación de baja, y desde qué fecha se cuenta, (b) los
       nombres exactos de los campos de §6.6, (c) los códigos del catálogo 09 y 10
       de §6.2. Escribir el resultado en este spec antes de tocar código ·
       archivo: `docs/specs/023-ajuste-pedido-reembolso-notas.md` · verificación:
       §6.2 y §6.6 reflejan la fuente citada
-- [ ] **T2** — Añadir `orders.refund` a `PERMISSIONS` (28 → 29) y concederlo solo
+- [x] **T2** — Añadir `orders.refund` a `PERMISSIONS` (28 → 29) y concederlo solo
       a `super_admin` y `admin`, con el comentario de por qué no basta
       `orders.update_status` · archivo: `src/lib/permissions.ts` · verificación:
       `npm run typecheck && npm test`
-- [ ] **T3** — Catálogos de motivo y `REASONS_BY_INTENT` según lo confirmado en
+- [x] **T3** — Catálogos de motivo y `REASONS_BY_INTENT` según lo confirmado en
       T1 · archivo: `src/lib/electronic-documents.ts` · verificación:
       `npm run typecheck`
-- [ ] **T4** — `planAdjustment()`, `canVoidWithCommunication()` y `voidsParent()`
+- [x] **T4** — `planAdjustment()`, `canVoidWithCommunication()` y `voidsParent()`
       con las cinco reglas de §6.2 · archivos:
       `src/modules/invoicing/lib/adjustment.ts` + `.test.ts` · verificación:
       `npm test`
-- [ ] **T5** — Unión discriminada de §6.1, reutilizando `buyerSchema` del spec
+- [x] **T5** — Unión discriminada de §6.1, reutilizando `buyerSchema` del spec
       022 · archivos: `src/modules/invoicing/schemas/order-adjustment.schema.ts` +
       `.test.ts` · verificación: `npm test`
-- [ ] **T6** — `OrderAdjustmentResult` y los dos campos nuevos de
+- [x] **T6** — `OrderAdjustmentResult` y los dos campos nuevos de
       `ElectronicDocumentRow` · archivos:
       `src/modules/invoicing/types/order-adjustment.types.ts` y
       `types/electronic-document.types.ts` · verificación: `npm run typecheck`
-- [ ] **T7** — Etiquetas de intención, copys del diálogo, aviso de «queda
+- [x] **T7** — Etiquetas de intención, copys del diálogo, aviso de «queda
       pendiente de emitir» y mensajes de los `409` · archivo:
       `src/modules/invoicing/constants.ts` · verificación: `npm run typecheck`
-- [ ] **T8** — `findByIdForUpdate`, `applyRefund` con el `UPDATE` condicional de
+- [x] **T8** — `findByIdForUpdate`, `applyRefund` con el `UPDATE` condicional de
       §6.4 y `updateBuyer` · archivos:
       `src/server/repositories/order.repository.ts` + `.test.ts` · verificación:
       `npm test`
-- [ ] **T9** — `findIssuedOriginal` y `markVoided` · archivos:
+- [x] **T9** — `findIssuedOriginal` y `markVoided` · archivos:
       `src/server/repositories/electronic-document.repository.ts` + `.test.ts` ·
       verificación: `npm test`
-- [ ] **T10** — Service de ajuste con las tres fases de §6.4, la clave de
+- [x] **T10** — Service de ajuste con las tres fases de §6.4, la clave de
       idempotencia derivada y los cuatro errores de dominio · archivos:
       `src/server/services/order-adjustment.service.ts` + `.test.ts` ·
       verificación: `npm test`
-- [ ] **T11** — Anulación del padre y reencolado condicional dentro de
+- [x] **T11** — Anulación del padre y reencolado condicional dentro de
       `persistSuccess()` (§6.5), sin añadir ningún camino de emisión nuevo ·
       archivo: `src/server/services/electronic-document.service.ts` ·
       verificación: `npm test`
-- [ ] **T12** — Mapeo de `nota_credito`, `nota_debito` y `comunicacion_baja` en el
+- [x] **T12** — Mapeo de `nota_credito`, `nota_debito` y `comunicacion_baja` en el
       provider, **sin tocar la interfaz** · archivos:
       `src/server/services/invoicing/nubefact.provider.ts` + `.test.ts` ·
       verificación: `npm test`
-- [ ] **T13** — Route Handler `POST /api/admin/orders/[id]/adjust` (§7.1) ·
+- [x] **T13** — Route Handler `POST /api/admin/orders/[id]/adjust` (§7.1) ·
       archivo: `src/app/api/admin/orders/[id]/adjust/route.ts` · verificación:
       `npm run typecheck`
-- [ ] **T14** — `data.refundedAmountCents` y `meta.canRefund` en el detalle de
+- [x] **T14** — `data.refundedAmountCents` y `meta.canRefund` en el detalle de
       admin · archivo: `src/app/api/admin/orders/[id]/route.ts` · verificación:
       `npm run typecheck`
-- [ ] **T15** — `refundedAmountCents` en `AdminOrderDetail` y `canRefund` en su
+- [x] **T15** — `refundedAmountCents` en `AdminOrderDetail` y `canRefund` en su
       `meta` · archivo: `src/modules/orders/types/order.types.ts` · verificación:
       `npm run typecheck`
-- [ ] **T16** — Service axios `adjustOrder(orderId, input)` · archivo:
+- [x] **T16** — Service axios `adjustOrder(orderId, input)` · archivo:
       `src/modules/invoicing/services/invoicing.service.ts` · verificación:
       `npm run typecheck`
-- [ ] **T17** — Hook `useAdjustOrder()`: mutation que invalida el detalle y el
+- [x] **T17** — Hook `useAdjustOrder()`: mutation que invalida el detalle y el
       listado y propaga el mensaje del servidor al diálogo · archivo:
       `src/modules/invoicing/hooks/use-adjust-order.ts` · verificación:
       `npm run typecheck`
-- [ ] **T18** — `AdjustOrderDialog`: `RadioGroup` de intención, campos
+- [x] **T18** — `AdjustOrderDialog`: `RadioGroup` de intención, campos
       condicionados, `Select` de motivo alimentado por `REASONS_BY_INTENT`,
       resumen explícito del importe antes de confirmar, aviso de que el documento
       queda pendiente de emitir y estado de envío bloqueante · archivo:
       `src/modules/invoicing/components/adjust-order-dialog.tsx` · verificación:
       `npm run lint`
-- [ ] **T19** — Árbol de documentos con el motivo y la anidación por
+- [x] **T19** — Árbol de documentos con el motivo y la anidación por
       `relatedDocumentId`, conservando la acción de emisión por documento ·
       archivo: `src/modules/invoicing/components/order-documents.tsx` ·
       verificación: `npm run lint`
-- [ ] **T20** — Importe reembolsado, saldo disponible y botón «Ajustar pedido»
+- [x] **T20** — Importe reembolsado, saldo disponible y botón «Ajustar pedido»
       bajo `meta.canRefund` · archivo:
       `src/modules/orders/components/admin-order-detail-sheet.tsx` ·
       verificación: `npm run lint`
@@ -760,11 +1013,28 @@ pura → schemas → repositorios → servicios → proveedor → handlers → m
       comprobante nuevo `pending`; ajuste concurrente desde dos pestañas
       comprobando el `409` · verificación: manual, con el registro del resultado
       en este spec
-- [ ] **T22** — Sustituir en `docs/SETUP.md` §6 la nota de «fuera de alcance:
+      · **NO EJECUTADA.** Desbloqueada tras correr el seed (§5.1) —antes el permiso
+      ni existía en la base—, pero sigue sin poder ejercitarse: requiere un pedido
+      `paid` real con su comprobante ya
+      emitido en el entorno de pruebas de Nubefact, acceso al Dashboard de Stripe
+      para contar los refunds y dos pestañas de navegador. El agente que
+      implementó este spec no tiene ninguna de las tres cosas, igual que T38 del
+      spec 022 quedó pendiente de la misma comprobación. **Queda como la única
+      tarea abierta del spec y es bloqueante antes de desplegar**, porque es lo
+      único que verifica contra el proveedor real: (a) que la clave de
+      idempotencia produce **un** refund al reenviar la misma petición, (b) que el
+      nombre de la operación `generar_anulacion` y sus campos son los correctos
+      (§6.6.1, apartado b, el único punto sin confirmar), y (c) que el `UPDATE`
+      condicional da `409` al segundo de dos administradores simultáneos.
+      **Lo que sí se cubrió con test tras la revisión**, porque ahí el defecto no
+      era «falta verificar» sino «estaba mal»: la clave compartida entre dos
+      ajustes concurrentes con importes distintos (§6.4) y la segunda corrección
+      sobre un original ya anulado (§6.5)
+- [x] **T22** — Sustituir en `docs/SETUP.md` §6 la nota de «fuera de alcance:
       reembolsos» del spec 014, documentar el flujo de ajuste y dejar escrito que
       el documento de corrección se emite con la misma acción manual del spec 022
       · archivo: `docs/SETUP.md` · verificación: lectura
-- [ ] **T23** — Cierre: `npm run typecheck && npm run lint && npm run build &&
+- [x] **T23** — Cierre: `npm run typecheck && npm run lint && npm run build &&
       npm test` en verde y todos los AC marcados o justificados · verificación:
       los cuatro comandos
 
@@ -808,9 +1078,24 @@ pura → schemas → repositorios → servicios → proveedor → handlers → m
   —son dos cifras distintas— pero hay que decirlo en la pantalla que las muestre.
 - **La ventana entre la `tx A` y la `tx B`.** El lock se suelta antes de la
   llamada a Stripe (spec 022, D-9), así que el estado puede moverse. Eso no es un
-  agujero: el `UPDATE` condicional lo detecta y la clave de idempotencia impide
-  que el refund del perdedor sea un cobro distinto. El caso queda cubierto por
-  AC9 y debe probarse con dos pestañas reales (T21).
+  agujero **siempre que la clave de idempotencia no lleve el importe dentro**: el
+  `UPDATE` condicional detecta al perdedor, y la clave compartida hace que su
+  llamada a Stripe reutilice el refund del ganador o sea rechazada por reuso con
+  parámetros distintos, nunca que cree un refund propio. Con el importe en la
+  clave —como estaba antes de la revisión— dos importes distintos desde el mismo
+  estado daban dos refunds reales y el `409` del perdedor descartaba el suyo sin
+  dejar rastro. El caso queda cubierto por AC9, con su test en
+  `order-adjustment.service.test.ts`, y debe probarse además con dos pestañas
+  reales (T21).
+- **El refund huérfano.** Si la `tx B` falla después de que Stripe confirmó el
+  reembolso, la referencia `re_…` no llega a ninguna fila y el administrador ve un
+  `500`. Reintentar es seguro —la clave de idempotencia devuelve el mismo refund—,
+  pero si nadie reintenta el dinero salió sin registro. `adjustOrder()` escribe
+  `adjustOrder.orphanRefund` con el pedido, el `re_…` y el importe antes de
+  relanzar el error, que es lo único que permite conciliarlo a mano en el
+  Dashboard de Stripe sin añadir la columna de referencia que §5 evita. Un log no
+  es una garantía: la garantía sería persistir el refund antes de escribir el
+  resto, y eso es la deuda anotada en §11.
 - **Reemisión y correlativos.** Una corrección consume tres números: el de la
   nota de crédito (o ninguno, si es baja), el del comprobante reemitido, y deja
   el del original anulado sin reutilizar. Es lo correcto —los correlativos no se
@@ -835,6 +1120,7 @@ pura → schemas → repositorios → servicios → proveedor → handlers → m
 |---|---|
 | Emitir la nota dentro de la misma acción del ajuste | Solo si el segundo clic se demuestra un olvido real y frecuente en `audit_logs`; antes de eso, la respuesta es la automatización de la emisión (022, §11), no encadenar dos proveedores en una petición |
 | Ajuste **sin** movimiento de dinero para pedidos reembolsados a mano en el Dashboard de Stripe | Cuando aparezca el primer método de pago no reembolsable por API |
+| Persistir el `re_…` **antes** de la escritura del ajuste, para que un fallo de la `tx B` no dependa de un log | Si `adjustOrder.orphanRefund` llega a aparecer en producción. Exige la columna de referencia que §5 evitó, así que hoy se paga con el log y con la idempotencia del reintento |
 | Cobro efectivo de la nota de débito | Si el negocio empieza a cobrar intereses o penalidades de verdad. Exige método guardado y flujo SCA |
 | Reembolso por ítem, con recálculo de líneas y desglose por producto | Cuando las devoluciones parciales dejen de ser un importe y pasen a ser «este producto» |
 | Reingreso automático de stock tras una devolución | Solo si se confirma que **toda** devolución de dinero implica retorno físico; hoy no es cierto |

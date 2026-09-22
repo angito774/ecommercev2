@@ -105,3 +105,84 @@ export const ELECTRONIC_DOCUMENT_STATUS_LABELS: Record<ElectronicDocumentStatus,
   failed: 'Falló la emisión',
   voided: 'Anulado',
 };
+
+// ---------------------------------------------------------------------------
+// Motivos de corrección (spec 023, §6.2). Contrastados en su T1 (§6.6.1).
+// ---------------------------------------------------------------------------
+
+/**
+ * Catálogo 09 de SUNAT, el subconjunto que este negocio puede usar. Sin `05` (descuento
+ * por ítem) ni `08` (bonificación) por lo mismo que `07` solo aparece en la devolución
+ * parcial: este spec ajusta **un monto** del pedido, no una línea concreta (023, §3).
+ */
+export const CREDIT_NOTE_REASONS = [
+  { code: '01', label: 'Anulación de la operación' },
+  { code: '02', label: 'Anulación por error en el RUC' },
+  { code: '03', label: 'Corrección por error en la descripción' },
+  { code: '04', label: 'Descuento global' },
+  { code: '06', label: 'Devolución total' },
+  { code: '07', label: 'Devolución por ítem' },
+  { code: '09', label: 'Disminución en el valor' },
+] as const;
+
+/** Catálogo 10 de SUNAT. */
+export const DEBIT_NOTE_REASONS = [
+  { code: '01', label: 'Intereses por mora' },
+  { code: '02', label: 'Aumento en el valor' },
+  { code: '03', label: 'Penalidades u otros conceptos' },
+] as const;
+
+/** Las cuatro intenciones de ajuste. Vive aquí y no en el módulo: la consumen las dos orillas. */
+export const ADJUSTMENT_INTENTS = [
+  'anulacion_total',
+  'devolucion_parcial',
+  'correccion_comprador',
+  'cargo_adicional',
+] as const;
+
+export type AdjustmentIntent = (typeof ADJUSTMENT_INTENTS)[number];
+
+/**
+ * Qué motivos admite cada intención. Es una tabla y no un `switch` porque la consume dos
+ * veces: Zod la usa para construir el `enum` de cada rama de la unión discriminada y el
+ * diálogo para pintar su `Select`, así que una sola fuente evita que la UI ofrezca un
+ * motivo que el servidor rechaza (023, AC13).
+ *
+ * Las tres primeras son códigos del catálogo 09; `cargo_adicional` es del 10, que es otro
+ * catálogo con los mismos dígitos. Por eso el motivo nunca se lee solo: siempre con el
+ * `kind` del documento al lado (`reasonLabelFor`).
+ */
+export const REASONS_BY_INTENT = {
+  anulacion_total: ['01', '06'],
+  devolucion_parcial: ['04', '07', '09'],
+  correccion_comprador: ['02', '03'],
+  cargo_adicional: ['01', '02', '03'],
+} as const satisfies Record<AdjustmentIntent, readonly string[]>;
+
+/**
+ * Qué catálogo le toca a cada `kind`. La baja lee del 09 —el motivo de la anulación es el
+ * mismo que llevaría la nota de crédito que la sustituye (D-12)— y los originales no
+ * llevan motivo en absoluto.
+ */
+function reasonsFor(kind: ElectronicDocumentKind): readonly { code: string; label: string }[] {
+  if (kind === 'nota_debito') return DEBIT_NOTE_REASONS;
+  if (kind === 'nota_credito' || kind === 'comunicacion_baja') return CREDIT_NOTE_REASONS;
+  return [];
+}
+
+/**
+ * Etiqueta del motivo ya resuelta contra su catálogo. `null` cuando el documento no lleva
+ * motivo —todo original— o cuando el código no está en el catálogo, que es dato viejo y no
+ * una excusa para pintar un código desnudo.
+ *
+ * Vive aquí, en servidor y en cliente a la vez, porque la resuelve el repositorio para
+ * publicarla en `ElectronicDocumentRow` (023, §6.3) y la consume el `Select` del diálogo:
+ * dos copias serían dos textos que se desalinean.
+ */
+export function reasonLabelFor(
+  kind: ElectronicDocumentKind,
+  code: string | null,
+): string | null {
+  if (code === null) return null;
+  return reasonsFor(kind).find((reason) => reason.code === code)?.label ?? null;
+}

@@ -158,11 +158,22 @@ export const electronicDocuments = pgTable(
               and ${t.igvCents} >= 0
               and ${t.baseCents} + ${t.igvCents} = ${t.amountCents})`,
     ),
-    // `issued_at` existe exactamente cuando el documento está emitido. Sin esto, «Ventas
-    // declarables» de #3 podría sumar un documento sin fecha o ignorar uno emitido.
+    // `issued_at` existe exactamente cuando el documento **llegó a emitirse**. Sin esto,
+    // «Ventas declarables» de #3 podría sumar un documento sin fecha o ignorar uno emitido.
+    //
+    // `voided` entra en el lado izquierdo, y es una **corrección de la migración `0010`**
+    // (spec 023, §5): tal como 022 lo escribió —`(status = 'issued') = (issued_at is not
+    // null)`— anular el original era imposible, porque el `UPDATE … SET status = 'voided'`
+    // dejaba la fila con `issued_at` relleno y un estado distinto de `issued`, y el CHECK
+    // reventaba. La alternativa —borrar `issued_at` al anular— habría destruido la fecha en
+    // la que ese comprobante se emitió ante SUNAT, que es un dato fiscal y no un detalle de
+    // estado: un documento anulado **sí** se emitió, y su período sigue siendo el suyo.
+    //
+    // Un `pending` o un `failed` nunca llegan a `voided`: el `WHERE status = 'issued'` de
+    // `markVoided` es lo que lo garantiza, y por eso la equivalencia sigue siendo exacta.
     check(
       'electronic_documents_issued_at_matches_status',
-      sql`(${t.status} = 'issued') = (${t.issuedAt} is not null)`,
+      sql`(${t.status} in ('issued', 'voided')) = (${t.issuedAt} is not null)`,
     ),
   ],
 );

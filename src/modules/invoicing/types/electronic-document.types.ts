@@ -37,4 +37,18 @@ export type ElectronicDocumentRow = Pick<
   permanentFailure: boolean;
   /** `B001-00000123`. Derivado en servidor para que la UI no reimplemente el formato. */
   label: string | null;
+  /**
+   * `null` en el original; el id del documento que esta corrección modifica en todo lo
+   * demás. La UI construye el árbol con esto y **no** ordenando por fecha (spec 023, D-11):
+   * con dos correcciones sobre el mismo original el orden cronológico no dice cuál modifica
+   * a cuál, y en cuanto exista una nota de crédito sobre una reemisión la suposición falla.
+   */
+  relatedDocumentId: string | null;
+  /**
+   * Etiqueta del motivo, ya resuelta contra su catálogo —09 para la nota de crédito y la
+   * baja, 10 para la nota de débito— para que la UI no reimplemente el mapa ni tenga que
+   * saber qué catálogo le toca a cada `kind`. `null` en todo documento sin motivo, que es
+   * todo original (spec 023, §6.3).
+   */
+  reasonLabel: string | null;
 };

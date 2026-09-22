@@ -78,6 +78,13 @@
       "when": 1790081675943,
       "tag": "0010_tough_mimic",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1790095690568,
+      "tag": "0011_icy_maggott",
+      "breakpoints": true
     }
   ]
 }

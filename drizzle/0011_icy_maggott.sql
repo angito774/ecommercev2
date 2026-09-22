@@ -1,0 +1,2 @@
+ALTER TABLE "electronic_documents" DROP CONSTRAINT "electronic_documents_issued_at_matches_status";--> statement-breakpoint
+ALTER TABLE "electronic_documents" ADD CONSTRAINT "electronic_documents_issued_at_matches_status" CHECK (("electronic_documents"."status" in ('issued', 'voided')) = ("electronic_documents"."issued_at" is not null));

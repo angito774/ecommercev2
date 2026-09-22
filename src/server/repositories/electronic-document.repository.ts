@@ -1,6 +1,6 @@
 import { and, asc, eq, inArray, ne, sql, type SQL } from 'drizzle-orm';
 
-import { formatDocumentLabel } from '@/lib/electronic-documents';
+import { formatDocumentLabel, reasonLabelFor } from '@/lib/electronic-documents';
 import type { ElectronicDocumentRow } from '@/modules/invoicing/types/electronic-document.types';
 import { db, type Reader, type Tx } from '@/server/db';
 import { electronicDocuments } from '@/server/db/schema';
@@ -56,7 +56,12 @@ export function buildAttemptIncrement(): SQL {
 const ROW_COLUMNS = {
   id: electronicDocuments.id,
   orderId: electronicDocuments.orderId,
+  // El árbol del pedido se construye con esto y no ordenando por fecha (spec 023, D-11).
+  relatedDocumentId: electronicDocuments.relatedDocumentId,
   kind: electronicDocuments.kind,
+  // Entra para colapsarse en `reasonLabel` dentro de `toRow()`, igual que
+  // `providerResponse` se colapsa en `permanentFailure`: el código desnudo no sale.
+  reasonCode: electronicDocuments.reasonCode,
   status: electronicDocuments.status,
   series: electronicDocuments.series,
   number: electronicDocuments.number,
@@ -71,7 +76,9 @@ const ROW_COLUMNS = {
 type RowSource = Pick<
   ElectronicDocument,
   | 'id'
+  | 'relatedDocumentId'
   | 'kind'
+  | 'reasonCode'
   | 'status'
   | 'series'
   | 'number'
@@ -120,6 +127,12 @@ export function toRow(document: RowSource, visibility: RowVisibility): Electroni
     permanentFailure:
       document.status === 'failed' && (document.providerResponse?.permanent ?? false),
     label: formatDocumentLabel(document.series, document.number),
+    relatedDocumentId: document.relatedDocumentId,
+    // La etiqueta ya resuelta, no el código: los catálogos 09 y 10 comparten los dígitos
+    // `01`, `02` y `03` con significados distintos, así que un cliente que quisiera
+    // traducirlos tendría que reimplementar la regla de qué catálogo le toca a cada `kind`
+    // (spec 023, §6.3).
+    reasonLabel: reasonLabelFor(document.kind, document.reasonCode),
   };
 }
 
@@ -219,6 +232,89 @@ export async function markFailed(
     .returning();
 
   return failed ?? null;
+}
+
+// ---------------------------------------------------------------------------
+// Ajuste del pedido (spec 023)
+// ---------------------------------------------------------------------------
+
+// Los dos `kind` que pueden ser el padre de una corrección. Vive en una constante y no
+// repetido en cada `WHERE`, por lo mismo que `ISSUABLE_STATUSES`: es la definición de
+// «comprobante original» y equivocarse aquí sería acreditar el documento que no toca.
+const ORIGINAL_KINDS = ['boleta', 'factura'] as const;
+
+/**
+ * El `WHERE` que localiza el comprobante que un ajuste puede corregir. `status = 'issued'`
+ * y no `<> 'voided'`: **no se puede acreditar un documento que SUNAT todavía no tiene**
+ * (AC5), así que un original `pending` o `failed` no cuenta y el pedido responde 409
+ * dirigiendo a emitirlo primero.
+ *
+ * Exportado para compilarlo con `PgDialect`: es la pieza con la regla.
+ */
+export function buildIssuedOriginalFilter(orderId: string): SQL {
+  return and(
+    eq(electronicDocuments.orderId, orderId),
+    inArray(electronicDocuments.kind, [...ORIGINAL_KINDS]),
+    eq(electronicDocuments.status, 'issued'),
+  ) as SQL;
+}
+
+/**
+ * El original vigente y emitido del pedido. Como mucho hay uno: lo garantiza el índice
+ * único parcial `electronic_documents_one_original_per_order_idx`, que excluye `voided`
+ * precisamente para que una reemisión posterior quepa (spec 022, §5.6).
+ *
+ * Acepta un `Reader` porque esta lectura corre dentro de la `tx A` del ajuste, para ver el
+ * mismo estado que el lock del pedido.
+ */
+export async function findIssuedOriginal(
+  orderId: string,
+  reader: Reader = db,
+): Promise<ElectronicDocument | null> {
+  const [original] = await reader
+    .select()
+    .from(electronicDocuments)
+    .where(buildIssuedOriginalFilter(orderId))
+    .limit(1);
+
+  return original ?? null;
+}
+
+/**
+ * El guard del `UPDATE` de anulación. `status = 'issued'` y no «cualquier cosa menos
+ * voided»: lo único que se anula es un documento que llegó a existir ante SUNAT, y es
+ * también lo que mantiene exacta la equivalencia del `CHECK
+ * electronic_documents_issued_at_matches_status` —un `pending` nunca alcanza `voided`, así
+ * que un `voided` siempre conserva su `issued_at`—.
+ */
+export function buildVoidableFilter(id: string): SQL {
+  return and(
+    eq(electronicDocuments.id, id),
+    eq(electronicDocuments.status, 'issued'),
+  ) as SQL;
+}
+
+/**
+ * Marca `voided` al documento **padre**, y lo hace dentro de la misma transacción que el
+ * `markIssued` del documento que lo anula (§6.5, AC14): así el índice único de original
+ * vigente ve el `voided` ya escrito y admite el comprobante reemitido, y no existe ningún
+ * instante en el que el pedido se quede sin comprobante vigente.
+ *
+ * **`issued_at` no se toca.** Un documento anulado sí se emitió, y esa fecha es la que el
+ * libro de ventas usa para su período: borrarla para contentar a un `CHECK` sería destruir
+ * un dato fiscal (§5).
+ *
+ * `null` cuando el padre ya no estaba `issued`, que hoy solo puede pasar si otra emisión
+ * lo anuló antes. El service lo trata como «ya está hecho» y no como un fallo.
+ */
+export async function markVoided(tx: Tx, id: string): Promise<ElectronicDocument | null> {
+  const [voided] = await tx
+    .update(electronicDocuments)
+    .set({ status: 'voided' })
+    .where(buildVoidableFilter(id))
+    .returning();
+
+  return voided ?? null;
 }
 
 export async function findById(

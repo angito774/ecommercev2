@@ -111,6 +111,12 @@ export type AdminOrderDetail = Omit<AdminOrderRow, 'itemCount'> & {
    * salen por ninguna API de este spec (AC22).
    */
   documents: ElectronicDocumentRow[];
+  /**
+   * Lo devuelto acumulado, en céntimos (spec 023). **No hay ningún estado nuevo en
+   * `order_status`**: «reembolsado» y «reembolsado en parte» se derivan comparando esta
+   * cifra con `amountTotalCents`, que es donde vive la verdad (§3, D-6).
+   */
+  refundedAmountCents: number;
 };
 
 export type AdminOrderDetailResponse = {
@@ -121,6 +127,12 @@ export type AdminOrderDetailResponse = {
     canUpdateStatus: boolean;
     /** Resuelto en servidor: la UI solo oculta controles, no decide permisos (AC20). */
     canIssueInvoice: boolean;
+    /**
+     * `orders.refund`, que solo tienen `super_admin` y `admin` (spec 023, §5.1). `manager`
+     * tiene `orders.update_status` y aun así recibe `false`: cancelar un pedido que nunca
+     * se cobró no es devolver dinero (AC3).
+     */
+    canRefund: boolean;
   };
 };
 

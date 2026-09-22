@@ -8,6 +8,7 @@ import {
   DOCUMENT_NOT_FOUND_MESSAGE,
   ELECTRONIC_DOCUMENT_STATUS_LABELS,
 } from '@/modules/invoicing/constants';
+import { voidsParent } from '@/modules/invoicing/lib/adjustment';
 import type { ElectronicDocumentRow } from '@/modules/invoicing/types/electronic-document.types';
 import { SHIPPING_LINE_DESCRIPTION } from '@/modules/orders/constants';
 import type { OrderLineDisplay } from '@/modules/orders/types/order.types';
@@ -21,9 +22,12 @@ import { getInvoicingProvider } from './invoicing';
 import {
   InvoicingProviderError,
   toProviderTrace,
+  type IssueComprobanteInput,
   type IssueDocumentInput,
   type IssueDocumentLine,
   type IssueDocumentResult,
+  type IssueVoidInput,
+  type RelatedDocument,
 } from './invoicing/provider';
 
 type Order = typeof orders.$inferSelect;
@@ -31,8 +35,15 @@ type User = typeof users.$inferSelect;
 type ElectronicDocument = Awaited<ReturnType<typeof electronicDocumentRepository.findById>>;
 type ClaimedDocument = NonNullable<ElectronicDocument>;
 
-/** Identificadores del evento que encoló el documento. Nunca el payload de Stripe. */
-type QueueSource = { eventId: string; sessionId: string };
+/**
+ * Por qué se encoló el comprobante, para la bitácora. Nunca el payload de Stripe.
+ *
+ * Dos formas y no una con campos opcionales: el original nace del webhook y se identifica
+ * por su evento y su sesión, mientras que la reemisión del spec 023 no tiene ninguno de los
+ * dos —la dispara la emisión del documento que anuló al anterior (§6.5)— y un `eventId`
+ * vacío en la bitácora diría que hubo un evento que no existió.
+ */
+type QueueSource = { eventId: string; sessionId: string } | { reason: 'reissue' };
 
 // **Con service** y no con la lógica en el handler, a diferencia del costo inicial del
 // spec 021: esta operación cruza dos repositorios, un proveedor externo, dos transacciones
@@ -213,14 +224,55 @@ export function resolveBuyerName(
  * encolar, y recalcularlos aquí abriría la puerta a que el comprobante enviado y el
  * guardado dijeran cosas distintas.
  */
+const INCOMPLETE_DOCUMENT_MESSAGE =
+  'Al comprobante le faltan datos para emitirse. Revisa el pedido antes de volver a intentarlo.';
+
+/**
+ * El bloque `related` de una corrección, a partir de la fila del documento **padre**.
+ * `null` cuando el documento no corrige nada —todo original— y lanza cuando la corrección
+ * dice corregir algo que no se puede identificar: un documento que se envía sin decir a
+ * cuál modifica lo rechaza SUNAT, y mandarlo sin el bloque quemaría el correlativo.
+ */
+export function toRelatedDocument(
+  document: Pick<ClaimedDocument, 'relatedDocumentId' | 'reasonCode'>,
+  parent: Pick<ClaimedDocument, 'kind' | 'series' | 'number'> | null,
+): RelatedDocument | null {
+  if (!document.relatedDocumentId) return null;
+
+  if (!parent || parent.series === null || parent.number === null || !document.reasonCode) {
+    throw new ConflictError(INCOMPLETE_DOCUMENT_MESSAGE);
+  }
+
+  return {
+    kind: parent.kind,
+    series: parent.series,
+    number: parent.number,
+    reasonCode: document.reasonCode,
+  };
+}
+
+/**
+ * Traduce la fila reclamada y su pedido al dominio del proveedor, para todo lo que **es un
+ * comprobante**: el original y las dos notas. Los importes y el par serie-número salen de
+ * la **fila**, no de un recálculo: son los que se persistieron al encolar, y recalcularlos
+ * aquí abriría la puerta a que el comprobante enviado y el guardado dijeran cosas
+ * distintas.
+ *
+ * `parent` llega con valor por defecto para no obligar a los llamadores de un original a
+ * pasar un `null` que no significa nada para ellos.
+ */
 export function toProviderInput(
   document: ClaimedDocument,
   order: orderRepository.OrderFiscalSnapshot,
   issuedOn: Date,
-): IssueDocumentInput {
+  parent: Pick<ClaimedDocument, 'kind' | 'series' | 'number'> | null = null,
+): IssueComprobanteInput {
+  const related = toRelatedDocument(document, parent);
+
   if (
     !order.buyerDocumentType ||
     !order.buyerDocumentNumber ||
+    document.kind === 'comunicacion_baja' ||
     document.series === null ||
     document.number === null ||
     document.amountCents === null ||
@@ -229,9 +281,7 @@ export function toProviderInput(
   ) {
     // Imposible por los `CHECK` de la tabla y por `skipReason()`, pero el tipo no lo sabe y
     // tragárselo con un `!` escondería un dato corrupto detrás de un rechazo de SUNAT.
-    throw new ConflictError(
-      'Al comprobante le faltan datos para emitirse. Revisa el pedido antes de volver a intentarlo.',
-    );
+    throw new ConflictError(INCOMPLETE_DOCUMENT_MESSAGE);
   }
 
   return {
@@ -247,8 +297,53 @@ export function toProviderInput(
     amountCents: document.amountCents,
     baseCents: document.baseCents,
     igvCents: document.igvCents,
+    // Las líneas de una nota son las del pedido, igual que las del original: este spec
+    // ajusta un **monto** y no líneas concretas (023, §3), así que el documento describe la
+    // misma venta con otro importe total.
     lines: buildDocumentLines(order.items, order.shippingCents),
+    ...(related ? { related } : {}),
   };
+}
+
+/**
+ * La rama de la comunicación de baja. Función aparte y no un `if` dentro de
+ * `toProviderInput()`: el tipo de retorno de cada una es exacto, así que ninguna puede
+ * devolver un documento a medio rellenar (§6.6.2).
+ */
+export function toVoidProviderInput(
+  document: ClaimedDocument,
+  order: orderRepository.OrderFiscalSnapshot,
+  issuedOn: Date,
+  parent: Pick<ClaimedDocument, 'kind' | 'series' | 'number'> | null,
+): IssueVoidInput {
+  const related = toRelatedDocument(document, parent);
+
+  if (!order.buyerDocumentType || !order.buyerDocumentNumber || !related) {
+    throw new ConflictError(INCOMPLETE_DOCUMENT_MESSAGE);
+  }
+
+  return {
+    kind: 'comunicacion_baja',
+    issueDate: toIssueDate(issuedOn),
+    buyer: {
+      documentType: order.buyerDocumentType,
+      documentNumber: order.buyerDocumentNumber,
+      legalName: resolveBuyerName(order),
+    },
+    related,
+  };
+}
+
+/** Única decisión de qué forma construir. La toma el `kind` del dominio, nada más. */
+function buildProviderInput(
+  document: ClaimedDocument,
+  order: orderRepository.OrderFiscalSnapshot,
+  issuedOn: Date,
+  parent: ClaimedDocument | null,
+): IssueDocumentInput {
+  return document.kind === 'comunicacion_baja'
+    ? toVoidProviderInput(document, order, issuedOn, parent)
+    : toProviderInput(document, order, issuedOn, parent);
 }
 
 // Distingue el 404 del 409 releyendo la fila: `claimForIssue` devuelve `null` en los dos
@@ -277,6 +372,46 @@ function auditMetadata(document: ClaimedDocument): Record<string, unknown> {
   };
 }
 
+/**
+ * La consecuencia de emitir un documento que **anula** al que corrige (spec 023, §6.5).
+ * Corre **dentro de la misma transacción** que el `markIssued`, y eso es lo que la hace
+ * correcta: el índice único de original vigente ve el `voided` ya escrito y admite el
+ * comprobante reemitido, así que no existe ningún instante en el que el pedido se quede sin
+ * comprobante vigente (AC14, AC15).
+ *
+ * **Encola, no emite** (D-13): el comprobante nuevo nace `pending` como cualquier otro y
+ * espera a que alguien lo emita. Emitirlo aquí encadenaría dos llamadas al proveedor dentro
+ * de la misma petición y dejaría la segunda sin nadie que gestione su fallo.
+ */
+export async function voidParentAndReissue(tx: Tx, issued: ClaimedDocument): Promise<void> {
+  // Puro y sobre la fila: baja, o nota de crédito con un motivo que cancela la venta
+  // entera. Una nota de débito nunca anula nada.
+  if (!voidsParent(issued) || !issued.relatedDocumentId) return;
+
+  // `null` = el padre ya estaba `voided`, porque una corrección anterior lo anuló. Es «ya
+  // está hecho» y no un fallo, así que aquí se corta: seguir de largo encolaría un segundo
+  // comprobante original sobre un pedido que ya tiene el reemitido vigente, violando el
+  // índice único parcial con un 500 genérico **después** de que el proveedor ya emitió este
+  // documento, que quedaría `pending` repitiendo el mismo error en cada reintento.
+  const voided = await electronicDocumentRepository.markVoided(tx, issued.relatedDocumentId);
+  if (!voided) return;
+
+  // El pedido sigue cobrado ⇒ sigue necesitando comprobante. Esta comparación es lo que
+  // distingue una anulación total —donde `refunded == total` y no hay que reemitir nada
+  // (AC17)— de una corrección de datos —donde no se devolvió un céntimo y el cliente se
+  // quedaría sin comprobante si no se reemite (AC15)— sin una columna de intención que
+  // habría que mantener sincronizada con los importes (D-6).
+  //
+  // Se relee el pedido **dentro de esta transacción**: la corrección de comprador escribió
+  // sus datos fiscales en la transacción del ajuste, y el comprobante reemitido tiene que
+  // nacer con los corregidos, no con los que tenía la fila al emitirse la nota.
+  const order = await orderRepository.findById(issued.orderId, tx);
+  if (!order || order.refundedAmountCents >= order.amountTotalCents) return;
+
+  const withItems = await orderRepository.findByIdWithItems(order.id, tx);
+  await queueOriginalDocument(tx, order, withItems?.items ?? [], { reason: 'reissue' });
+}
+
 async function persistSuccess(
   document: ClaimedDocument,
   result: IssueDocumentResult,
@@ -295,6 +430,8 @@ async function persistSuccess(
     // `null` solo puede venir del guard `status <> 'issued'` del WHERE: otra petición lo
     // emitió mientras esta hablaba con el proveedor. 409, no un segundo UPDATE (AC14).
     if (!issued) throw await explainNotIssuable(document.id);
+
+    await voidParentAndReissue(tx, issued);
 
     await logAudit(tx, {
       actorId: actor.id,
@@ -378,7 +515,13 @@ export async function issueDocument(
   // dato roto y no un fallo del proveedor.
   if (!order) throw new NotFoundError(DOCUMENT_NOT_FOUND_MESSAGE);
 
-  const input = toProviderInput(claimed, order, new Date());
+  // El padre solo se lee cuando la fila dice corregir algo: un original no tiene ninguno, y
+  // pedirlo igualmente sería un viaje al pool serverless por cada emisión normal.
+  const parent = claimed.relatedDocumentId
+    ? await electronicDocumentRepository.findById(claimed.relatedDocumentId)
+    : null;
+
+  const input = buildProviderInput(claimed, order, new Date(), parent);
 
   let result: IssueDocumentResult;
   try {

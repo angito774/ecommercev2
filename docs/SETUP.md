@@ -592,6 +592,17 @@ la base como `round(total / 1.18)` y el IGV como el **residuo**: calcular los do
 separado deja, en ciertos importes, una diferencia de un céntimo, y un comprobante que no
 cuadra consigo mismo lo rechaza SUNAT.
 
+Corregido a 2026-09-22 (spec 023, migración `0011`): el `CHECK
+electronic_documents_issued_at_matches_status` pasa de `(status = 'issued') = (issued_at is
+not null)` a `(status in ('issued','voided')) = (issued_at is not null)`. Tal como nació en
+`0010` impedía el `UPDATE … SET status = 'voided'` del original —una fila emitida lleva
+`issued_at` relleno y el constraint exigía borrarlo—, así que la anulación del padre era
+estructuralmente imposible. Es un defecto de `0010` que nadie pudo ver antes porque ningún
+camino del spec 022 escribe `voided`. **Se corrige el constraint y no se borra la fecha**: un
+documento anulado sí se emitió, y `issued_at` es la fecha con la que el libro de ventas lo
+agrupa. La equivalencia sigue siendo exacta porque `markVoided()` lleva
+`WHERE status = 'issued'`: un `pending` o un `failed` nunca llegan a `voided`.
+
 `issued_at` es columna propia y **no se deriva de `updated_at`** (D-17): `updated_at` lleva
 `$onUpdate`, así que cualquier escritura futura sobre la fila movería la fecha con la que
 el libro de ventas agrupa el período, y un cambio no fiscal no puede mover una venta de
@@ -689,8 +700,15 @@ migración: el enum `order_status` no crece, y `orders`, `order_items` y `users`
 leen tal cual estaban.
 
 Fuera de alcance por decisión y no por olvido: fulfillment y estados de envío,
-reembolsos, cancelación de pedidos `paid` (necesitaría reponer stock y llamar a
-Stripe), enlaces al Dashboard de Stripe, exportación a CSV y métricas de ventas.
+enlaces al Dashboard de Stripe, exportación a CSV y métricas de ventas.
+
+> **Derogado por el spec 023 (2026-09-22).** Este spec dejaba fuera «reembolsos» y
+> «cualquier llamada a la API de Stripe», y el panel pasó a tener las dos cosas:
+> `POST /api/admin/orders/[id]/adjust` devuelve dinero por Stripe bajo el permiso
+> `orders.refund` y registra el documento SUNAT de corrección. Lo que sigue **sin**
+> existir es cancelar un pedido `paid` como transición de estado: `order_status` no
+> crece y un pedido devuelto se reconoce comparando `refunded_amount_cents` con
+> `amount_total_cents`. El stock tampoco se repone. Detalle en §6, «ajuste de pedido».
 
 Construido a 2026-09-16: **dashboard de métricas** en la raíz del panel (`/admin`,
 spec 015), bajo el permiso nuevo `dashboard.read` —el catálogo pasa de 17 a 18
@@ -1114,14 +1132,93 @@ recibo de Stripe **se conserva** junto a él: son dos cosas distintas, el docume
 la constancia del cargo, y el recibo cubre además la ventana en que el comprobante sigue
 `pending`, que con emisión manual puede durar.
 
-Fuera de alcance por decisión: notas de crédito, notas de débito, comunicación de baja y
-reembolsos en Stripe (spec 023, cuyo esquema ya existe); cualquier proceso en segundo
-plano; emisión en lote; guías de remisión; validación en línea de RUC/DNI contra RENIEC o
-el padrón de SUNAT; panel de configuración del emisor —RUC, razón social y domicilio son
-variables de entorno validadas al importar—; reenvío del comprobante por correo; multiserie
-por sucursal; resumen diario de boletas; backfill de pedidos anteriores; y almacenar el XML
-y el CDR en vez de sus URLs. Asunción declarada: **todo el catálogo tributa al 18 %
-general**, sin exonerados ni inafectos.
+Fuera de alcance por decisión: cualquier proceso en segundo plano; emisión en lote; guías de
+remisión; validación en línea de RUC/DNI contra RENIEC o el padrón de SUNAT; panel de
+configuración del emisor —RUC, razón social y domicilio son variables de entorno validadas
+al importar—; reenvío del comprobante por correo; multiserie por sucursal; resumen diario de
+boletas; backfill de pedidos anteriores; y almacenar el XML y el CDR en vez de sus URLs.
+Asunción declarada: **todo el catálogo tributa al 18 % general**, sin exonerados ni
+inafectos.
+
+Construido a 2026-09-22: **ajuste de pedido** (spec 023), con el permiso nuevo
+`orders.refund` —el catálogo pasa de 28 a 29 códigos— que reciben solo `super_admin` y
+`admin`. **Deroga la nota del spec 014** según la cual reembolsos y llamadas a la API de
+Stripe quedaban fuera del panel de pedidos: `POST /api/admin/orders/[id]/adjust` devuelve
+dinero de verdad. `manager` conserva `orders.update_status` y **no** recibe este permiso, y
+esa es justamente la distinción que justifica un código aparte: cancelar un pedido `pending`
+no mueve un céntimo —nunca se cobró— mientras que esto devuelve dinero real y prepara un
+documento fiscal a nombre de la empresa. Los dos permisos de facturación —`invoicing.issue`
+y `orders.refund`— se conceden a los mismos dos roles a propósito: quien decide una
+devolución es quien después tiene que emitir su nota, y separarlos crearía el estado
+«alguien devolvió dinero y nadie puede documentarlo».
+
+El endpoint recibe una de **cuatro intenciones** —`anulacion_total`, `devolucion_parcial`,
+`correccion_comprador` y `cargo_adicional`— en una **unión discriminada** con `strictObject`
+en cada rama: cada intención declara exactamente lo que admite, y un `cargo_adicional` con
+`buyer` dentro es un `400` de Zod en vez de un campo ignorado en silencio. El `reasonCode` se
+valida contra el subconjunto de **su** intención (`REASONS_BY_INTENT`), no contra el catálogo
+entero. **La UI elige la intención; el mecanismo SUNAT lo decide el servidor**
+(`planAdjustment()`, puro y con test): si sale nota de crédito, nota de débito o comunicación
+de baja es una regla fiscal, no una preferencia, y dejarla en un `<Select>` emitiría
+documentos que SUNAT rechaza. `canVoidWithCommunication()` devuelve **`false`** mientras la
+norma no se confirme, de modo que hoy se emite **siempre nota de crédito**: es el mecanismo
+general, cubre todos los casos y nunca es inválido. Su firma recibe `original.issuedAt` —no
+la fecha del pedido— porque con la emisión manual el plazo se cuenta desde la emisión, y
+entre el cobro y ella pueden pasar días.
+
+El orden es **leer, cobrar, escribir**, y la llamada a Stripe ocurre **fuera de toda
+transacción**, igual que la del OSE. `tx A` toma `SELECT … FOR UPDATE` sobre el pedido,
+valida —`paid`, original `issued`, saldo suficiente— y planifica; se suelta el lock; se crea
+el refund; `tx B` escribe todo junto. Lo que sostiene la corrección es la **clave de
+idempotencia derivada del estado**: `refund:${orderId}:${refundedBefore}:${amountCents}`, y
+no un uuid. Así, dos intentos de *la misma* operación —porque la `tx B` falló, o porque dos
+administradores pulsaron a la vez— producen la misma clave y Stripe devuelve el refund ya
+creado en lugar de uno nuevo, mientras que un ajuste posterior legítimo parte de un
+`refundedBefore` distinto y no se bloquea. La `tx B` cierra la carrera en el motor con
+`UPDATE orders SET refunded = refunded + $x WHERE id = $1 AND refunded = $refundedBefore`:
+cero filas significa «alguien se adelantó» y sale por `409` sin haber duplicado nada.
+
+**`order_status` no crece**: el estado de reembolso se deriva comparando
+`refunded_amount_cents` con `amount_total_cents`, y esa misma comparación es la que decide si
+hay que **reencolar** un comprobante. Cuando el documento que anula a otro pasa a `issued`,
+`persistSuccess()` marca el padre `voided` y, **si el pedido sigue cobrado**, encola un
+comprobante original nuevo con los datos corregidos —en estado `pending`, pendiente de
+emisión como cualquier otro—; todo dentro de la misma transacción, así que el índice único de
+original vigente ve el `voided` ya escrito y no existe ningún instante sin comprobante
+vigente. Una anulación total no reencola nada, porque el pedido quedó íntegramente devuelto,
+y no hace falta ninguna columna de intención para distinguir los dos casos.
+
+**El ajuste no emite nada.** Registra el documento de corrección `pending` en la misma tabla,
+con su `related_document_id` apuntando al original, y emitirlo es la misma acción manual de
+siempre: `POST /api/admin/invoicing/documents/[id]/issue`, sin un solo cambio. **Hay un único
+camino de emisión en todo el sistema.** Encadenar Stripe y Nubefact en una sola petición
+obligaría a decidir si un fallo del OSE revierte un reembolso que no puede revertirse. El
+precio es un segundo clic, señalizado en el diálogo y en el sheet.
+
+La bitácora escribe `order.refunded` o `order.adjusted` —dos hechos distintos— con
+`severity: 'warning'`, y su `metadata` lleva pedido, intención, mecanismo, motivo e importes.
+**Nunca** el documento del comprador, su razón social, el objeto `Refund` ni el
+`payment_intent`. La corrección de comprador es el único camino del spec que escribe PII, y
+va a `orders` y a ningún sitio más: no sale por la respuesta ni entra en el log.
+
+**Corrección de esquema (migración `0011`)**: el `CHECK
+electronic_documents_issued_at_matches_status` que creó la migración `0010` decía
+`(status = 'issued') = (issued_at is not null)`, lo que hacía **imposible** anular el
+original —un `UPDATE … SET status = 'voided'` sobre una fila con `issued_at` relleno lo
+violaba—. Pasa a `(status in ('issued','voided')) = (issued_at is not null)`. La alternativa,
+borrar `issued_at` al anular, habría destruido la fecha en la que ese comprobante se emitió
+ante SUNAT: un documento anulado **sí** se emitió, y su período sigue siendo el suyo. La
+equivalencia sigue siendo exacta porque `markVoided` lleva `WHERE status = 'issued'`, así que
+un `pending` o un `failed` nunca alcanzan `voided`.
+
+Fuera de alcance por decisión: **el stock no se repone** —devolver dinero no repone
+mercadería; la devolución física se registra como nota `ingreso_devolucion` (spec 020), que
+ya existe—; la nota de débito **no cobra nada** —documenta un mayor importe, y cobrar exigiría
+método guardado y flujo SCA—; reembolso por ítem con recálculo de líneas; corrección de
+comprador sobre pedidos con reembolso previo (el comprobante reemitido tendría que ser por el
+neto, que no coincide con ninguna línea); reembolso iniciado por el cliente; reversión de un
+ajuste desde la aplicación —lo que corrige un documento fiscal es otro documento—; y el
+resumen de anulaciones automatizado, que se lanza desde el panel de Nubefact.
 
 Gestión de accesos: CRUD de roles, matriz rol × permiso, asignación de roles a
 usuarios · bitácora de auditoría filtrable por actor, entidad, acción y fecha.

@@ -211,6 +211,27 @@ export const PERMISSIONS = [
     action: 'issue',
     description: 'Emitir ante SUNAT un comprobante electrónico pendiente o que falló.',
   },
+  // **No basta `orders.update_status`** (spec 023, §5.1), y la diferencia no es de
+  // grado: ese permiso lo tiene `manager` y lo único que concede es cancelar un
+  // pedido que sigue `pending`, es decir, uno por el que nunca se cobró un céntimo.
+  // Esto devuelve dinero real por Stripe y prepara un documento fiscal a nombre de
+  // la empresa. Mismo criterio restrictivo que el resto de finanzas (spec 017, D-3)
+  // y que `pricing.set_initial_cost` (spec 021, D-6): solo `super_admin` y `admin`.
+  //
+  // Va a los **mismos dos roles** que `invoicing.issue`, y es deliberado: quien
+  // decide una devolución es quien después tiene que emitir su nota de crédito, y
+  // separarlos crearía el estado «alguien devolvió dinero y nadie puede
+  // documentarlo» (§10).
+  //
+  // **Ver** el estado del reembolso no estrena permiso: sigue siendo `orders.read`,
+  // que ya es exactamente el alcance «ver este pedido entero».
+  {
+    code: 'orders.refund',
+    resource: 'orders',
+    action: 'refund',
+    description:
+      'Anular o devolver el importe de un pedido pagado y registrar su documento de corrección.',
+  },
 ] as const;
 
 // `PermissionDefinition` es la entrada del catálogo en código, simétrica con
@@ -295,6 +316,7 @@ export const ROLE_PERMISSION_MATRIX: Record<RoleSlug, readonly PermissionCode[]>
     'payroll.manage',
     'pricing.set_initial_cost',
     'invoicing.issue',
+    'orders.refund',
   ],
   admin: [
     'categories.read',
@@ -324,6 +346,7 @@ export const ROLE_PERMISSION_MATRIX: Record<RoleSlug, readonly PermissionCode[]>
     'payroll.manage',
     'pricing.set_initial_cost',
     'invoicing.issue',
+    'orders.refund',
   ],
   // `manager` y `audit` quedan fuera del módulo financiero a propósito (spec 017,
   // D-3): es el primer módulo con datos de resultado y no de operación. `manager`
@@ -341,6 +364,9 @@ export const ROLE_PERMISSION_MATRIX: Record<RoleSlug, readonly PermissionCode[]>
     'products.update',
     'products.delete',
     'orders.read',
+    // Cancela pedidos `pending`, y **sin `orders.refund`**: cancelar lo que nunca se
+    // cobró y devolver dinero ya cobrado son dos acciones distintas, y por eso son dos
+    // códigos distintos (spec 023, §5.1). `audit` no tiene ninguno de los dos.
     'orders.update_status',
     'users.read',
     'roles.read',

@@ -3,6 +3,7 @@ import type { ReactNode } from 'react';
 
 import { formatPrice } from '@/modules/products/lib/price';
 
+import { buildDocumentTree } from '../lib/document-tree';
 import {
   DOCUMENT_PENDING_HINT,
   ELECTRONIC_DOCUMENT_KIND_LABELS,
@@ -72,6 +73,87 @@ function FailureNotice({ document }: { document: ElectronicDocumentRow }) {
   );
 }
 
+function DocumentCard({
+  document,
+  renderAction,
+}: {
+  document: ElectronicDocumentRow;
+  renderAction?: (document: ElectronicDocumentRow) => ReactNode;
+}) {
+  return (
+    <div className="space-y-2">
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div className="min-w-0 space-y-1">
+          <p className="text-sm font-medium">{ELECTRONIC_DOCUMENT_KIND_LABELS[document.kind]}</p>
+          {/* La serie-número ya viene formateada del servidor para que la UI no
+              reimplemente el formato (§6.3). */}
+          {document.label ? (
+            <p className="text-muted-foreground font-mono text-xs tabular-nums">
+              {document.label}
+            </p>
+          ) : null}
+          {/* El motivo llega ya resuelto contra su catálogo: la UI no sabe —ni tiene por
+              qué— que el `01` de una nota de débito significa otra cosa que el de una nota
+              de crédito (spec 023, §6.3). */}
+          {document.reasonLabel ? (
+            <p className="text-muted-foreground text-xs">{document.reasonLabel}</p>
+          ) : null}
+        </div>
+        {/* En el panel el badge dice el estado real, siempre. En «Mis compras» un
+            `failed` no se pinta: el cliente ya pagó, no tiene ningún botón con el que
+            arreglarlo y el badge rojo contradice el «tu comprobante se está emitiendo»
+            que lee justo debajo. Mientras no esté `issued` ve ese mensaje y conserva el
+            recibo de Stripe como respaldo (D-21, AC24). Misma señal que `FailureNotice`:
+            la presencia de `renderAction` (D-20). */}
+        {renderAction || document.status !== 'failed' ? (
+          <DocumentStatusBadge status={document.status} />
+        ) : null}
+      </div>
+
+      <div className="text-muted-foreground flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
+        {document.amountCents !== null ? (
+          <span className="tabular-nums">{formatPrice(document.amountCents)}</span>
+        ) : null}
+        {/* Cuántas veces se intentó ya: no gobierna ningún automatismo —no hay ninguno—,
+            es información para quien decide volver a pulsar (§6.7). */}
+        {document.attemptCount > 0 ? (
+          <span className="tabular-nums">
+            {document.attemptCount} {document.attemptCount === 1 ? 'intento' : 'intentos'}
+          </span>
+        ) : null}
+      </div>
+
+      <DocumentMeta document={document} />
+      {/* El detalle del fallo es para quien puede hacer algo con él: cita el motivo del
+          proveedor —que puede repetir el RUC rechazado— y dice «corrige el dato antes de
+          volver a emitir», una instrucción de panel. En «Mis compras» sobra y contradice
+          el «tu comprobante se está emitiendo» que el cliente lee justo debajo, así que
+          va condicionado al mismo contexto que la acción (D-12), igual que el badge de
+          fallo (D-21). */}
+      {renderAction ? <FailureNotice document={document} /> : null}
+
+      {/* `<a href>` real y no `window.open()` en un callback asíncrono: el navegador
+          bloquearía la ventana por no venir de un gesto del usuario (AC23). */}
+      {document.pdfUrl ? (
+        <a
+          href={document.pdfUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-primary inline-flex min-h-11 items-center gap-1.5 text-sm hover:underline"
+        >
+          Ver el PDF
+          <ExternalLink className="size-3.5" aria-hidden />
+        </a>
+      ) : null}
+
+      {/* La acción de emisión se conserva **en cada documento del árbol**, corrección
+          incluida: es el mismo botón del spec 022 y el único camino de emisión que
+          existe (spec 023, D-13, AC22). */}
+      {renderAction?.(document)}
+    </div>
+  );
+}
+
 /**
  * Lista **puramente presentacional** de comprobantes: no consulta, no muta y no decide
  * permisos. La comparten el `Sheet` del panel y el diálogo de «Mis compras», que es posible
@@ -89,69 +171,21 @@ export function OrderDocuments({ documents, renderAction }: OrderDocumentsProps)
 
   return (
     <ul className="border-border divide-border divide-y rounded-[18px] border">
-      {documents.map((document) => (
-        <li key={document.id} className="space-y-2 p-4">
-          <div className="flex flex-wrap items-start justify-between gap-2">
-            <div className="min-w-0 space-y-1">
-              <p className="text-sm font-medium">
-                {ELECTRONIC_DOCUMENT_KIND_LABELS[document.kind]}
-              </p>
-              {/* La serie-número ya viene formateada del servidor para que la UI no
-                  reimplemente el formato (§6.3). */}
-              {document.label ? (
-                <p className="text-muted-foreground font-mono text-xs tabular-nums">
-                  {document.label}
-                </p>
-              ) : null}
-            </div>
-            {/* En el panel el badge dice el estado real, siempre. En «Mis compras» un
-                `failed` no se pinta: el cliente ya pagó, no tiene ningún botón con el que
-                arreglarlo y el badge rojo contradice el «tu comprobante se está emitiendo»
-                que lee justo debajo. Mientras no esté `issued` ve ese mensaje y conserva el
-                recibo de Stripe como respaldo (D-21, AC24). Misma señal que `FailureNotice`:
-                la presencia de `renderAction` (D-20). */}
-            {renderAction || document.status !== 'failed' ? (
-              <DocumentStatusBadge status={document.status} />
-            ) : null}
-          </div>
+      {buildDocumentTree(documents).map(({ document, children }) => (
+        <li key={document.id} className="space-y-3 p-4">
+          <DocumentCard document={document} renderAction={renderAction} />
 
-          <div className="text-muted-foreground flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
-            {document.amountCents !== null ? (
-              <span className="tabular-nums">{formatPrice(document.amountCents)}</span>
-            ) : null}
-            {/* Cuántas veces se intentó ya: no gobierna ningún automatismo —no hay ninguno—,
-                es información para quien decide volver a pulsar (§6.7). */}
-            {document.attemptCount > 0 ? (
-              <span className="tabular-nums">
-                {document.attemptCount} {document.attemptCount === 1 ? 'intento' : 'intentos'}
-              </span>
-            ) : null}
-          </div>
-
-          <DocumentMeta document={document} />
-          {/* El detalle del fallo es para quien puede hacer algo con él: cita el motivo del
-              proveedor —que puede repetir el RUC rechazado— y dice «corrige el dato antes de
-              volver a emitir», una instrucción de panel. En «Mis compras» sobra y contradice
-              el «tu comprobante se está emitiendo» que el cliente lee justo debajo, así que
-              va condicionado al mismo contexto que la acción (D-12), igual que el badge de
-              fallo (D-21). */}
-          {renderAction ? <FailureNotice document={document} /> : null}
-
-          {/* `<a href>` real y no `window.open()` en un callback asíncrono: el navegador
-              bloquearía la ventana por no venir de un gesto del usuario (AC23). */}
-          {document.pdfUrl ? (
-            <a
-              href={document.pdfUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-primary inline-flex min-h-11 items-center gap-1.5 text-sm hover:underline"
-            >
-              Ver el PDF
-              <ExternalLink className="size-3.5" aria-hidden />
-            </a>
+          {/* Anidadas y no en la misma lista: la sangría con el borde dice «esto modifica lo
+              de arriba», que es justo lo que la fecha no podía decir. */}
+          {children.length > 0 ? (
+            <ul className="border-border ml-1 space-y-3 border-l pl-4">
+              {children.map((child) => (
+                <li key={child.id}>
+                  <DocumentCard document={child} renderAction={renderAction} />
+                </li>
+              ))}
+            </ul>
           ) : null}
-
-          {renderAction?.(document)}
         </li>
       ))}
     </ul>

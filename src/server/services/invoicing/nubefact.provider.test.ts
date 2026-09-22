@@ -14,7 +14,12 @@ vi.mock('@/lib/invoicing-config', () => ({
 
 import { splitIgv } from '@/modules/finance/lib/igv';
 
-import { InvoicingProviderError, type IssueDocumentInput, type ProviderTrace } from './provider';
+import {
+  InvoicingProviderError,
+  type IssueComprobanteInput,
+  type IssueVoidInput,
+  type ProviderTrace,
+} from './provider';
 import {
   isPermanentFailure,
   NubefactProvider,
@@ -50,7 +55,9 @@ const SHIPPING = {
   totalCents: 1_500,
 };
 
-function buildInput(overrides: Partial<IssueDocumentInput> = {}): IssueDocumentInput {
+// La rama de comprobante de la unión (§6.6.2). La baja tiene su propio constructor abajo,
+// porque no comparte un solo campo obligatorio con esta.
+function buildInput(overrides: Partial<IssueComprobanteInput> = {}): IssueComprobanteInput {
   const lines = overrides.lines ?? [LAPTOP, SHIPPING];
   const amountCents =
     overrides.amountCents ?? lines.reduce((sum, line) => sum + line.totalCents, 0);
@@ -264,8 +271,97 @@ describe('toNubefactPayload', () => {
     expect(payload.tipo_de_nota_de_credito).toBe(1);
   });
 
+  it('maps a debit note onto comprobante type 4 with its own reason field', () => {
+    const payload = toNubefactPayload(
+      buildInput({
+        kind: 'nota_debito',
+        related: { kind: 'factura', series: 'F001', number: 7, reasonCode: '02' },
+      }),
+    );
+
+    expect(payload.tipo_de_comprobante).toBe(4);
+    expect(payload.documento_que_se_modifica_tipo).toBe(1);
+    expect(payload.tipo_de_nota_de_debito).toBe(2);
+    // Los dos catálogos son distintos: una nota de débito nunca manda `tipo_de_nota_de_credito`.
+    expect(payload).not.toHaveProperty('tipo_de_nota_de_credito');
+  });
+
+  it('keeps sending the lines on a credit note: the note describes the same sale', () => {
+    const payload = toNubefactPayload(
+      buildInput({
+        kind: 'nota_credito',
+        related: { kind: 'boleta', series: 'B001', number: 12, reasonCode: '06' },
+      }),
+    );
+
+    expect(Array.isArray(payload.items)).toBe(true);
+    expect(payload.operacion).toBe('generar_comprobante');
+  });
+
   it('never carries the token, not even by accident', () => {
     expect(JSON.stringify(toNubefactPayload(buildInput()))).not.toContain('token-de-prueba');
+  });
+});
+
+// La baja está construida de punta a punta aunque hoy no se elija, porque
+// `canVoidWithCommunication()` devuelve `false` (spec 023, D-12). Activarla es editar esa
+// función: este mapeo ya existe y está probado.
+describe('toNubefactPayload — comunicación de baja', () => {
+  function buildVoidInput(overrides: Partial<IssueVoidInput> = {}): IssueVoidInput {
+    return {
+      kind: 'comunicacion_baja',
+      issueDate: '22-09-2026',
+      buyer: { documentType: 'dni', documentNumber: '41281230', legalName: 'Ada Lovelace' },
+      related: { kind: 'boleta', series: 'B001', number: 12, reasonCode: '01' },
+      ...overrides,
+    };
+  }
+
+  it('uses its own operation, not generar_comprobante: it is not a new document', () => {
+    expect(toNubefactPayload(buildVoidInput()).operacion).toBe('generar_anulacion');
+  });
+
+  it('sends the type, series and number of the document it voids', () => {
+    const payload = toNubefactPayload(buildVoidInput());
+
+    expect(payload.tipo_de_comprobante).toBe(2);
+    expect(payload.serie).toBe('B001');
+    expect(payload.numero).toBe(12);
+  });
+
+  it('takes the type from the voided factura when that is what it voids', () => {
+    const payload = toNubefactPayload(
+      buildVoidInput({ related: { kind: 'factura', series: 'F001', number: 7, reasonCode: '01' } }),
+    );
+
+    expect(payload.tipo_de_comprobante).toBe(1);
+  });
+
+  it('sends the reason as the catalog label, which is what a person reads', () => {
+    expect(toNubefactPayload(buildVoidInput()).motivo).toBe('Anulación de la operación');
+  });
+
+  it('falls back to the bare code rather than leaving the void unjustified', () => {
+    const payload = toNubefactPayload(
+      buildVoidInput({ related: { kind: 'boleta', series: 'B001', number: 12, reasonCode: '99' } }),
+    );
+
+    expect(payload.motivo).toBe('99');
+  });
+
+  // Los `CHECK electronic_documents_void_has_no_series` y `_void_has_no_amount` dicen lo
+  // mismo en la base: una baja no lleva importes, ni líneas, ni correlativo propio.
+  it('carries no totals and no items at all', () => {
+    const payload = toNubefactPayload(buildVoidInput());
+
+    expect(payload).not.toHaveProperty('items');
+    expect(payload).not.toHaveProperty('total');
+    expect(payload).not.toHaveProperty('total_gravada');
+    expect(payload).not.toHaveProperty('total_igv');
+  });
+
+  it('never sends the placeholder code 0 of the comunicación de baja', () => {
+    expect(toNubefactPayload(buildVoidInput()).tipo_de_comprobante).not.toBe(0);
   });
 });
 
