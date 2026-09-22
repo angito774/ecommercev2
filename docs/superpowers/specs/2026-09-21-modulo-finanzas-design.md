@@ -58,11 +58,24 @@ facturación electrónica y da valor inmediato (saber qué productos dejan
 margen real). El resto de sub-proyectos **no** se ha brainstormeado a este
 nivel de detalle todavía — quedan como roadmap, a retomar uno a la vez.
 
-**Actualización:** el sub-proyecto #0 (Facturación electrónica) ya tiene su
-propio diseño detallado, aprobado:
-[2026-09-21-facturacion-electronica-design.md](./2026-09-21-facturacion-electronica-design.md).
-Incluye boleta/factura, nota de crédito/débito, comunicación de baja y
-reembolso integrado con Stripe.
+**Actualización — roadmap completo.** Los siete sub-proyectos tienen diseño
+detallado y aprobado, cada uno en su propio documento:
+
+| # | Sub-proyecto | Documento |
+|---|---|---|
+| 0 | Facturación electrónica | [2026-09-21-facturacion-electronica-design.md](./2026-09-21-facturacion-electronica-design.md) |
+| 1 | Precio Unitario | §3 de este documento |
+| 2 | Egresos v2 | [2026-09-21-egresos-v2-design.md](./2026-09-21-egresos-v2-design.md) |
+| 3 | Ingresos v2 | [2026-09-21-ingresos-v2-design.md](./2026-09-21-ingresos-v2-design.md) |
+| 4 | Impuestos | [2026-09-21-impuestos-design.md](./2026-09-21-impuestos-design.md) |
+| 5 | Ganancias v2 | [2026-09-21-ganancias-v2-design.md](./2026-09-21-ganancias-v2-design.md) |
+| 6 | Contabilidad | [2026-09-21-contabilidad-design.md](./2026-09-21-contabilidad-design.md) |
+
+Ninguno ha pasado todavía por la fase SDD (`orchestrator` → `spec` →
+`developer` → `reviewer`, CLAUDE.md §1). Cada documento es el insumo para
+esa fase cuando se decida empezar, en el orden de dependencias que cada uno
+anota en su propia sección final — no necesariamente el orden en que se
+diseñaron.
 
 ## 3. Diseño — Sub-proyecto #1: Precio Unitario
 
