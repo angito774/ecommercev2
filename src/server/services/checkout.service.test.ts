@@ -33,6 +33,9 @@ function buildProduct(overrides: Partial<Product> = {}): Product {
     priceCents: 129990,
     compareAtPriceCents: null,
     stock: 10,
+    // Columna nueva del spec 021: la fila desnuda que devuelve `findManyByIds` la trae,
+    // aunque el checkout no la mire.
+    averageCostCents: null,
     specs: null,
     categoryId: '22222222-2222-2222-2222-222222222222',
     isActive: true,

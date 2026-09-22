@@ -53,6 +53,14 @@ export const AUDIT_ACTIONS = [
     label: 'Documento de inventario registrado',
     entityType: 'inventory_document',
   },
+  // La única del módulo de precio unitario (spec 021). No lleva el importe del
+  // costo en `changes` ni en `metadata`: la leen roles sin `finance.read`
+  // (spec 021, D-9/D-10), igual criterio que nómina arriba.
+  {
+    code: 'product.cost_initialized',
+    label: 'Costo inicial registrado',
+    entityType: 'product',
+  },
 ] as const;
 
 const ACTION_LABELS = new Map<string, string>(

@@ -26,6 +26,12 @@ export const stockMovements = pgTable(
     // devolvió el RETURNING del UPDATE (D-11). Ya venía gratis, y hace visible en la
     // propia línea cualquier divergencia con `products.stock`.
     stockAfter: integer('stock_after').notNull(),
+    // Costo unitario pagado, en céntimos. Solo lo llevan las líneas de un documento
+    // `ingreso_compra`: una devolución o un cambio devuelven mercadería que ya se compró
+    // a su precio, no una compra nueva (spec 021, D-2). Nullable también por historia:
+    // las líneas anteriores a la migración `0009` no tienen importe y no se inventa
+    // ninguno.
+    unitCostCents: integer('unit_cost_cents'),
   },
   (t) => [
     index('stock_movements_document_id_idx').on(t.documentId),
@@ -38,5 +44,14 @@ export const stockMovements = pgTable(
     // ningún camino de escritura —seed, migración de datos o un `psql` a mano— debe
     // poder crear una línea de cero o negativa.
     check('stock_movements_quantity_positive', sql`${t.quantity} > 0`),
+    // El invariante «si el documento es `ingreso_compra` la línea lleva costo» **no puede
+    // ser un CHECK** (spec 021, D-3): el tipo de transacción vive en la cabecera
+    // (`inventory_documents.transaccion_id`) y un CHECK de fila no lee otra tabla. Lo
+    // sostienen el `superRefine` de `createInventoryDocumentSchema` y el service, que es
+    // el único camino de escritura. Aquí solo cabe el signo del importe.
+    check(
+      'stock_movements_unit_cost_cents_positive',
+      sql`${t.unitCostCents} is null or ${t.unitCostCents} > 0`,
+    ),
   ],
 );

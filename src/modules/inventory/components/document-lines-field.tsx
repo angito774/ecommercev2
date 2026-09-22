@@ -39,6 +39,12 @@ type DocumentLinesFieldProps = {
   products: ReadonlyMap<string, LineProduct>;
   onSelect: (product: LineProduct) => void;
   disabled?: boolean;
+  /**
+   * `true` solo con «Ingreso por compra» seleccionado. El campo no se pinta con ningún
+   * otro tipo y lo que quedara tecleado no viaja en el cuerpo (spec 021, AC28). Lo decide
+   * el diálogo, que es quien observa el tipo: este componente no conoce el catálogo.
+   */
+  requiresCost?: boolean;
 };
 
 const SEARCH_PAGE_SIZE = 10;
@@ -54,6 +60,7 @@ export function DocumentLinesField({
   products,
   onSelect,
   disabled = false,
+  requiresCost = false,
 }: DocumentLinesFieldProps) {
   const [search, setSearch] = useState('');
   const debouncedSearch = useDebounce(search, INVENTORY_SEARCH_DEBOUNCE_MS);
@@ -82,7 +89,10 @@ export function DocumentLinesField({
     if (addedIds.has(product.id) || isFull) return;
 
     onSelect(product);
-    append({ productId: product.id, quantity: '1' });
+    // `unitCost` arranca vacío y no en `'0'`: el `superRefine` del formulario solo lo
+    // exige cuando el tipo es `ingreso_compra`, y un cero tecleado por nosotros pasaría
+    // por un importe que nadie escribió (spec 021, AC28).
+    append({ productId: product.id, quantity: '1', unitCost: '' });
     setSearch('');
   }
 
@@ -173,6 +183,7 @@ export function DocumentLinesField({
           {fields.map((field, index) => {
             const product = products.get(field.productId);
             const quantityError = errors.items?.[index]?.quantity;
+            const unitCostError = errors.items?.[index]?.unitCost;
 
             return (
               <li key={field.id} className="flex items-start gap-3 p-3">
@@ -187,7 +198,7 @@ export function DocumentLinesField({
                   </p>
                 </div>
 
-                <div className="w-28 shrink-0">
+                <div className="w-24 shrink-0">
                   <Input
                     inputMode="numeric"
                     autoComplete="off"
@@ -198,6 +209,25 @@ export function DocumentLinesField({
                   />
                   {quantityError ? <FieldError errors={[quantityError]} /> : null}
                 </div>
+
+                {/* Solo con «Ingreso por compra»: en cualquier otro tipo el costo no
+                    existe como dato (spec 021, D-2) y el `superRefine` del formulario ni
+                    lo exige ni lo deja pasar (AC28). El `aria-label` nombra el producto
+                    porque la columna no tiene cabecera propia en la lista. */}
+                {requiresCost ? (
+                  <div className="w-32 shrink-0">
+                    <Input
+                      inputMode="decimal"
+                      autoComplete="off"
+                      placeholder="Costo S/"
+                      aria-label={`Costo unitario de ${product?.name ?? 'el producto'} en soles`}
+                      aria-invalid={Boolean(unitCostError)}
+                      disabled={disabled}
+                      {...register(`items.${index}.unitCost`)}
+                    />
+                    {unitCostError ? <FieldError errors={[unitCostError]} /> : null}
+                  </div>
+                ) : null}
 
                 <Button
                   type="button"

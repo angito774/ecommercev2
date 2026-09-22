@@ -332,6 +332,51 @@ Columnas:
 | `payment_methods` | tarjetas guardadas del cliente: `pm_…` (unique), marca, `last4` y caducidad | N—1 `users` |
 | `expenses` | gastos operativos registrados a mano: concepto, importe, categoría y día | N—1 `users` (`created_by_id`) |
 
+Construido a 2026-09-21: `products.average_cost_cents` (spec 021, migración `0009`). Es la
+**primera columna de costo del esquema**: hasta aquí `products` solo sabía a cuánto se
+vende. Entra `integer` **nullable y sin `DEFAULT`**, y la nulabilidad es el contrato:
+`null` significa «sin costo registrado» y es lo que apaga el margen en la pantalla de
+precio unitario, mientras que un `0` diría «me costó gratis», que es una afirmación
+distinta y falsa. Lleva el **tercer `CHECK` del esquema**,
+`average_cost_cents IS NULL OR average_cost_cents > 0`: el promedio de valores positivos
+nunca cae por debajo del menor de ellos, así que un `0` o un negativo solo puede venir de
+un `psql` a mano o de una migración de datos, y ninguno de los dos pasa por Zod. Sin
+índice: la columna no filtra, y el `average_cost_cents IS NULL` del `ORDER BY` se resuelve
+con el mismo recorrido que ya hace `products_is_active_idx` (el índice parcial está
+anotado como deuda en el spec 021 §11).
+
+Solo **dos** caminos la escriben, y ninguno de los dos es el `PATCH` de productos: el
+recálculo de una nota de `ingreso_compra` y `POST /api/admin/pricing/[id]/initial-cost`,
+que exige que esté en `null`. La fórmula del promedio ponderado es normativa —con `S` el
+stock previo, `C` el costo previo, `q` las unidades ingresadas y `c` el costo unitario de
+la compra—:
+
+```
+nuevo = round( ( max(S, 0) × coalesce(C, c) + q × c ) / ( max(S, 0) + q ) )
+```
+
+Las tres piezas no son decorativas. `coalesce(C, c)`: sin costo previo el stock que había
+se valoriza al precio de esta compra y el resultado colapsa exactamente a `c`, porque con
+un solo número por producto no hay forma de valorizar solo las unidades entrantes.
+`max(S, 0)`: **`products.stock` puede ser negativo** —`decrementStock` del webhook de
+Stripe no lleva clamp (spec 007, D-10)— y un negativo en el numerador daría un costo por
+debajo del pagado, o podría anular el denominador; tratarlo como `0` significa «no hay
+existencias que promediar», con el efecto lateral de que tras una sobreventa el promedio
+se recalcula como si el almacén estuviera vacío. El denominador es siempre `> 0` porque
+`q ≥ 1`: no hay división por cero posible. El cálculo corre en `numeric` y se cierra con
+`round(...)::integer` porque el numerador llega a 1e6 unidades × 1e8 céntimos = 1e14, que
+desborda el `int4` y también el `float` con pérdida.
+
+El recálculo vive **dentro del mismo `UPDATE` que mueve el stock**, como expresión sobre
+las columnas y no como literal calculado en TypeScript (mismo criterio que
+`buildStockChangeExpression`, spec 020 D-7): en un `UPDATE` todas las referencias del
+`SET` ven los valores previos de la fila, así que leer, promediar en TypeScript y volver a
+escribir dejaría que dos compras simultáneas del mismo producto perdieran una de las dos.
+**Ningún otro tipo de transacción lo toca**: ni las salidas —el promedio es propiedad del
+inventario que queda, no de lo que sale— ni `ingreso_devolucion` ni `ingreso_cambio`, que
+devuelven mercadería ya comprada a su precio. La corrección de un promedio contaminado es
+otra compra que lo vuelva a mover; no hay reversión.
+
 Construido a 2026-09-07: `orders` y `order_items` (spec 007, migración `0004`).
 `orders` guarda `subtotal_cents`, `shipping_cents` y `amount_total_cents` como
 snapshot del importe cobrado, más `stripe_checkout_session_id` (unique) y
@@ -466,6 +511,32 @@ con movimientos **no se puede borrar**.
 sin `is_active` y sin ningún camino de `UPDATE` ni de `DELETE` desde la aplicación (D-9).
 Un libro de inventario se corrige asentando el documento contrario, no tachando.
 
+Construido a 2026-09-21: `stock_movements.unit_cost_cents` (spec 021, migración `0009`).
+`integer` **nullable**, con el `CHECK` `unit_cost_cents IS NULL OR unit_cost_cents > 0`, y
+es el importe que alimenta el costo promedio de `products.average_cost_cents` (§5.3). Solo
+lo llevan las líneas de un documento **`ingreso_compra`**: una devolución o un cambio
+devuelven mercadería que ya se compró a su precio, no una compra nueva (spec 021, D-2).
+
+**El invariante «si el documento es `ingreso_compra` la línea lleva costo, y solo entonces»
+no puede ser un `CHECK`**, y conviene tenerlo escrito: el tipo de transacción vive en la
+cabecera (`inventory_documents.transaccion_id`) y un `CHECK` de fila no puede mirar otra
+tabla. Lo sostienen el `superRefine` de `createInventoryDocumentSchema` —que cuelga el
+error de `items[i].unitCostCents` para que el formulario lo marque en la línea que hay que
+corregir— y el propio service, que es el único camino de escritura. Un trigger metería
+lógica de negocio donde ningún test la cubre; poner `0` en los tipos sin costo sería
+afirmar «me costó gratis» (spec 021, D-3). El código del tipo que exige costo vive en
+`PURCHASE_TRANSACTION_ID` de `src/lib/inventory-transactions.ts`, y no como literal en las
+tres piezas que lo comprueban.
+
+La columna es **de solo escritura en este spec**: `findItems` enumera columnas
+positivamente y sigue sin publicarla, así que `GET /api/admin/inventory/documents/[id]` no
+devuelve el costo por línea (spec 021, D-11). El detalle del documento se abre con
+`inventory.read`, que tienen `manager` y `audit`, y esos dos roles no tienen `finance.read`.
+Leer el costo por línea es kardex valorizado y entrará con su propio permiso y su propia
+proyección. Las líneas de `ingreso_compra` **anteriores** a la migración se quedan en
+`null` para siempre: **no hay backfill**, no se inventa ningún importe retroactivo, y ese
+hueco es exactamente lo que cubre el costo inicial manual.
+
 ---
 
 ## 6. Módulos funcionales
@@ -528,7 +599,8 @@ Dashboard con métricas (Recharts: ventas, pedidos, top productos, stock bajo) �
 CRUD de productos y categorías (TanStack Table: paginación, orden, filtros) ·
 gestión de pedidos y cambio de estado · control de inventario con notas de ingreso y
 salida · resumen financiero
-con registro de gastos operativos · personal y nómina · listado de clientes.
+con registro de gastos operativos · precio unitario con costo promedio y margen por
+producto · personal y nómina · listado de clientes.
 
 Construido a 2026-09-02: categorías (spec 001), accesos y bitácora (spec 002) y
 productos (spec 003). Pendiente: listado de clientes.
@@ -815,6 +887,105 @@ salida por venta con su pedido; correlativo por serie; kardex por producto como 
 valorización del inventario (`products` no tiene columna de costo, así que este módulo no
 alimenta el resumen financiero del spec 017); almacenes múltiples; filtro por tipo
 concreto, búsqueda por número de documento, exportación a CSV e impresión de la nota.
+
+Construido a 2026-09-21: **precio unitario** (`/admin/finance/pricing`, spec 021), con
+migración `0009` (§5.3 y §5.5) y **un** permiso nuevo —el catálogo pasa de 26 a 27
+códigos—: `pricing.set_initial_cost`, solo para `super_admin` y `admin`. La lectura
+reutiliza `finance.read`, así que la entrada «Precio unitario» aparece y desaparece de la
+navegación junto a «Finanzas», y la página responde el 403 de `src/app/forbidden.tsx`.
+
+Es el sub-proyecto #1 del roadmap de Finanzas y responde una pregunta que hasta aquí no
+tenía respuesta en ningún sitio: **qué margen deja cada producto**. Ruta propia y no una
+pestaña de `/admin/finance` (D-13): aquel resumen se mira por rango de fechas y esto es un
+estado actual del catálogo, sin fechas, así que meterlos juntos obligaría a que el filtro
+de rango de arriba no significara nada en una de las dos pestañas.
+
+Dos endpoints: `GET /api/admin/pricing` —listado paginado por offset (20 por página) de
+los productos **activos**, con precio, stock, costo promedio, margen en céntimos y margen
+en porcentaje— y `POST /api/admin/pricing/[id]/initial-cost`. El orden es fijo, sin
+`sortBy`: **«sin costo» primero**, luego nombre, luego id (D-14), porque lo primero que hay
+que resolver para responder la pregunta es el producto al que le falta el costo, y el `id`
+cierra el desempate para que la paginación sea estable. El único filtro es la búsqueda por
+nombre y SKU, con `escapeLikePattern`. El margen lo deriva el **servidor** con
+`unitMargin()`, que compone el `marginPercent()` del resumen financiero en vez de calcular
+otro porcentaje (D-7): esa guarda `base === 0 → null` es la que salva el caso real de
+`price_cents = 0`, que `createProductSchema` admite. Sin costo, `averageCostCents`,
+`marginCents` y `marginPercent` son los tres `null` y la UI dice «Sin costo registrado»:
+nunca `S/ 0.00` ni `0 %`.
+
+El `POST` del costo inicial es para el stock que ya existía antes del spec, y es
+**irrepetible**: `200` la primera vez y `409` la segunda, no un no-op. Va por un endpoint
+propio y no por `PATCH /api/admin/products/[id]` (D-5), que se autoriza con
+`products.update` —lo tienen `manager` y `admin`— y además permitiría **reescribir** el
+costo, que es justo lo que este módulo prohíbe. La unicidad la sostiene el guard
+`average_cost_cents IS NULL` **dentro del `WHERE`**, no un `if` previo: es lo único que
+impide que dos peticiones simultáneas fijen dos costos distintos. Sin service dedicado:
+cruza un repositorio y la bitácora, que es el caso del `PATCH` de productos y no el de la
+nota de inventario. Registrar el costo **dentro de una compra** no necesita permiso nuevo
+(D-6): esa captura la cubre `inventory.move`, que `manager` tiene, así que el encargado
+anota lo que se pagó y no ve el margen que produce ni puede fijar un costo fuera de una
+compra. Es la separación de funciones del módulo.
+
+Tres decisiones existen **solo** para cerrar la fuga de datos financieros por caminos
+laterales, y las tres nacen del mismo hecho verificado: `audit` tiene `audit_logs.read`,
+`manager` y `audit` tienen `products.read` e `inventory.read`, y **ninguno de los dos tiene
+`finance.read`**.
+
+- **D-8**: `averageCostCents` queda fuera de `ProductWithCategory` vía
+  `AdminProduct = Omit<Product, 'averageCostCents'>`. El `Omit` no es documentación: es lo
+  que rompe el typecheck si alguien añade la columna a `PRODUCT_COLUMNS` o a
+  `INVENTORY_COLUMNS` para reutilizar la proyección. La **única** lectura que sí publica el
+  costo vive en `src/server/repositories/pricing.repository.ts`, en su propio archivo
+  justamente para que reutilizarla por error sea imposible en vez de improbable.
+- **D-9**: `toAuditableProduct()` retira el costo del `changes` de `product.created` y
+  `product.updated`, que hasta aquí registraban las filas **enteras**. Sin eso, cualquier
+  edición de producto copiaría el costo a `audit_logs`, que `audit` lee sin tener
+  `finance.read` —la misma puerta trasera que el spec 018 documentó para los salarios—. Es
+  una función pura, con proyección positiva y probada, no un `delete` suelto en el handler,
+  y se aplica también a la **respuesta** del `POST`, del `PATCH` y del `DELETE` de
+  productos, no solo al log.
+- **D-10**: la bitácora del costo inicial (`product.cost_initialized`,
+  `severity: 'warning'`) registra **qué** producto y **quién**, nunca el importe: ni en
+  `changes` ni en `metadata`. `warning` y no `info` porque es irrepetible y no queda
+  registrada en ninguna otra tabla, a diferencia del costo de una compra, que vive en
+  `stock_movements`. La entrada de la nota de inventario tampoco cambia: sigue sin importes
+  (spec 020, D-19).
+
+La captura del costo entra en el modal de nota de inventario como una columna por línea que
+aparece **solo** con «Ingreso por compra» seleccionado, observando el tipo con `useWatch`;
+al cambiar de tipo desaparece y lo que quedara tecleado **no viaja** en el cuerpo. El
+importe se teclea en soles y se convierte con `toCents` en el borde del formulario, como el
+precio del producto. El costo se registra **tal y como se pagó, sin desagregar el IGV**
+(D-12): separar la base imponible solo sirve para el crédito fiscal, que necesita el RUC
+del proveedor y el número de comprobante —sub-proyectos #2 y #4—, y el importe único es el
+que aparece en la factura que la persona tiene delante.
+
+Lo que este número **no** es, y el encabezado de la página lo dice: es el promedio
+ponderado de las compras registradas, no el costo del lote vendido, así que el margen es el
+**potencial de la próxima venta** y no el realizado. **El costo no entra todavía en el
+resultado de `/admin/finance`**, que sigue diciendo exactamente lo que decía: `netCents` no
+descuenta el costo de la mercadería vendida y la pantalla sigue advirtiendo que no es
+utilidad contable. Congelar el costo en `order_items` y recalcular aquel resultado es el
+sub-proyecto #5 (Ganancias v2), y se retoma cuando este costo lleve unos meses
+alimentándose de compras reales: antes, el número saldría de un promedio que casi todos los
+productos no tienen.
+
+El riesgo principal queda declarado: **la aritmética del promedio vive en SQL y ningún test
+unitario la ejecuta**. Se acepta a cambio de la atomicidad y se mitiga con tres cosas —el
+test que compila la expresión con `PgDialect` y fija su forma, la verificación de los casos
+numéricos contra la base real, y la fórmula escrita como contrato en §5.3—. Si algún día
+entran tests de integración con base de datos, esos casos son los primeros que deben
+migrarse allí. El promedio se almacena redondeado al céntimo, así que una cadena larga de
+compras acumula un error de fracciones de céntimo; la alternativa, `numeric(12,4)`, rompería
+la regla de céntimos enteros de todo el proyecto.
+
+Fuera de alcance por decisión: FIFO, LIFO y costeo por lote (D-1); margen realizado
+histórico por venta e integración con el resumen financiero (sub-proyecto #5); desagregar
+el IGV del costo (#2 y #4); alertas y semáforos de margen bajo; edición o corrección del
+costo promedio una vez tiene valor; valorización del inventario (`stock × costo`) como cifra
+de la pantalla y kardex valorizado; backfill del costo de las compras históricas;
+proveedores como entidad, precio de compra por proveedor, multimoneda y descuentos;
+gráficos y exportación; y ordenación configurable y filtro por categoría en la tabla.
 
 Gestión de accesos: CRUD de roles, matriz rol × permiso, asignación de roles a
 usuarios · bitácora de auditoría filtrable por actor, entidad, acción y fecha.

@@ -2,7 +2,12 @@ import { SQL } from 'drizzle-orm';
 import { PgDialect } from 'drizzle-orm/pg-core';
 import { describe, expect, it } from 'vitest';
 
-import { buildStockChangeExpression, buildStockChangeFilter } from './product.repository';
+import {
+  buildAverageCostExpression,
+  buildInitialCostFilter,
+  buildStockChangeExpression,
+  buildStockChangeFilter,
+} from './product.repository';
 
 // El dialecto real compila el árbol a texto y parámetros, así que las aserciones miran
 // lo que llegaría a Postgres en vez de la forma interna del objeto. Sin mocks:
@@ -79,5 +84,90 @@ describe('buildStockChangeExpression', () => {
 
     expect(query.sql).toContain('"stock" + $1');
     expect(query.params).toEqual([-5]);
+  });
+});
+
+// La aritmética del promedio vive en SQL y ningún test unitario la ejecuta (spec 021
+// §10): estos casos fijan la **forma** de la expresión —las tres piezas de las que
+// depende cada regla de §6.4— y la aritmética se comprueba contra la base real (T13).
+describe('buildAverageCostExpression', () => {
+  const QUANTITY = 10;
+  const UNIT_COST = 12_000;
+
+  it('averages against the previous columns, never against values read beforehand (D-7)', () => {
+    const query = compile(buildAverageCostExpression(QUANTITY, UNIT_COST));
+
+    expect(query.sql).toContain('"stock"');
+    expect(query.sql).toContain('"average_cost_cents"');
+  });
+
+  it('clamps a negative stock to zero, so an oversold product never weights negatively (AC10)', () => {
+    const query = compile(buildAverageCostExpression(QUANTITY, UNIT_COST));
+
+    expect(query.sql).toMatch(/greatest\("products"\."stock", 0\)/);
+  });
+
+  it('values the pre-existing stock at the cost of this purchase when there is none yet (AC8)', () => {
+    const query = compile(buildAverageCostExpression(QUANTITY, UNIT_COST));
+
+    expect(query.sql).toMatch(/coalesce\("products"\."average_cost_cents", \$\d\)/);
+  });
+
+  it('computes in numeric: the numerator reaches 1e14 and overflows int4', () => {
+    const query = compile(buildAverageCostExpression(QUANTITY, UNIT_COST));
+
+    expect(query.sql).toContain('::numeric');
+  });
+
+  it('stores an integer number of cents, rounded to the nearest one (AC12)', () => {
+    const query = compile(buildAverageCostExpression(QUANTITY, UNIT_COST));
+
+    expect(query.sql).toMatch(/^round\(/);
+    expect(query.sql).toMatch(/\)::integer$/);
+  });
+
+  it('clamps the stock in the denominator too, so it can never be cancelled out (AC10)', () => {
+    const query = compile(buildAverageCostExpression(QUANTITY, UNIT_COST));
+
+    const denominator = query.sql.slice(query.sql.lastIndexOf('/'));
+
+    expect(denominator).toContain('greatest');
+  });
+
+  it('sends the quantity and the cost as parameters, not interpolated into the SQL text', () => {
+    const query = compile(buildAverageCostExpression(QUANTITY, UNIT_COST));
+
+    expect(query.params).toEqual([UNIT_COST, QUANTITY, UNIT_COST, QUANTITY]);
+    expect(query.sql).not.toContain(String(UNIT_COST));
+    expect(query.sql).not.toContain(String(QUANTITY));
+  });
+
+  it('always builds a defined expression', () => {
+    expect(buildAverageCostExpression(1, 1)).toBeInstanceOf(SQL);
+  });
+});
+
+describe('buildInitialCostFilter', () => {
+  it('narrows by the product id', () => {
+    const query = compile(buildInitialCostFilter(PRODUCT_ID));
+
+    expect(query.sql).toContain('"id"');
+    expect(query.params).toEqual([PRODUCT_ID]);
+  });
+
+  it('guards "no cost yet" inside the WHERE, which is what serialises two callers (AC14)', () => {
+    const query = compile(buildInitialCostFilter(PRODUCT_ID));
+
+    expect(query.sql).toContain('"average_cost_cents" is null');
+  });
+
+  it('keeps both conditions: the guard alone would touch every product without cost', () => {
+    const query = compile(buildInitialCostFilter(PRODUCT_ID));
+
+    expect(query.sql).toContain(' and ');
+  });
+
+  it('always builds a defined WHERE: an unbounded UPDATE would touch the whole table', () => {
+    expect(buildInitialCostFilter(PRODUCT_ID)).toBeInstanceOf(SQL);
   });
 });

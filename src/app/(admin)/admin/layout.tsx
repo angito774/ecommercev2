@@ -5,6 +5,7 @@ import {
   HandCoins,
   LayoutDashboard,
   Package,
+  Percent,
   Receipt,
   ScrollText,
   ShieldCheck,
@@ -41,6 +42,11 @@ const NAV_ITEMS: readonly NavItem[] = [
   // entrada que `manager` y `audit` no ven: el filtro de abajo la retira sin
   // `finance.read` (spec 017, D-3, AC3).
   { href: '/admin/finance', label: 'Finanzas', icon: Wallet, permission: 'finance.read' },
+  // Detrás de «Finanzas» y con su mismo permiso, así que las dos aparecen y desaparecen
+  // juntas (spec 021, D-13, AC3). Ruta propia y no una pestaña de `/admin/finance`: aquel
+  // resumen se mira por rango de fechas y esto es un estado actual del catálogo, sin
+  // fechas, así que el filtro de rango de arriba no significaría nada en una de las dos.
+  { href: '/admin/finance/pricing', label: 'Precio unitario', icon: Percent, permission: 'finance.read' },
   // Junto a «Finanzas» porque también es dinero que sale, y delante de «Usuarios» para
   // que se lea «nómina» antes que «personas con acceso»: son dos cosas distintas y
   // confundirlas es el riesgo principal del módulo (spec 018, D-18). El icono no es

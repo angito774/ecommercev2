@@ -180,6 +180,18 @@ export const PERMISSIONS = [
     action: 'manage',
     description: 'Dar de alta o de baja personal y registrar o anular pagos de nómina.',
   },
+  // Permiso propio, y anotar lo que se pagó dentro de una compra **no** lo necesita
+  // (spec 021, D-6): esa captura ya la cubre `inventory.move`, que `manager` tiene, y el
+  // costo que registra queda respaldado por la factura de la nota. Fijar un costo
+  // **fuera** de cualquier compra es afirmar un dato financiero sin comprobante detrás,
+  // es irrepetible por diseño y solo lo pueden hacer `super_admin` y `admin`. Reutilizar
+  // `finance.read` para escribirlo rompería la separación read/write del catálogo.
+  {
+    code: 'pricing.set_initial_cost',
+    resource: 'pricing',
+    action: 'set_initial_cost',
+    description: 'Cargar el costo inicial de un producto que aún no tiene costo registrado.',
+  },
 ] as const;
 
 // `PermissionDefinition` es la entrada del catálogo en código, simétrica con
@@ -262,6 +274,7 @@ export const ROLE_PERMISSION_MATRIX: Record<RoleSlug, readonly PermissionCode[]>
     'expenses.delete',
     'payroll.read',
     'payroll.manage',
+    'pricing.set_initial_cost',
   ],
   admin: [
     'categories.read',
@@ -289,6 +302,7 @@ export const ROLE_PERMISSION_MATRIX: Record<RoleSlug, readonly PermissionCode[]>
     'expenses.delete',
     'payroll.read',
     'payroll.manage',
+    'pricing.set_initial_cost',
   ],
   // `manager` y `audit` quedan fuera del módulo financiero a propósito (spec 017,
   // D-3): es el primer módulo con datos de resultado y no de operación. `manager`
@@ -312,7 +326,11 @@ export const ROLE_PERMISSION_MATRIX: Record<RoleSlug, readonly PermissionCode[]>
     'dashboard.read',
     'inventory.read',
     // Mueve stock por documento: `manager` ya podía reescribirlo desde
-    // `products.update`, así que esto solo le da una forma trazable de hacerlo.
+    // `products.update`, así que esto solo le da una forma trazable de hacerlo. Con este
+    // permiso **anota** el costo unitario de una compra sin recibir ningún permiso nuevo
+    // (spec 021, D-6) y sigue sin ver el margen que produce: `finance.read` y
+    // `pricing.set_initial_cost` se le niegan, y las tres columnas juntas son la
+    // separación de funciones del módulo de precio unitario.
     'inventory.move',
   ],
   employee: [],

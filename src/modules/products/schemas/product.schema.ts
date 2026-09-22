@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-import { PRICE_INPUT_PATTERN, toCents } from '../lib/price';
+import { MAX_PRICE_CENTS, PRICE_INPUT_PATTERN, toCents } from '../lib/price';
 
 export const productSlugSchema = z
   .string()
@@ -39,14 +39,14 @@ const productFields = z.object({
     .number()
     .int('El precio debe expresarse en céntimos enteros')
     .min(0, 'El precio no puede ser negativo')
-    .max(99_999_999, 'El precio supera el máximo admitido'),
+    .max(MAX_PRICE_CENTS, 'El precio supera el máximo admitido'),
   // `null` no es "cero": significa que el producto no tiene precio anterior y por
   // tanto no lleva ni precio tachado ni badge de descuento (spec 004, §5.1).
   compareAtPriceCents: z
     .number()
     .int('El precio anterior debe expresarse en céntimos enteros')
     .min(0, 'El precio anterior no puede ser negativo')
-    .max(99_999_999, 'El precio anterior supera el máximo admitido')
+    .max(MAX_PRICE_CENTS, 'El precio anterior supera el máximo admitido')
     .nullable(),
   stock: z
     .number()

@@ -4,6 +4,7 @@ import { authorize, badRequest, parseJsonBody, toErrorResponse } from '@/lib/api
 import { getAuditContext, logAudit } from '@/lib/audit';
 import { can } from '@/lib/permissions';
 import { PRODUCT_CONFLICT_MESSAGES } from '@/modules/products/constants';
+import { toAuditableProduct } from '@/modules/products/lib/product-audit';
 import {
   createProductSchema,
   productQuerySchema,
@@ -74,7 +75,10 @@ export async function POST(request: Request) {
         action: 'product.created',
         entityType: 'product',
         entityId: product.id,
-        changes: { before: null, after: product },
+        // Sin `averageCostCents`: `audit` lee la bitácora y no tiene `finance.read`
+        // (spec 021, D-9, AC17). El alta nunca fija un costo, así que aquí sería un
+        // `null` que además abriría el camino.
+        changes: { before: null, after: toAuditableProduct(product) },
         context: getAuditContext(request),
       });
 
@@ -83,7 +87,9 @@ export async function POST(request: Request) {
 
     if (!created) return badRequest(CATEGORY_NOT_FOUND_MESSAGE);
 
-    return NextResponse.json(created, { status: 201 });
+    // La misma proyección en la respuesta: el costo no sale del módulo financiero por
+    // ninguna de las dos puertas (AC17).
+    return NextResponse.json(toAuditableProduct(created), { status: 201 });
   } catch (error) {
     return toErrorResponse(error, {
       label: 'POST /api/admin/products',

@@ -17,7 +17,11 @@ const { TX, auditEntries, auditTxs, productRepository, documentRepository } = vi
   TX: Symbol('tx'),
   auditEntries: [] as AuditInput[],
   auditTxs: [] as unknown[],
-  productRepository: { findManyByIds: vi.fn(), applyStockChange: vi.fn() },
+  productRepository: {
+    findManyByIds: vi.fn(),
+    applyStockChange: vi.fn(),
+    applyPurchaseStockChange: vi.fn(),
+  },
   documentRepository: { insertDocument: vi.fn(), insertMovements: vi.fn(), findById: vi.fn() },
 }));
 
@@ -77,6 +81,10 @@ beforeEach(() => {
 
   productRepository.findManyByIds.mockResolvedValue(PRODUCTS);
   productRepository.applyStockChange.mockResolvedValue({ stock: 13 });
+  productRepository.applyPurchaseStockChange.mockResolvedValue({
+    stock: 13,
+    averageCostCents: 11_000,
+  });
   documentRepository.insertDocument.mockResolvedValue({ id: DOCUMENT_ID, docNumber: 7 });
   documentRepository.insertMovements.mockResolvedValue(undefined);
   documentRepository.findById.mockResolvedValue(DETAIL);
@@ -223,7 +231,14 @@ describe('createDocument — what gets written', () => {
     await run();
 
     expect(documentRepository.insertMovements).toHaveBeenCalledWith(TX, [
-      { documentId: DOCUMENT_ID, productId: PRODUCT_A, quantity: 5, stockAfter: 13 },
+      {
+        documentId: DOCUMENT_ID,
+        productId: PRODUCT_A,
+        quantity: 5,
+        stockAfter: 13,
+        // Sin costo en el cuerpo, la línea se guarda con `null` (spec 021, §5.2).
+        unitCostCents: null,
+      },
     ]);
   });
 
@@ -298,5 +313,93 @@ describe('createDocument — the audit entry', () => {
     await run();
 
     expect(JSON.stringify(auditEntries[0]?.metadata)).not.toContain(PRODUCT_A);
+  });
+});
+
+// La rama por línea del spec 021 (§7.3): el service elige mutador por la presencia del
+// costo y no por el tipo de transacción, porque Zod ya garantizó que solo una compra lo
+// trae (§6.1). Así el camino de la venta no carga con la aritmética del promedio.
+describe('createDocument — the unit cost of a purchase (spec 021)', () => {
+  const purchase = input({
+    transaccionId: 'ingreso_compra',
+    items: [{ productId: PRODUCT_A, quantity: 10, unitCostCents: 12_000 }],
+  } as Partial<CreateInventoryDocumentValues>);
+
+  it('recomputes the weighted average in the very UPDATE that moves the stock', async () => {
+    await run(purchase);
+
+    expect(productRepository.applyPurchaseStockChange).toHaveBeenCalledWith(TX, {
+      productId: PRODUCT_A,
+      quantity: 10,
+      unitCostCents: 12_000,
+    });
+  });
+
+  it('does not also call the plain stock mutator: one UPDATE per line, not two', async () => {
+    await run(purchase);
+
+    expect(productRepository.applyStockChange).not.toHaveBeenCalled();
+  });
+
+  it('stores the cost on the movement, which is where it lives permanently', async () => {
+    await run(purchase);
+
+    expect(documentRepository.insertMovements).toHaveBeenCalledWith(TX, [
+      {
+        documentId: DOCUMENT_ID,
+        productId: PRODUCT_A,
+        quantity: 10,
+        stockAfter: 13,
+        unitCostCents: 12_000,
+      },
+    ]);
+  });
+
+  it('never touches the average on any other kind of note (AC11)', async () => {
+    await run(input({ transaccionId: 'ingreso_devolucion' }));
+
+    expect(productRepository.applyPurchaseStockChange).not.toHaveBeenCalled();
+    expect(productRepository.applyStockChange).toHaveBeenCalledWith(TX, {
+      productId: PRODUCT_A,
+      delta: 5,
+    });
+  });
+
+  it('stores a null cost on those lines: no invented amount (AC11)', async () => {
+    await run(input({ transaccionId: 'salida_venta' }));
+
+    expect(documentRepository.insertMovements).toHaveBeenCalledWith(TX, [
+      expect.objectContaining({ unitCostCents: null }),
+    ]);
+  });
+
+  it('applies the average inside the same transaction as the document and the audit log', async () => {
+    await run(purchase);
+
+    expect(productRepository.applyPurchaseStockChange.mock.calls[0]?.[0]).toBe(TX);
+    expect(auditTxs).toEqual([TX]);
+  });
+
+  // D-10 y D-19: `audit` lee la bitácora con `audit_logs.read` y no tiene `finance.read`.
+  // El costo vive en `stock_movements`, que es permanente; el log se purga a los 180 días.
+  it('keeps the cost out of the audit entry, both in changes and in metadata (D-10)', async () => {
+    await run(purchase);
+
+    expect(auditEntries[0]?.changes?.after).toEqual({
+      docNumber: 7,
+      transaccionId: 'ingreso_compra',
+      docDate: '2026-09-16',
+      itemCount: 1,
+    });
+    expect(JSON.stringify(auditEntries[0])).not.toContain('12000');
+    expect(JSON.stringify(auditEntries[0]?.metadata)).not.toContain('unitCost');
+  });
+
+  it('rolls the whole purchase back when a later line runs short of stock', async () => {
+    productRepository.applyPurchaseStockChange.mockResolvedValueOnce(null);
+
+    await expect(run(purchase)).rejects.toThrow();
+    expect(documentRepository.insertDocument).not.toHaveBeenCalled();
+    expect(auditEntries).toHaveLength(0);
   });
 });

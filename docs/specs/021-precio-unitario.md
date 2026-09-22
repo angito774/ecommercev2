@@ -1,7 +1,7 @@
 ---
 id: 021
 title: Precio unitario — costo promedio ponderado y margen por producto
-status: approved
+status: done
 module: finance
 scope: admin
 created: 2026-09-21
@@ -826,49 +826,49 @@ Cada tarea toca una sola capa y se cierra con su verificación. El orden es el d
 dependencia: permisos → esquema → tipos → migración → validación → repositorio →
 service → handlers → módulo → UI → documentación.
 
-- [ ] **T1** — Añadir `pricing.set_initial_cost` a `PERMISSIONS` (26 → 27
+- [x] **T1** — Añadir `pricing.set_initial_cost` a `PERMISSIONS` (26 → 27
       entradas) y concederlo **solo** a `super_admin` y `admin` en
       `ROLE_PERMISSION_MATRIX`, con el comentario de por qué registrar el costo
       en una compra no necesita permiso nuevo (D-6) · archivo:
       `src/lib/permissions.ts` · verificación: `npm run typecheck && npm test`
-- [ ] **T2** — Columna `average_cost_cents` y su `CHECK` en `products` según §5.1
+- [x] **T2** — Columna `average_cost_cents` y su `CHECK` en `products` según §5.1
       · archivo: `src/server/db/schema/product.ts` · verificación:
       `npm run typecheck` (debe **romper** en los dos repositorios por §5.3; lo
       arregla T4)
-- [ ] **T3** — Columna `unit_cost_cents` y su `CHECK` en `stock_movements` según
+- [x] **T3** — Columna `unit_cost_cents` y su `CHECK` en `stock_movements` según
       §5.2, con el comentario de por qué el invariante cruzado no puede ser un
       `CHECK` · archivo: `src/server/db/schema/stock-movement.ts` ·
       verificación: `npm run typecheck`
-- [ ] **T4** — `AdminProduct = Omit<Product, 'averageCostCents'>` y
+- [x] **T4** — `AdminProduct = Omit<Product, 'averageCostCents'>` y
       `ProductWithCategory` derivado de él, con el comentario de D-8 · archivo:
       `src/modules/products/types/product.types.ts` · verificación:
       `npm run typecheck` en verde, y comprobar a ojo que `PRODUCT_COLUMNS`,
       `INVENTORY_COLUMNS` y las proyecciones públicas siguen sin la columna
-- [ ] **T5** — Generar la migración y leer el SQL antes de aplicarlo: debe añadir
+- [x] **T5** — Generar la migración y leer el SQL antes de aplicarlo: debe añadir
       **dos columnas nullable y dos CHECK**, y nada más —ningún `NOT NULL`,
       ningún `DEFAULT`, ninguna otra tabla— · comandos: `npm run db:generate` y
       `npm run db:migrate` · verificación: el archivo `drizzle/0009_*.sql` leído
       + `npm run db:studio` mostrando las dos columnas en `null`
-- [ ] **T6** — Ejecutar el seed y comprobar que el catálogo queda en 27 permisos y
+- [x] **T6** — Ejecutar el seed y comprobar que el catálogo queda en 27 permisos y
       que solo `super_admin` y `admin` resuelven `pricing.set_initial_cost` ·
       comando: `npm run db:seed` · verificación: salida del seed +
       `npm run db:studio`
-- [ ] **T7** — Exportar `MAX_PRICE_CENTS = 99_999_999` y sustituir los dos
+- [x] **T7** — Exportar `MAX_PRICE_CENTS = 99_999_999` y sustituir los dos
       literales de `product.schema.ts` por la constante (D-15) · archivos:
       `src/modules/products/lib/price.ts`,
       `src/modules/products/schemas/product.schema.ts` · verificación:
       `npm run typecheck && npm test` (los casos existentes de `99_999_999` y
       `100_000_000` deben seguir pasando sin tocarlos)
-- [ ] **T8** — `unitCostCents` opcional en `documentItemSchema` y el
+- [x] **T8** — `unitCostCents` opcional en `documentItemSchema` y el
       `superRefine` cruzado de `createInventoryDocumentSchema` según §6.1, con
       `COST_REQUIRED_MESSAGE` y `COST_NOT_ALLOWED_MESSAGE` · archivo:
       `src/modules/inventory/schemas/inventory-document.schema.ts` ·
       verificación: `npm run typecheck`
-- [ ] **T9** — `unitCost` en `inventoryDocumentLineSchema` y el `superRefine`
+- [x] **T9** — `unitCost` en `inventoryDocumentLineSchema` y el `superRefine`
       condicionado de `inventoryDocumentFormSchema` según §6.1 · archivo:
       `src/modules/inventory/schemas/inventory-document.schema.ts` ·
       verificación: `npm run typecheck`
-- [ ] **T10** — Tests de los dos schemas: `ingreso_compra` sin costo en una de
+- [x] **T10** — Tests de los dos schemas: `ingreso_compra` sin costo en una de
       dos líneas → error con `path` en `items.1.unitCostCents` (AC6);
       `ingreso_compra` con costo en todas → válido; `ingreso_devolucion`,
       `ingreso_cambio` y `salida_venta` con costo → error (AC7); los mismos sin
@@ -878,28 +878,28 @@ service → handlers → módulo → UI → documentación.
       válido · archivo:
       `src/modules/inventory/schemas/inventory-document.schema.test.ts` ·
       verificación: `npm test`
-- [ ] **T11** — `buildAverageCostExpression()`, `applyPurchaseStockChange()` y
+- [x] **T11** — `buildAverageCostExpression()`, `applyPurchaseStockChange()` y
       `setInitialCost()` según §7.1, con la fórmula de §6.4 en `numeric` y el
       `round(...)::integer` · archivo:
       `src/server/repositories/product.repository.ts` · verificación:
       `npm run typecheck`
-- [ ] **T12** — Tests de los constructores de SQL compilando con `PgDialect`,
+- [x] **T12** — Tests de los constructores de SQL compilando con `PgDialect`,
       igual que los de `buildStockChangeFilter`: la expresión del promedio
       contiene `greatest`, `coalesce` y el casteo a `numeric`; los parámetros
       salen en el orden esperado; el WHERE de `setInitialCost` lleva
       `average_cost_cents is null` **además** del `id` · archivo:
       `src/server/repositories/product.repository.test.ts` · verificación:
       `npm test`
-- [ ] **T13** — Verificación manual de la aritmética del promedio, que ningún
+- [x] **T13** — Verificación manual de la aritmética del promedio, que ningún
       test unitario cubre porque vive en SQL (§10): en `db:studio`, sobre un
       producto de prueba, comprobar los cuatro casos de AC8, AC9, AC10 y AC12
       registrando notas reales desde la API · verificación: los cuatro valores
       leídos en `products.average_cost_cents`
-- [ ] **T14** — Rama por línea hacia `applyPurchaseStockChange` y
+- [x] **T14** — Rama por línea hacia `applyPurchaseStockChange` y
       `unitCostCents` en el movimiento insertado, según §7.3 · archivo:
       `src/server/services/inventory-document.service.ts` · verificación:
       `npm run typecheck`
-- [ ] **T15** — Tests del service: una nota `ingreso_compra` llama a
+- [x] **T15** — Tests del service: una nota `ingreso_compra` llama a
       `applyPurchaseStockChange` con `{ quantity, unitCostCents }` y **no** a
       `applyStockChange`; una nota `ingreso_devolucion` llama a
       `applyStockChange` y nunca al mutador de compra (AC11); el movimiento
@@ -907,126 +907,126 @@ service → handlers → módulo → UI → documentación.
       entrada de bitácora del documento sigue **sin** importes · archivo:
       `src/server/services/inventory-document.service.test.ts` · verificación:
       `npm test`
-- [ ] **T16** — `toAuditableProduct()`: recibe la fila de producto y devuelve la
+- [x] **T16** — `toAuditableProduct()`: recibe la fila de producto y devuelve la
       misma sin `averageCostCents` (D-9) · archivo:
       `src/modules/products/lib/product-audit.ts` · verificación:
       `npm run typecheck`
-- [ ] **T17** — Test de `toAuditableProduct()`: la clave `averageCostCents` no
+- [x] **T17** — Test de `toAuditableProduct()`: la clave `averageCostCents` no
       está en el resultado ni con valor ni como `undefined` propio, y el resto de
       campos se conserva idéntico · archivo:
       `src/modules/products/lib/product-audit.test.ts` · verificación: `npm test`
-- [ ] **T18** — Pasar `changes.after` por `toAuditableProduct()` en el `POST` y
+- [x] **T18** — Pasar `changes.after` por `toAuditableProduct()` en el `POST` y
       `changes.before` / `changes.after` en el `PATCH` (AC17) · archivos:
       `src/app/api/admin/products/route.ts`,
       `src/app/api/admin/products/[id]/route.ts` · verificación:
       `npm run typecheck && npm run lint`
-- [ ] **T19** — `unitMargin(priceCents, averageCostCents)` según §6.4,
+- [x] **T19** — `unitMargin(priceCents, averageCostCents)` según §6.4,
       reutilizando `marginPercent()` (D-7) · archivo:
       `src/modules/finance/lib/pricing-math.ts` · verificación:
       `npm run typecheck`
-- [ ] **T20** — Tests de `unitMargin`: costo `null` → los dos campos `null`
+- [x] **T20** — Tests de `unitMargin`: costo `null` → los dos campos `null`
       (AC5); margen positivo; margen exactamente 0 (costo = precio); margen
       negativo (costo > precio, AC23); `priceCents = 0` con costo > 0 →
       `marginCents` negativo y `marginPercent` `null`; redondeo a un decimal; y
       que ningún caso devuelve `NaN` ni `Infinity` · archivo:
       `src/modules/finance/lib/pricing-math.test.ts` · verificación: `npm test`
-- [ ] **T21** — `pricingQuerySchema`, `setInitialCostSchema`,
+- [x] **T21** — `pricingQuerySchema`, `setInitialCostSchema`,
       `initialCostFormSchema` y `pricingProductIdSchema` según §6.2 · archivo:
       `src/modules/finance/schemas/pricing.schema.ts` · verificación:
       `npm run typecheck`
-- [ ] **T22** — Tests de los schemas: query vacía → `{ page: 1, pageSize: 20 }`
+- [x] **T22** — Tests de los schemas: query vacía → `{ page: 1, pageSize: 20 }`
       sin `search`; `page = 0` y `pageSize = 500` → error; `search` de 200
       caracteres → error; `unitCostCents` en `0`, `-1`, `10.5` y
       `100_000_000` → error (AC13); `initialCostFormSchema` con `'0'`, `'0.00'`,
       `'abc'` y `'1.234'` → error, con `'899.90'` → válido · archivo:
       `src/modules/finance/schemas/pricing.schema.test.ts` · verificación:
       `npm test`
-- [ ] **T23** — Tipos `PricingRow`, `PricingListResponse` e `InitialCostSet`
+- [x] **T23** — Tipos `PricingRow`, `PricingListResponse` e `InitialCostSet`
       según §6.3 · archivo: `src/modules/finance/types/pricing.types.ts` ·
       verificación: `npm run typecheck`
-- [ ] **T24** — `buildPricingFilters()` y `findPricingRows()` según §7.1: solo
+- [x] **T24** — `buildPricingFilters()` y `findPricingRows()` según §7.1: solo
       `is_active = true`, búsqueda por nombre y SKU con `escapeLikePattern`,
       orden `average_cost_cents is null desc, name asc, id asc`, conteo en
       paralelo y margen derivado con `unitMargin()` · archivo:
       `src/server/repositories/pricing.repository.ts` · verificación:
       `npm run typecheck`
-- [ ] **T25** — Tests de `buildPricingFilters` compilando con `PgDialect`: el
+- [x] **T25** — Tests de `buildPricingFilters` compilando con `PgDialect`: el
       WHERE lleva siempre `is_active = true` (AC21); sin `search` no añade
       ninguna condición más; con `search` añade el `or(name, sku)`; un `search`
       con `%` viaja escapado (AC22) · archivo:
       `src/server/repositories/pricing.repository.test.ts` · verificación:
       `npm test`
-- [ ] **T26** — `GET /api/admin/pricing`: `authorize('finance.read')` en la
+- [x] **T26** — `GET /api/admin/pricing`: `authorize('finance.read')` en la
       primera línea, `safeParse` de la query, `meta.canSetInitialCost` resuelto
       con `can(granted, 'pricing.set_initial_cost')` y `200` con `data: []`
       cuando no hay filas (AC2, AC4, AC24) · archivo:
       `src/app/api/admin/pricing/route.ts` · verificación: `npm run typecheck` +
       prueba manual con y sin permiso
-- [ ] **T27** — `POST /api/admin/pricing/[id]/initial-cost` según §7.2, con la
+- [x] **T27** — `POST /api/admin/pricing/[id]/initial-cost` según §7.2, con la
       unión `Outcome`, el `409` y la bitácora sin importe · archivo:
       `src/app/api/admin/pricing/[id]/initial-cost/route.ts` · verificación:
       `npm run typecheck` + prueba manual de los cuatro caminos (200, 404, 409 y
       403)
-- [ ] **T28** — `pricingKeys`, `PRICING_PAGE_SIZE` y los copys: sin costo, tabla
+- [x] **T28** — `pricingKeys`, `PRICING_PAGE_SIZE` y los copys: sin costo, tabla
       vacía, sin resultados, error de carga y el aviso irreversible del diálogo ·
       archivo: `src/modules/finance/constants.ts` · verificación:
       `npm run typecheck`
-- [ ] **T29** — `fetchPricing()` y `setInitialCost()` con `api` de
+- [x] **T29** — `fetchPricing()` y `setInitialCost()` con `api` de
       `@/lib/axios`; único punto del módulo que habla con esta API · archivo:
       `src/modules/finance/services/pricing.service.ts` · verificación:
       `npm run typecheck`
-- [ ] **T30** — `usePricing(params)` con `placeholderData: keepPreviousData`,
+- [x] **T30** — `usePricing(params)` con `placeholderData: keepPreviousData`,
       igual que `useExpenses` · archivo:
       `src/modules/finance/hooks/use-pricing.ts` · verificación:
       `npm run typecheck`
-- [ ] **T31** — `useSetInitialCost()` invalidando `pricingKeys.lists()` al
+- [x] **T31** — `useSetInitialCost()` invalidando `pricingKeys.lists()` al
       terminar (AC26) · archivo:
       `src/modules/finance/hooks/use-initial-cost-mutation.ts` · verificación:
       `npm run typecheck`
-- [ ] **T32** — Columnas de la tabla: producto (nombre + SKU), precio, stock,
+- [x] **T32** — Columnas de la tabla: producto (nombre + SKU), precio, stock,
       costo promedio o «Sin costo registrado», margen S/ y margen %, y la acción
       «Establecer costo inicial» visible solo sin costo y con permiso; el margen
       negativo con signo, icono y texto (AC5, AC23) · archivo:
       `src/modules/finance/components/pricing-columns.tsx` · verificación:
       `npm run typecheck && npm run lint`
-- [ ] **T33** — Diálogo del costo inicial: `initialCostFormSchema`, importe en
+- [x] **T33** — Diálogo del costo inicial: `initialCostFormSchema`, importe en
       soles con `toCents`, el stock actual a la vista para que se entienda qué se
       está valorizando, y el aviso de que **no se puede editar después** ·
       archivo: `src/modules/finance/components/initial-cost-dialog.tsx` ·
       verificación: `npm run typecheck && npm run lint`
-- [ ] **T34** — Tabla contenedora `"use client"` con `DataTable`, búsqueda con
+- [x] **T34** — Tabla contenedora `"use client"` con `DataTable`, búsqueda con
       `useDebounce`, paginación, estados de carga, vacío, sin resultados y error
       con «Reintentar» (AC24, AC25) · archivo:
       `src/modules/finance/components/pricing-table.tsx` · verificación:
       `npm run typecheck && npm run lint`
-- [ ] **T35** — Página `/admin/finance/pricing`: Server Component con
+- [x] **T35** — Página `/admin/finance/pricing`: Server Component con
       `requirePagePermission('finance.read')`, `metadata` y un encabezado que
       diga qué es el número —promedio ponderado de las compras registradas, no
       costo del lote vendido— · archivo:
       `src/app/(admin)/admin/finance/pricing/page.tsx` · verificación:
       `npm run build` + `403` con `manager` (AC3)
-- [ ] **T36** — Entrada «Precio unitario» en `NAV_ITEMS`, detrás de «Finanzas»,
+- [x] **T36** — Entrada «Precio unitario» en `NAV_ITEMS`, detrás de «Finanzas»,
       con `permission: 'finance.read'` y un icono libre (`Percent`) ·
       archivo: `src/app/(admin)/admin/layout.tsx` · verificación: la navegación
       con `admin` la muestra y con `manager` no (AC3)
-- [ ] **T37** — Campo de costo unitario por línea, renderizado solo cuando la
+- [x] **T37** — Campo de costo unitario por línea, renderizado solo cuando la
       prop `requiresCost` es `true`, con `aria-label` por producto y su
       `FieldError` (AC28) · archivo:
       `src/modules/inventory/components/document-lines-field.tsx` ·
       verificación: `npm run typecheck && npm run lint`
-- [ ] **T38** — `useWatch` del tipo de transacción en el diálogo, prop
+- [x] **T38** — `useWatch` del tipo de transacción en el diálogo, prop
       `requiresCost` al campo de líneas, `unitCost: ''` en el `append` de la
       línea nueva y mapeo del cuerpo que **solo** incluye `unitCostCents` cuando
       el tipo es `ingreso_compra` (AC28) · archivo:
       `src/modules/inventory/components/inventory-document-dialog.tsx` ·
       verificación: `npm run typecheck && npm run lint` + prueba manual
       cambiando de tipo con costos ya tecleados
-- [ ] **T39** — Documentar en `docs/SETUP.md`: las dos columnas en §5.3 y §5.5
+- [x] **T39** — Documentar en `docs/SETUP.md`: las dos columnas en §5.3 y §5.5
       —con la fórmula, el `max(S,0)`, el `coalesce` y por qué el invariante
       cruzado no es un `CHECK`—, el permiso nuevo (26 → 27) y la página nueva en
       §6, incluida la nota de que el costo **no** entra todavía en el resultado
       del spec 017 · archivo: `docs/SETUP.md` · verificación: lectura
-- [ ] **T40** — Cierre: `npm run typecheck && npm run lint && npm run build &&
+- [x] **T40** — Cierre: `npm run typecheck && npm run lint && npm run build &&
       npm test` en verde y repaso de los 28 criterios de aceptación,
       comprobando uno a uno los cuatro de no-fuga (AC17, AC18, AC19 y AC16) con
       una petición real a cada endpoint · verificación: la salida de los cuatro
