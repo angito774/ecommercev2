@@ -1,4 +1,17 @@
-import { and, asc, count, desc, eq, gte, ilike, inArray, or, sql, type SQL } from 'drizzle-orm';
+import {
+  and,
+  asc,
+  count,
+  desc,
+  eq,
+  gte,
+  ilike,
+  inArray,
+  isNull,
+  or,
+  sql,
+  type SQL,
+} from 'drizzle-orm';
 
 import { escapeLikePattern } from '@/lib/utils';
 import type {
@@ -6,16 +19,19 @@ import type {
   CatalogProductDetail,
   StockLevel,
 } from '@/modules/products/types/catalog.types';
+import type { ProductWithCategory } from '@/modules/products/types/product.types';
 import { db, type Reader, type Tx } from '@/server/db';
 import { categories, products } from '@/server/db/schema';
 
 type Product = typeof products.$inferSelect;
 type NewProduct = typeof products.$inferInsert;
 
-export type ProductWithCategory = Product & {
-  categoryName: string;
-  categorySlug: string;
-};
+// Reexportado desde los tipos del módulo en vez de redeclarado: la exclusión de
+// `averageCostCents` es la frontera del spec 021 (D-8) y con dos declaraciones de la
+// misma forma solo una la respetaría. `PRODUCT_COLUMNS` enumera columnas
+// positivamente, así que el costo no se publica solo; este tipo es lo que rompe el
+// typecheck si algún día se añade allí.
+export type { ProductWithCategory };
 
 export type ProductListParams = {
   q?: string;
@@ -348,6 +364,95 @@ export async function applyStockChange(
     .set({ stock: buildStockChangeExpression(change.delta) })
     .where(buildStockChangeFilter(change))
     .returning({ stock: products.stock });
+
+  return updated ?? null;
+}
+
+// ── Costo promedio ponderado (spec 021) ─────────────────────────────────────
+
+// El promedio se recalcula **dentro del mismo UPDATE** que mueve el stock, como
+// expresión sobre las columnas y no como literal calculado en TypeScript: en un UPDATE
+// todas las referencias del SET ven los valores **previos** de la fila, así que `stock` y
+// `average_cost_cents` de esta expresión son los de antes del ingreso, leídos y escritos
+// sin ventana entre medias. Es el mismo criterio que `buildStockChangeExpression`
+// (spec 020, D-7), y aquí importa más: leer, promediar en TypeScript y volver a escribir
+// dejaría que dos compras simultáneas del mismo producto perdieran una de las dos.
+//
+// `greatest(stock, 0)`: `products.stock` **puede ser negativo** —`decrementStock` del
+// webhook de Stripe no lleva clamp (spec 007, D-10)— y un negativo en el numerador daría
+// un costo por debajo del pagado, o podría anular el denominador. Tratarlo como `0`
+// significa «no hay existencias que promediar» (AC10).
+//
+// `coalesce(average_cost_cents, $costo)`: sin costo previo, el stock que había se
+// valoriza al precio de esta compra y el resultado colapsa exactamente al costo de la
+// compra (AC8). El denominador es siempre `> 0` porque `quantity >= 1`: no hay división
+// por cero posible.
+//
+// `::numeric` no es decorativo: el numerador llega a 1e6 unidades × 1e8 céntimos = 1e14,
+// que desborda `int4` y también `float` con pérdida. El `round(...)::integer` final
+// devuelve el céntimo entero que la columna acepta (AC12). Exportada para compilarla con
+// `PgDialect` en el test, igual que los otros constructores.
+export function buildAverageCostExpression(quantity: number, unitCostCents: number): SQL {
+  const previousStock = sql`greatest(${products.stock}, 0)`;
+
+  return sql`round(
+    (
+      ${previousStock}::numeric * coalesce(${products.averageCostCents}, ${unitCostCents})
+      + ${quantity}::numeric * ${unitCostCents}
+    )
+    / (${previousStock} + ${quantity})
+  )::integer`;
+}
+
+export type PurchaseStockChange = {
+  productId: string;
+  quantity: number;
+  unitCostCents: number;
+};
+
+// Sin guard de stock en el WHERE: una compra es un ingreso y un ingreso nunca se queda
+// sin existencias. Devuelve `null` solo si el producto no existe, caso que el service ya
+// descartó antes de escribir. Función aparte y no un parámetro opcional de
+// `applyStockChange`: los otros cinco tipos de transacción no tienen costo y meter un
+// `if` dentro del mutador compartido haría que el camino de la venta cargara con la
+// aritmética del promedio (CLAUDE.md §6).
+export async function applyPurchaseStockChange(
+  tx: Tx,
+  change: PurchaseStockChange,
+): Promise<{ stock: number; averageCostCents: number | null } | null> {
+  const [updated] = await tx
+    .update(products)
+    .set({
+      // Una compra es un ingreso: el delta es la cantidad, en positivo. Se reutiliza el
+      // mismo constructor que el resto de los movimientos.
+      stock: buildStockChangeExpression(change.quantity),
+      averageCostCents: buildAverageCostExpression(change.quantity, change.unitCostCents),
+    })
+    .where(eq(products.id, change.productId))
+    .returning({ stock: products.stock, averageCostCents: products.averageCostCents });
+
+  return updated ?? null;
+}
+
+// El guard `average_cost_cents IS NULL` va **dentro del WHERE**, no en un `if` previo: es
+// lo único que impide que dos peticiones simultáneas fijen dos costos iniciales distintos
+// sobre el mismo producto (D-4, AC14). Exportado para compilarlo con `PgDialect` en el
+// test, igual que `buildStockChangeFilter`.
+export function buildInitialCostFilter(productId: string): SQL {
+  return and(eq(products.id, productId), isNull(products.averageCostCents)) as SQL;
+}
+
+// `null` significa «no se escribió», y con el producto existiendo solo puede ser el guard
+// del WHERE: el handler distingue 404 de 409 releyendo con el mismo `tx`.
+export async function setInitialCost(
+  tx: Tx,
+  values: { productId: string; unitCostCents: number },
+): Promise<{ averageCostCents: number | null } | null> {
+  const [updated] = await tx
+    .update(products)
+    .set({ averageCostCents: values.unitCostCents })
+    .where(buildInitialCostFilter(values.productId))
+    .returning({ averageCostCents: products.averageCostCents });
 
   return updated ?? null;
 }

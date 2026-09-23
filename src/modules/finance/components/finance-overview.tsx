@@ -13,6 +13,8 @@ import { ExpensesByCategory } from './expenses-by-category';
 import { ExpensesTable } from './expenses-table';
 import { FinanceRangeFilter } from './finance-range-filter';
 import { FinanceSummaryCards } from './finance-summary-cards';
+import { PeriodProfitCard } from './period-profit-card';
+import { UninvoicedOrdersNotice } from './uninvoiced-orders-notice';
 
 const EMPTY_BREAKDOWN: never[] = [];
 
@@ -57,6 +59,23 @@ export function FinanceOverview() {
 
       <FinanceSummaryCards
         summary={summary}
+        isLoading={isLoading}
+        isError={query.isError}
+        message={query.error?.message}
+        onRetry={onRetry}
+      />
+
+      {/* Bajo las cards: explica la brecha entre las dos cifras de ventas que acaban de
+          leerse. No se pinta con cero ni mientras carga (D-12). */}
+      <UninvoicedOrdersNotice count={summary?.declarableSales.uninvoicedOrderCount} />
+
+      {/* Bajo el indicador de pedidos sin comprobante y sobre el desglose de gastos: la
+          utilidad cuelga de las ventas declarables que las dos cifras de arriba acaban de
+          comparar, y el desglose de gastos es el detalle de uno de sus sustraendos.
+          Mismos `isLoading`, `isError`, `message` y `onRetry` que el resto, porque es la
+          misma consulta (AC28). */}
+      <PeriodProfitCard
+        profit={summary?.profit}
         isLoading={isLoading}
         isError={query.isError}
         message={query.error?.message}

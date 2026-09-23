@@ -6,10 +6,20 @@ import type { products } from '@/server/db/schema/product';
 
 export type Product = InferSelectModel<typeof products>;
 
+// `averageCostCents` queda fuera a propósito y el `Omit` es la frontera: el costo es
+// dato financiero (`finance.read`) y este tipo lo consumen el listado de productos y
+// el de inventario, que se abren con `products.read` / `inventory.read` —permisos que
+// `manager` y `audit` sí tienen y que no incluyen finanzas (spec 021, D-8)—.
+//
+// No es documentación: es lo que rompe el typecheck si alguien añade la columna a
+// `PRODUCT_COLUMNS` o a `INVENTORY_COLUMNS` para reutilizar la proyección. La única
+// lectura que sí publica el costo vive en `pricing.repository.ts`.
+export type AdminProduct = Omit<Product, 'averageCostCents'>;
+
 // El nombre de la categoría lo resuelve el servidor con un join: sin él, la tabla
 // tendría que pedir el listado de categorías y cruzarlo en cliente para pintar una
 // sola columna.
-export type ProductWithCategory = Product & {
+export type ProductWithCategory = AdminProduct & {
   categoryName: string;
   categorySlug: string;
 };

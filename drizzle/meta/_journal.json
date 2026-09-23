@@ -64,6 +64,41 @@
       "when": 1789785319059,
       "tag": "0008_bizarre_hellion",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1790049451713,
+      "tag": "0009_mixed_mojo",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1790081675943,
+      "tag": "0010_tough_mimic",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1790095690568,
+      "tag": "0011_icy_maggott",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1790124018551,
+      "tag": "0012_careful_cargill",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1790180914273,
+      "tag": "0013_unusual_yellow_claw",
+      "breakpoints": true
     }
   ]
 }

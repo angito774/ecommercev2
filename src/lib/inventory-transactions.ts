@@ -28,6 +28,13 @@ export const TRANSACTION_TYPE_CODES = TRANSACTION_TYPES.map((type) => type.id) a
   ...TransactionTypeCode[],
 ];
 
+// El único tipo que además de mover stock recalcula el costo promedio ponderado del
+// producto (spec 021, D-2). Vive aquí, junto al catálogo, y no en el schema ni en el
+// diálogo: la condición la comprueban tres piezas —el `superRefine` de la API, el del
+// formulario y la columna de costo del modal— y con el literal repetido en las tres
+// bastaría con cambiarlo en dos para que el campo se pidiera sin que nada lo validara.
+export const PURCHASE_TRANSACTION_ID = 'ingreso_compra' satisfies TransactionTypeCode;
+
 const TYPE_BY_CODE = new Map<string, TransactionType>(
   TRANSACTION_TYPES.map((type) => [type.id, type]),
 );

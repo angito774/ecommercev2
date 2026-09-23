@@ -4,6 +4,10 @@ import { authorize, badRequest, parseJsonBody, toErrorResponse } from '@/lib/api
 import { getAuditContext, logAudit } from '@/lib/audit';
 import { PRODUCT_CONFLICT_MESSAGES } from '@/modules/products/constants';
 import {
+  toAuditableProduct,
+  type AuditableProduct,
+} from '@/modules/products/lib/product-audit';
+import {
   COMPARE_AT_PRICE_MESSAGE,
   isValidComparePrice,
   productIdSchema,
@@ -47,7 +51,7 @@ export async function GET(_request: Request, context: Context) {
 // abortan la transacción devolviendo null y sin ese matiz el PATCH respondería 404
 // cuando el fallo real está en el cuerpo.
 type UpdateOutcome =
-  | { kind: 'ok'; product: Awaited<ReturnType<typeof productRepository.update>> }
+  | { kind: 'ok'; product: AuditableProduct }
   | { kind: 'not-found' }
   | { kind: 'invalid-category' }
   | { kind: 'invalid-compare-price' };
@@ -90,11 +94,17 @@ export async function PATCH(request: Request, context: Context) {
         action: 'product.updated',
         entityType: 'product',
         entityId: after.id,
-        changes: { before, after },
+        // Las dos filas pasan por la proyección: `audit` lee la bitácora con
+        // `audit_logs.read` y no tiene `finance.read`, y el `PATCH` nunca modifica
+        // `averageCostCents`, así que en el `changes` era ruido además de fuga
+        // (spec 021, D-9, AC17).
+        changes: { before: toAuditableProduct(before), after: toAuditableProduct(after) },
         context: getAuditContext(request),
       });
 
-      return { kind: 'ok', product: after };
+      // La misma proyección en la respuesta: el costo no sale por ninguna de las dos
+      // puertas (AC17).
+      return { kind: 'ok', product: toAuditableProduct(after) };
     });
 
     if (outcome.kind === 'not-found') return NextResponse.json(NOT_FOUND, { status: 404 });
@@ -146,7 +156,9 @@ export async function DELETE(request: Request, context: Context) {
 
     if (!deactivated) return NextResponse.json(NOT_FOUND, { status: 404 });
 
-    return NextResponse.json(deactivated);
+    // Misma proyección que el POST y el PATCH: `softDelete` devuelve la fila entera y
+    // publicarla aquí sería la misma fuga por la tercera puerta (spec 021, D-8).
+    return NextResponse.json(toAuditableProduct(deactivated));
   } catch (error) {
     return toErrorResponse(error, {
       label: 'DELETE /api/admin/products/[id]',

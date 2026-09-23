@@ -37,6 +37,12 @@ export const PRODUCT_NOT_FOUND_MESSAGE =
 export const STRIPE_UNAVAILABLE_MESSAGE =
   'No se pudo iniciar el pago. Vuelve a intentarlo en unos segundos.';
 
+// Nombre del envío, compartido por la sesión de Stripe y por la línea de envío del
+// comprobante electrónico (spec 022, D-16). En una constante y no en dos literales: son el
+// mismo concepto visto por el cliente en dos documentos distintos —lo que pagó y lo que
+// declara—, y dos copias serían dos textos que se desalinean.
+export const SHIPPING_LINE_DESCRIPTION = 'Envío estándar';
+
 export const ORDER_STATUS_LABELS: Record<OrderStatus, string> = {
   pending: 'Confirmando tu pago',
   paid: 'Pago confirmado',

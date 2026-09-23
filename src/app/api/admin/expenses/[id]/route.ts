@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server';
 
 import { authorize, badRequest, parseJsonBody, toErrorResponse } from '@/lib/api-guard';
 import { getAuditContext, logAudit } from '@/lib/audit';
+import { toAuditableExpense } from '@/modules/finance/lib/expense-audit';
+import { resolveReceiptColumns } from '@/modules/finance/lib/expense-receipt';
 import {
   expenseIdSchema,
   updateExpenseSchema,
@@ -52,7 +54,23 @@ export async function PATCH(request: Request, context: Context) {
       const before = await financeRepository.findExpenseById(parsedId.data, tx);
       if (!before) return null;
 
-      const after = await financeRepository.updateExpense(tx, parsedId.data, body.data);
+      // El comprobante se separa de los cuatro campos del gasto: las columnas del
+      // primero las resuelve `resolveReceiptColumns`, y `receipt` no es una columna.
+      const { receipt, ...expenseValues } = body.data;
+
+      // Decide sobre el estado **fusionado** —el `before` que ya está leído más el
+      // cuerpo—, no solo sobre lo que llega (D-7): cambiar únicamente el importe de un
+      // gasto que ya tenía factura tiene que recalcular su IGV, o quedaría el del
+      // importe anterior, que el `CHECK` no atrapa porque sigue siendo menor (AC9).
+      //
+      // `null` significa «no hay nada que escribir»: el `UPDATE` no toca las seis
+      // columnas y omitir `receipt` no borra el comprobante (AC11).
+      const receiptColumns = resolveReceiptColumns(before, { ...expenseValues, receipt });
+
+      const after = await financeRepository.updateExpense(tx, parsedId.data, {
+        ...expenseValues,
+        ...(receiptColumns ?? {}),
+      });
       if (!after) return null;
 
       await logAudit(tx, {
@@ -60,7 +78,10 @@ export async function PATCH(request: Request, context: Context) {
         action: 'expense.updated',
         entityType: 'expense',
         entityId: after.id,
-        changes: { before, after },
+        // Las dos filas pasan por la proyección: `manager` y `audit` leen la bitácora
+        // con `audit_logs.read` y sin `finance.read`, y `supplier_ruc` de una persona
+        // natural lleva su DNI embebido. Mismo criterio que el spec 021 (D-9).
+        changes: { before: toAuditableExpense(before), after: toAuditableExpense(after) },
         context: getAuditContext(request),
       });
 
@@ -100,8 +121,9 @@ export async function DELETE(request: Request, context: Context) {
         entityType: 'expense',
         entityId: before.id,
         // `after: null` porque la fila ya no existe: la bitácora es la única copia que
-        // queda de lo que se borró (AC16).
-        changes: { before, after: null },
+        // queda de lo que se borró (AC16). Copia sin el RUC del proveedor, que no puede
+        // quedar en un registro append-only que leen `manager` y `audit`.
+        changes: { before: toAuditableExpense(before), after: null },
         context: getAuditContext(request),
       });
 

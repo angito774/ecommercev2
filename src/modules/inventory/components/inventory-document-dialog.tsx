@@ -2,7 +2,7 @@
 
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useState } from 'react';
-import { Controller, useForm } from 'react-hook-form';
+import { Controller, useForm, useWatch } from 'react-hook-form';
 
 import { Button } from '@/components/ui/button';
 import {
@@ -29,9 +29,11 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import {
+  PURCHASE_TRANSACTION_ID,
   transactionTypesByDirection,
   type TransactionDirection,
 } from '@/lib/inventory-transactions';
+import { toCents } from '@/modules/products/lib/price';
 
 import { DIRECTION_NOTE_LABELS, stockConflictProductId } from '../constants';
 import { useCreateInventoryDocument } from '../hooks/use-inventory-document-mutations';
@@ -88,6 +90,12 @@ function InventoryDocumentForm({
     } satisfies InventoryDocumentFormValues,
   });
 
+  // `useWatch` y no `getValues`: la columna de costo tiene que aparecer y desaparecer al
+  // cambiar el tipo, y `getValues` no provoca render. El `PURCHASE_TYPE_ID` es el mismo
+  // código que condiciona los dos `superRefine` del schema (spec 021, §6.1, AC28).
+  const transaccionId = useWatch({ control, name: 'transaccionId' });
+  const requiresCost = transaccionId === PURCHASE_TRANSACTION_ID;
+
   // El 409 de stock trae el id del producto que no alcanzó: se marca sobre su línea, que
   // es lo que hay que corregir, en vez de dejarlo como un error suelto arriba (AC5).
   function markStockConflict(error: unknown, message: string): boolean {
@@ -113,6 +121,11 @@ function InventoryDocumentForm({
         items: values.items.map((item) => ({
           productId: item.productId,
           quantity: Number(item.quantity),
+          // `unitCostCents` se omite —no se manda `undefined` ni `0`— en cuanto el tipo no
+          // es una compra: lo que quedara tecleado antes de cambiar de tipo no viaja, y el
+          // `superRefine` de la API rechazaría el cuerpo si lo hiciera (spec 021, AC7,
+          // AC28).
+          ...(requiresCost ? { unitCostCents: toCents(item.unitCost) } : {}),
         })),
       });
       onDone();
@@ -184,6 +197,17 @@ function InventoryDocumentForm({
           <FieldError errors={[formState.errors.reference]} />
         </Field>
 
+        {/* El promedio ponderado no se puede deshacer: las notas no se editan ni se
+            anulan (spec 020, D-9), así que un costo mal teclado solo se corrige con otra
+            compra que vuelva a mover el promedio. El aviso vive aquí y no solo en el spec
+            (spec 021, §10). */}
+        {requiresCost ? (
+          <p className="text-muted-foreground text-sm">
+            El costo unitario de cada línea recalcula el costo promedio del producto. No se
+            puede corregir después: solo lo mueve otra compra.
+          </p>
+        ) : null}
+
         <DocumentLinesField
           control={control}
           register={register}
@@ -193,6 +217,7 @@ function InventoryDocumentForm({
             setProducts((current) => new Map(current).set(product.id, product))
           }
           disabled={createMutation.isPending}
+          requiresCost={requiresCost}
         />
 
         {formState.errors.root ? <FieldError errors={[formState.errors.root]} /> : null}

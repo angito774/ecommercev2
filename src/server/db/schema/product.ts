@@ -1,5 +1,7 @@
+import { sql } from 'drizzle-orm';
 import {
   boolean,
+  check,
   index,
   integer,
   jsonb,
@@ -30,6 +32,13 @@ export const products = pgTable(
     // apaga el precio tachado, el badge −N % y la sección de ofertas (spec 004, D-8).
     compareAtPriceCents: integer('compare_at_price_cents'),
     stock: integer('stock').notNull().default(0),
+    // Costo promedio ponderado vigente, en céntimos. **Nullable a propósito**: `null`
+    // significa «sin costo registrado» y es lo que apaga el margen en la pantalla de
+    // precio unitario (spec 021, AC5). Un `0` diría «me costó gratis», que es una
+    // afirmación distinta y falsa. Solo lo escriben dos caminos: el recálculo de una
+    // nota de `ingreso_compra` y la carga del costo inicial, que exige que esté en
+    // `null` (D-4).
+    averageCostCents: integer('average_cost_cents'),
     // Ficha técnica como pares clave/valor. Una tabla aparte no aporta nada
     // mientras nadie consulte *por* especificación, y `jsonb` evita una migración
     // futura si eso cambia (spec 003 §8).
@@ -51,5 +60,13 @@ export const products = pgTable(
     index('products_category_id_idx').on(t.categoryId),
     index('products_is_active_idx').on(t.isActive),
     index('products_created_at_idx').on(t.createdAt.desc()),
+    // Tercer `CHECK` del esquema, mismo criterio que `expenses_amount_cents_positive` y
+    // `stock_movements_quantity_positive`: el promedio de valores positivos nunca cae por
+    // debajo del menor de ellos, así que un `0` o un negativo aquí solo puede venir de un
+    // `psql` a mano o de una migración de datos, y ninguno de los dos pasa por Zod.
+    check(
+      'products_average_cost_cents_positive',
+      sql`${t.averageCostCents} is null or ${t.averageCostCents} > 0`,
+    ),
   ],
 );

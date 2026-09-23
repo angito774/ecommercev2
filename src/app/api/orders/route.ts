@@ -4,6 +4,7 @@ import { badRequest, toErrorResponse } from '@/lib/api-guard';
 import { requireActiveUser } from '@/lib/auth';
 import { orderHistoryQuerySchema } from '@/modules/orders/schemas/order-history.schema';
 import type { OrderHistoryResponse } from '@/modules/orders/types/order.types';
+import * as electronicDocumentRepository from '@/server/repositories/electronic-document.repository';
 import * as orderRepository from '@/server/repositories/order.repository';
 
 // Sin código de permiso RBAC, por lo mismo que `POST /api/checkout` (spec 007,
@@ -29,7 +30,27 @@ export async function GET(request: Request) {
 
     const { data, truncated } = await orderRepository.findManyByUser(user.id, parsed.data);
 
-    const body: OrderHistoryResponse = { data, meta: { truncated } };
+    // **Una sola consulta con `inArray` para toda la página**, no una por pedido: el
+    // historial trae hasta 60 cabeceras y la versión ingenua serían 60 viajes al pool
+    // serverless. Mismo patrón que las líneas (spec 008, §10).
+    //
+    // No hace falta volver a filtrar por propiedad: los ids salen de `findManyByUser`, que
+    // ya lleva el `user_id` dentro de su `WHERE`, así que aquí no hay forma de pedir el
+    // comprobante de un pedido ajeno.
+    //
+    // Con el enlace al PDF: es el comprobante del propio comprador, emitido a su nombre, y
+    // el `WHERE` de arriba ya garantiza que solo salen sus pedidos (D-19).
+    const documentsByOrder = await electronicDocumentRepository.findRowsByOrderIds(
+      data.map((order) => order.id),
+      { includePdfUrl: true },
+    );
+
+    const body: OrderHistoryResponse = {
+      // Array vacío y no `undefined` cuando el pedido no tiene comprobante: la vista no
+      // debe distinguir «no tiene» de «no vino».
+      data: data.map((order) => ({ ...order, documents: documentsByOrder.get(order.id) ?? [] })),
+      meta: { truncated },
+    };
     return NextResponse.json(body);
   } catch (error) {
     return toErrorResponse(error, {

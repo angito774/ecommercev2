@@ -180,6 +180,58 @@ export const PERMISSIONS = [
     action: 'manage',
     description: 'Dar de alta o de baja personal y registrar o anular pagos de nómina.',
   },
+  // Permiso propio, y anotar lo que se pagó dentro de una compra **no** lo necesita
+  // (spec 021, D-6): esa captura ya la cubre `inventory.move`, que `manager` tiene, y el
+  // costo que registra queda respaldado por la factura de la nota. Fijar un costo
+  // **fuera** de cualquier compra es afirmar un dato financiero sin comprobante detrás,
+  // es irrepetible por diseño y solo lo pueden hacer `super_admin` y `admin`. Reutilizar
+  // `finance.read` para escribirlo rompería la separación read/write del catálogo.
+  {
+    code: 'pricing.set_initial_cost',
+    resource: 'pricing',
+    action: 'set_initial_cost',
+    description: 'Cargar el costo inicial de un producto que aún no tiene costo registrado.',
+  },
+  // Recurso propio (`invoicing`) y **no** `orders.update_status` (spec 022, §5.4): ese
+  // permiso lo tiene `manager` y solo concede cancelar un pedido que sigue `pending`.
+  // Emitir manda un documento fiscal a SUNAT con el RUC de la empresa, que es el mismo
+  // criterio restrictivo del resto de finanzas (spec 017, D-3; spec 021, D-6): solo
+  // `super_admin` y `admin`.
+  //
+  // `issue` y no `retry`: sin ningún proceso automático detrás, la primera emisión y la
+  // décima son exactamente la misma acción de la misma persona sobre la misma fila, con
+  // el mismo par serie-número (D-6, D-10). Un permiso llamado «reintentar» describiría
+  // mal lo único que hace el sistema para emitir.
+  //
+  // **Ver** los documentos y su estado no estrena permiso: reutiliza `orders.read`, que
+  // ya es exactamente el alcance «ver este pedido entero».
+  {
+    code: 'invoicing.issue',
+    resource: 'invoicing',
+    action: 'issue',
+    description: 'Emitir ante SUNAT un comprobante electrónico pendiente o que falló.',
+  },
+  // **No basta `orders.update_status`** (spec 023, §5.1), y la diferencia no es de
+  // grado: ese permiso lo tiene `manager` y lo único que concede es cancelar un
+  // pedido que sigue `pending`, es decir, uno por el que nunca se cobró un céntimo.
+  // Esto devuelve dinero real por Stripe y prepara un documento fiscal a nombre de
+  // la empresa. Mismo criterio restrictivo que el resto de finanzas (spec 017, D-3)
+  // y que `pricing.set_initial_cost` (spec 021, D-6): solo `super_admin` y `admin`.
+  //
+  // Va a los **mismos dos roles** que `invoicing.issue`, y es deliberado: quien
+  // decide una devolución es quien después tiene que emitir su nota de crédito, y
+  // separarlos crearía el estado «alguien devolvió dinero y nadie puede
+  // documentarlo» (§10).
+  //
+  // **Ver** el estado del reembolso no estrena permiso: sigue siendo `orders.read`,
+  // que ya es exactamente el alcance «ver este pedido entero».
+  {
+    code: 'orders.refund',
+    resource: 'orders',
+    action: 'refund',
+    description:
+      'Anular o devolver el importe de un pedido pagado y registrar su documento de corrección.',
+  },
 ] as const;
 
 // `PermissionDefinition` es la entrada del catálogo en código, simétrica con
@@ -262,6 +314,9 @@ export const ROLE_PERMISSION_MATRIX: Record<RoleSlug, readonly PermissionCode[]>
     'expenses.delete',
     'payroll.read',
     'payroll.manage',
+    'pricing.set_initial_cost',
+    'invoicing.issue',
+    'orders.refund',
   ],
   admin: [
     'categories.read',
@@ -289,6 +344,9 @@ export const ROLE_PERMISSION_MATRIX: Record<RoleSlug, readonly PermissionCode[]>
     'expenses.delete',
     'payroll.read',
     'payroll.manage',
+    'pricing.set_initial_cost',
+    'invoicing.issue',
+    'orders.refund',
   ],
   // `manager` y `audit` quedan fuera del módulo financiero a propósito (spec 017,
   // D-3): es el primer módulo con datos de resultado y no de operación. `manager`
@@ -306,13 +364,20 @@ export const ROLE_PERMISSION_MATRIX: Record<RoleSlug, readonly PermissionCode[]>
     'products.update',
     'products.delete',
     'orders.read',
+    // Cancela pedidos `pending`, y **sin `orders.refund`**: cancelar lo que nunca se
+    // cobró y devolver dinero ya cobrado son dos acciones distintas, y por eso son dos
+    // códigos distintos (spec 023, §5.1). `audit` no tiene ninguno de los dos.
     'orders.update_status',
     'users.read',
     'roles.read',
     'dashboard.read',
     'inventory.read',
     // Mueve stock por documento: `manager` ya podía reescribirlo desde
-    // `products.update`, así que esto solo le da una forma trazable de hacerlo.
+    // `products.update`, así que esto solo le da una forma trazable de hacerlo. Con este
+    // permiso **anota** el costo unitario de una compra sin recibir ningún permiso nuevo
+    // (spec 021, D-6) y sigue sin ver el margen que produce: `finance.read` y
+    // `pricing.set_initial_cost` se le niegan, y las tres columnas juntas son la
+    // separación de funciones del módulo de precio unitario.
     'inventory.move',
   ],
   employee: [],

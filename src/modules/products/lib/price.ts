@@ -6,6 +6,12 @@
 // patrón, así que `toCents` nunca recibe algo que no encaje.
 export const PRICE_INPUT_PATTERN = /^\d{1,6}(?:\.\d{1,2})?$/;
 
+// Tope de cordura de cualquier importe unitario en céntimos: 999 999,99 PEN, que es el
+// mayor valor que `PRICE_INPUT_PATTERN` admite teclear. Vive aquí y no en un schema
+// porque ya lo usan cuatro: el precio y el precio anterior del producto, el costo
+// unitario de una línea de compra y el costo inicial de precio unitario (spec 021, D-15).
+export const MAX_PRICE_CENTS = 99_999_999;
+
 // Aritmética de cadenas, no `parseFloat(value) * 100`: ese camino convierte
 // "1299.90" en 129989.99999999999 y `Math.round` lo tapa hasta que un día no.
 // Aquí no interviene la coma flotante en ningún paso.

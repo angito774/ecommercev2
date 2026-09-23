@@ -27,9 +27,11 @@ export type AuditInput = {
 // bitácora fuera de la transacción de la mutación auditada. Si la mutación
 // revierte, el log también (docs/SETUP.md §5.2, regla dura 2).
 //
-// Nunca se pasan contraseñas, tokens, claves ni payloads crudos en `changes` o
-// `metadata`: la tabla es de consulta para humanos, no un volcado de request
-// (regla dura 3).
+// Nunca se pasan contraseñas, tokens, claves, datos de tarjeta, identificadores de
+// personas naturales ni payloads crudos en `changes` o `metadata`: la tabla es de
+// consulta para humanos, no un volcado de request. El tipo no puede exigirlo —`changes`
+// es `unknown`—, así que la regla vive en docs/SETUP.md §5.2, regla dura 3: el que
+// llama sanea antes con una proyección positiva (`toAuditableExpense()` y compañía).
 export async function logAudit(tx: Tx, input: AuditInput): Promise<void> {
   await auditLogRepository.insert(tx, {
     actorId: input.actorId,

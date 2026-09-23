@@ -27,7 +27,7 @@ import type {
 import type { AdminOrderQueryParams } from '@/modules/orders/schemas/admin-order.schema';
 import type { OrderHistoryQueryParams } from '@/modules/orders/schemas/order-history.schema';
 import { db, type Reader, type Tx } from '@/server/db';
-import { orderItems, orders, users } from '@/server/db/schema';
+import { orderItems, orders, products, users } from '@/server/db/schema';
 
 type Order = typeof orders.$inferSelect;
 type NewOrder = typeof orders.$inferInsert;
@@ -137,8 +137,12 @@ const HISTORY_ORDER_COLUMNS = {
   stripePaymentIntentId: orders.stripePaymentIntentId,
 } as const;
 
+// Sin `documents`: los comprobantes de toda la página se leen de una sola vez desde
+// `electronic-document.repository` y el handler los reparte (spec 022, T27). Se declara con
+// `Omit` en vez de con un tipo paralelo para que añadir un campo a `OrderHistoryEntry`
+// obligue a decidir de qué lado cae, en vez de dejar los dos tipos divergiendo en silencio.
 export type OrderHistoryPage = {
-  data: OrderHistoryEntry[];
+  data: Array<Omit<OrderHistoryEntry, 'documents'>>;
   truncated: boolean;
 };
 
@@ -409,12 +413,20 @@ const ADMIN_ORDER_DETAIL_COLUMNS = {
   shippingAddress: orders.shippingAddress,
   stripeCheckoutSessionId: orders.stripeCheckoutSessionId,
   stripePaymentIntentId: orders.stripePaymentIntentId,
+  // Solo en el detalle y no en el listado (spec 023, AC21): el saldo devolvible se lee
+  // junto al total del pedido, y una columna más en la tabla de 20 filas no responde
+  // ninguna pregunta que la tabla haga. Los tres campos fiscales del comprador siguen sin
+  // salir: son PII y no los publica ninguna API de este módulo.
+  refundedAmountCents: orders.refundedAmountCents,
 } as const;
 
+// Sin `documents`, por lo mismo que `OrderHistoryPage`: los comprobantes los lee su propio
+// repositorio y el handler compone (spec 022, T26). Así `order.repository.ts` no adquiere
+// una dependencia del módulo de facturación para una columna que no es suya.
 export async function findByIdForAdmin(
   id: string,
   reader: Reader = db,
-): Promise<AdminOrderDetail | null> {
+): Promise<Omit<AdminOrderDetail, 'documents'> | null> {
   const [row] = await reader
     .select(ADMIN_ORDER_DETAIL_COLUMNS)
     .from(orders)
@@ -452,6 +464,79 @@ export async function findByIdForAdmin(
     shippingAddress: parseShippingAddress(row.shippingAddress),
     stripeCheckoutSessionId: row.stripeCheckoutSessionId,
     stripePaymentIntentId: row.stripePaymentIntentId,
+    refundedAmountCents: row.refundedAmountCents,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Facturación electrónica (spec 022)
+// ---------------------------------------------------------------------------
+
+// Todo lo que hace falta para construir el comprobante y **nada más**: los datos fiscales
+// del comprador, los importes del pedido y el nombre con el que identificarlo. Proyección
+// propia y no una de las de admin, por la razón contraria a la habitual: aquí sí salen
+// `buyer_document_number` y `buyer_legal_name`, que son PII y **no se publican por ninguna
+// API** (AC22). Lo consume un solo llamador —`electronic-document.service.ts`— y su único
+// destino legítimo es el cuerpo que se envía a Nubefact (§10).
+const ORDER_FISCAL_COLUMNS = {
+  id: orders.id,
+  status: orders.status,
+  amountTotalCents: orders.amountTotalCents,
+  shippingCents: orders.shippingCents,
+  buyerDocumentType: orders.buyerDocumentType,
+  buyerDocumentNumber: orders.buyerDocumentNumber,
+  buyerLegalName: orders.buyerLegalName,
+  customerFirstName: users.firstName,
+  customerLastName: users.lastName,
+  customerEmail: users.email,
+} as const;
+
+export type OrderFiscalSnapshot = {
+  id: string;
+  status: Order['status'];
+  amountTotalCents: number;
+  shippingCents: number;
+  buyerDocumentType: Order['buyerDocumentType'];
+  buyerDocumentNumber: string | null;
+  buyerLegalName: string | null;
+  /** `firstName` + `lastName` de Clerk; `null` si no dio ninguno. */
+  customerName: string | null;
+  customerEmail: string;
+  items: OrderLineDisplay[];
+};
+
+export async function findFiscalSnapshot(
+  orderId: string,
+  reader: Reader = db,
+): Promise<OrderFiscalSnapshot | null> {
+  const [row] = await reader
+    .select(ORDER_FISCAL_COLUMNS)
+    .from(orders)
+    .innerJoin(users, eq(users.id, orders.userId))
+    .where(eq(orders.id, orderId))
+    .limit(1);
+
+  if (!row) return null;
+
+  const items = await loadItems(row.id, reader);
+
+  return {
+    id: row.id,
+    status: row.status,
+    amountTotalCents: row.amountTotalCents,
+    shippingCents: row.shippingCents,
+    buyerDocumentType: row.buyerDocumentType,
+    buyerDocumentNumber: row.buyerDocumentNumber,
+    buyerLegalName: row.buyerLegalName,
+    customerName: toCustomerName(row.customerFirstName, row.customerLastName),
+    customerEmail: row.customerEmail,
+    items: items.map((line) => ({
+      id: line.id,
+      nameSnapshot: line.nameSnapshot,
+      imageUrlSnapshot: line.imageUrlSnapshot,
+      priceCentsSnapshot: line.priceCentsSnapshot,
+      quantity: line.quantity,
+    })),
   };
 }
 
@@ -502,4 +587,129 @@ export async function markPaymentFailed(tx: Tx, orderId: string): Promise<Order 
 // asíncrono ya cobrado, y ese pedido no debe volver atrás.
 export async function markCanceled(tx: Tx, orderId: string): Promise<Order | null> {
   return transitionFromPending(tx, orderId, { status: 'canceled' });
+}
+
+/**
+ * Congela el costo promedio vigente en las líneas del pedido (spec 027, §5.2). Solo `Tx`:
+ * corre dentro de la transacción del webhook o no corre, así que o se guarda con el
+ * `paid` o no se guarda nada.
+ *
+ * Un `UPDATE … FROM products` de **una sola sentencia** y no una escritura por línea
+ * (D-2): no relee el catálogo, no amplía el `RETURNING` de `decrementStock()` —que ya
+ * hace un UPDATE por línea— y no depende del array de líneas que el servicio ya cargó.
+ *
+ * **Sin `coalesce`.** Si `average_cost_cents` es `null`, la columna queda `null`: un costo
+ * `0` no es «no sé cuánto costó», es «me costó gratis», e inflaría la utilidad bruta justo
+ * en los productos peor registrados (D-3).
+ */
+export async function snapshotItemCosts(tx: Tx, orderId: string): Promise<void> {
+  await tx
+    .update(orderItems)
+    .set({ costCentsSnapshot: sql`${products.averageCostCents}` })
+    .from(products)
+    .where(and(eq(products.id, orderItems.productId), eq(orderItems.orderId, orderId)));
+}
+
+// ---------------------------------------------------------------------------
+// Ajuste del pedido (spec 023)
+// ---------------------------------------------------------------------------
+
+/**
+ * Fila completa **bajo lock**, que es la `tx A` de §6.4: toma el `FOR UPDATE`, se valida el
+ * estado y se suelta antes de hablar con Stripe (spec 022, D-9). Sin `SKIP LOCKED`, por lo
+ * mismo que el reclamo de un comprobante: no se recorre ninguna cola, así que que el
+ * segundo administrador espere —y encuentre el pedido ya ajustado— es el comportamiento
+ * correcto y no una contención que evitar.
+ *
+ * El lock por sí solo **no** basta para la carrera: entre la `tx A` y la `tx B` el estado
+ * puede moverse, y quien lo detecta es el `UPDATE` condicional de `applyRefund` (D-5).
+ */
+export async function findByIdForUpdate(tx: Tx, id: string): Promise<Order | null> {
+  const [order] = await tx
+    .select()
+    .from(orders)
+    .where(eq(orders.id, id))
+    .for('update')
+    .limit(1);
+
+  return order ?? null;
+}
+
+// El incremento como expresión sobre la propia columna y no como literal calculado en
+// TypeScript (mismo criterio que `buildNextNumberExpression`, spec 022 D-5): leer, sumar en
+// TypeScript y volver a escribir dejaría que dos ajustes concurrentes pasaran la
+// comprobación las dos veces y devolvieran el doble.
+//
+// Exportada para compilarla con `PgDialect` en el test: es la pieza con la regla, y el
+// resto de `applyRefund` es fontanería de Drizzle.
+export function buildRefundIncrement(refundCents: number): SQL {
+  return sql`${orders.refundedAmountCents} + ${refundCents}`;
+}
+
+/**
+ * El `WHERE` que resuelve la carrera **en el motor**: `refunded_amount_cents` tiene que
+ * seguir valiendo lo que valía cuando la `tx A` lo leyó. Cero filas significa «alguien se
+ * adelantó» y sale por 409 sin haber duplicado el reembolso, porque la clave de
+ * idempotencia ya garantizó que Stripe creó un solo refund (D-4, D-5, AC9).
+ */
+export function buildRefundGuard(orderId: string, refundedBefore: number): SQL {
+  return and(
+    eq(orders.id, orderId),
+    eq(orders.refundedAmountCents, refundedBefore),
+  ) as SQL;
+}
+
+export type ApplyRefundValues = {
+  /** El valor que la `tx A` leyó. Si ya no es ese, otro ajuste ganó la carrera. */
+  refundedBefore: number;
+  /** Puede ser `0`: un ajuste sin dinero también exige que el estado no se haya movido. */
+  refundCents: number;
+};
+
+/**
+ * `UPDATE orders SET refunded = refunded + $x WHERE id = $1 AND refunded = $refundedBefore`.
+ * `null` = 0 filas = conflicto.
+ *
+ * Se ejecuta **también con `refundCents = 0`** —corrección de comprador y cargo adicional—
+ * y no se salta con un `if`: la suma es un no-op, pero el `WHERE` sigue siendo la única
+ * comprobación de que el pedido no se movió entre las dos transacciones, y saltárselo
+ * dejaría esos dos ajustes sin defensa contra la concurrencia.
+ */
+export async function applyRefund(
+  tx: Tx,
+  orderId: string,
+  values: ApplyRefundValues,
+): Promise<Order | null> {
+  const [updated] = await tx
+    .update(orders)
+    .set({ refundedAmountCents: buildRefundIncrement(values.refundCents) })
+    .where(buildRefundGuard(orderId, values.refundedBefore))
+    .returning();
+
+  return updated ?? null;
+}
+
+/**
+ * Los tres campos fiscales del comprador, y solo esos: ni el importe, ni las líneas, ni la
+ * dirección (§3). Se escriben juntos porque el `CHECK orders_buyer_document_pair` exige que
+ * viajen juntos, y `legalName` llega ya normalizado a `null` —nunca `''`, que es lo que el
+ * `CHECK orders_buyer_legal_name_requires_ruc` no admite en una boleta—.
+ */
+export type BuyerFiscalValues = Pick<
+  NewOrder,
+  'buyerDocumentType' | 'buyerDocumentNumber' | 'buyerLegalName'
+>;
+
+export async function updateBuyer(
+  tx: Tx,
+  orderId: string,
+  values: BuyerFiscalValues,
+): Promise<Order | null> {
+  const [updated] = await tx
+    .update(orders)
+    .set(values)
+    .where(eq(orders.id, orderId))
+    .returning();
+
+  return updated ?? null;
 }

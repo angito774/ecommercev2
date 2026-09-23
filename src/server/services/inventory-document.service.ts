@@ -54,16 +54,32 @@ export async function createDocument(
       throw new NotFoundError(PRODUCT_NOT_FOUND_MESSAGE);
     }
 
-    const movements: { productId: string; quantity: number; stockAfter: number }[] = [];
+    const movements: {
+      productId: string;
+      quantity: number;
+      stockAfter: number;
+      unitCostCents: number | null;
+    }[] = [];
 
     for (const item of orderedItems) {
       const product = productById.get(item.productId);
       if (!product) throw new NotFoundError(PRODUCT_NOT_FOUND_MESSAGE);
 
-      const applied = await productRepository.applyStockChange(tx, {
-        productId: item.productId,
-        delta: sign * item.quantity,
-      });
+      // Una rama y dos funciones con nombre, en vez de un mutador con un parámetro
+      // opcional: la compra es el único tipo que además de mover stock recalcula un
+      // promedio, y `unitCostCents` solo puede venir presente si Zod validó que el
+      // documento es `ingreso_compra` (spec 021, §6.1, D-2).
+      const applied =
+        item.unitCostCents === undefined
+          ? await productRepository.applyStockChange(tx, {
+              productId: item.productId,
+              delta: sign * item.quantity,
+            })
+          : await productRepository.applyPurchaseStockChange(tx, {
+              productId: item.productId,
+              quantity: item.quantity,
+              unitCostCents: item.unitCostCents,
+            });
 
       // `null` en una salida significa que el guard `stock >= qty` del WHERE no dejó
       // pasar el UPDATE: 409 y la transacción entera revierte, así que las líneas ya
@@ -84,6 +100,9 @@ export async function createDocument(
         quantity: item.quantity,
         // Tal cual lo devolvió el RETURNING del UPDATE: no se recalcula (D-11).
         stockAfter: applied.stock,
+        // `null` en los cinco tipos sin costo: la línea no inventa un importe que nadie
+        // pagó, igual que la columna no lleva `DEFAULT` (spec 021, §5.2).
+        unitCostCents: item.unitCostCents ?? null,
       });
     }
 

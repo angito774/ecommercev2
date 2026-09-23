@@ -9,6 +9,7 @@ import {
   PRODUCT_NOT_FOUND_MESSAGE,
   productOutOfStockMessage,
   productUnavailableMessage,
+  SHIPPING_LINE_DESCRIPTION,
   STRIPE_UNAVAILABLE_MESSAGE,
 } from '@/modules/orders/constants';
 import { calculateOrderTotals } from '@/modules/orders/lib/totals';
@@ -20,8 +21,6 @@ import * as productRepository from '@/server/repositories/product.repository';
 
 type User = typeof users.$inferSelect;
 type NewOrderItem = typeof orderItems.$inferInsert;
-
-const SHIPPING_DISPLAY_NAME = 'Envío estándar';
 
 // Perú es el único país al que la tienda despacha hoy. Sin dirección no hay pedido
 // despachable, así que Stripe la recoge y se guarda tal cual llega (D-19).
@@ -81,6 +80,19 @@ async function prepareOrder(user: User, input: CheckoutInput): Promise<PreparedO
       status: 'pending',
       currency: ORDER_CURRENCY,
       ...totals,
+      // Los datos fiscales se escriben **dentro de la transacción que crea la orden**, es
+      // decir, antes de `stripe.checkout.sessions.create()` (spec 022, AC4): el dato se
+      // captura en nuestro checkout y no en la página alojada de Stripe justamente para
+      // poder decirle al cliente que su RUC está mal **antes** de cobrarle (D-2).
+      //
+      // `legalName` llega como `undefined` en una boleta y Drizzle lo traduce a `NULL`,
+      // que es lo único que admite el `CHECK orders_buyer_legal_name_requires_ruc`. El
+      // `?? null` es explícito para que no dependa de esa traducción implícita.
+      buyerDocumentType: input.buyer.documentType,
+      buyerDocumentNumber: input.buyer.documentNumber,
+      buyerLegalName: input.buyer.legalName ?? null,
+      // `refunded_amount_cents` no se escribe: su `DEFAULT 0` es el valor correcto y
+      // repetirlo aquí sería un segundo sitio que mantener cuando el spec 023 lo mueva.
     });
 
     await orderRepository.createItems(
@@ -124,7 +136,7 @@ export function toShippingOptions(
     {
       shipping_rate_data: {
         type: 'fixed_amount',
-        display_name: order.shippingCents === 0 ? 'Envío gratis' : SHIPPING_DISPLAY_NAME,
+        display_name: order.shippingCents === 0 ? 'Envío gratis' : SHIPPING_LINE_DESCRIPTION,
         fixed_amount: { amount: order.shippingCents, currency: order.currency },
       },
     },
