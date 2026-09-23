@@ -9,7 +9,7 @@ export {
   electronicDocumentStatus,
 } from './electronic-document';
 export { employees } from './employee';
-export { expenseCategory, expenses } from './expense';
+export { expenseCategory, expenses, purchaseReceiptType } from './expense';
 export { inventoryDocuments } from './inventory-document';
 export { orderItems } from './order-item';
 export { buyerDocumentType, orders, orderStatus } from './order';

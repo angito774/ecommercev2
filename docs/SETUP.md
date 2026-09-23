@@ -308,8 +308,12 @@ Columnas:
 2. Se escribe en la **misma transacción** que la mutación auditada. Si la mutación
    revierte, el log también.
 3. Nunca se guarda PII sensible ni secretos en `changes` o `metadata`: sin
-   contraseñas, tokens, claves de API ni datos de tarjeta. Los campos sensibles se
-   enmascaran antes de serializar.
+   contraseñas, tokens, claves de API, datos de tarjeta ni identificadores de personas
+   naturales (DNI, RUC que empieza por `10`). Los campos sensibles se **excluyen**
+   antes de serializar, no se enmascaran: no hay redacción ni truncado, la proyección
+   simplemente no los enumera. El saneado se hace con una proyección positiva pura y probada
+   —`toAuditableEmployee()` (018), `toAuditableProduct()` (021), `toAuditableExpense()`
+   (024)— y nunca con un `delete` en el handler.
 4. Un fallo al escribir el log **no** debe romper la operación de negocio salvo que
    la acción sea de seguridad (cambio de rol o permiso), donde sí es transaccional
    y bloqueante.
@@ -412,6 +416,65 @@ mismo importe son legítimas— así que ningún endpoint del módulo devuelve `
 del listado. El borrado es **físico**: la tabla no tiene dependientes y un
 `is_active` obligaría a que las tres consultas de agregado recordasen el filtro;
 la traza queda en `audit_logs`, que es append-only (spec 017, D-7).
+
+Construido a 2026-09-22: el enum `purchase_receipt_type` y **seis columnas de
+comprobante** en `expenses` (spec 024, migración `0012`). Es el lado de **compras** del
+IGV: hasta aquí el proyecto solo sabía el débito de ventas que produce
+`electronic_documents` (§5.6), y sin saber qué gasto llegó con factura no hay contra qué
+restarlo. Las seis son `receipt_type`, `supplier_ruc` (`varchar(11)`), `supplier_name`
+(`varchar(160)`), `receipt_series` (`varchar(4)`), `receipt_number` (`varchar(20)`) e
+`igv_cents` (`integer`), **todas nullable y sin `DEFAULT`**: `receipt_type IS NULL` es el
+discriminador y significa «gasto sin comprobante formal», que es el estado de todo lo
+registrado antes de esta migración. **No hay backfill y no lo habrá** (spec 024, D-16):
+no se puede saber si un gasto de julio llegó con factura, y cualquier valor por defecto
+sería una afirmación falsa sobre un hecho tributario.
+
+`receipt_number` es **cadena y no `integer`** como `electronic_documents.number` (D-14):
+aquel número lo genera el propio sistema, este se copia de un papel ajeno donde ya viene
+con ceros a la izquierda, y `00001234` no es `1234` cuando hay que cotejarlo. Sin índice
+nuevo (D-13) y sin `unique`: dos facturas distintas pueden compartir serie y número si
+son de proveedores distintos, así que ningún endpoint del módulo devuelve `409`.
+
+El enum se construye **desde el catálogo puro** `src/lib/purchase-receipts.ts` y no
+repitiendo la tupla en el esquema, que es el patrón de `electronic-documents.ts` y
+corrige de paso el riesgo que el propio spec 017 anotó sobre `EXPENSE_CATEGORIES`: dos
+listas que deben decir lo mismo. Cuatro valores: `factura`, `boleta`,
+`recibo_honorarios` y `otro`.
+
+Llegan **cuatro `CHECK` nuevos** (los 017/020/021 sumaban tres en todo el esquema), y la
+razón es la de siempre: el seed, una migración de datos y un `psql` a mano no pasan por
+Zod, y un comprobante a medias contaminaría el número que el sub-proyecto de Impuestos
+va a declarar.
+
+- `expenses_receipt_all_or_nothing` — el comprobante es **todo o nada**: no existe un RUC
+  sin tipo ni un tipo sin RUC ni sin razón social.
+- `expenses_supplier_ruc_format` — solo la **forma** (`^[0-9]{11}$`). El dígito
+  verificador se queda fuera a propósito: el módulo 11 exigiría crear una función en
+  Postgres y esa comprobación ya vive en `isValidRuc()` (§5.6). Nótese que un `CHECK` se
+  satisface cuando la expresión es `NULL`, así que `columna ~ patrón` deja pasar el
+  `null` sin un `is null or` delante; es deliberado.
+- `expenses_receipt_series_number_pair` — serie y número viajan juntos, y solo con
+  comprobante.
+- `expenses_igv_within_amount` — `igv_cents` es `null` o está en `[0, amount_cents)`. Con
+  el 18 % incluido el IGV es ~15,25 % del total, así que un valor igual o mayor que el
+  importe es dato corrupto. **Lo que este `CHECK` no atrapa es un IGV simplemente viejo**:
+  el del importe anterior seguiría cumpliéndolo, y por eso el `PATCH` recalcula sobre el
+  estado fusionado (abajo).
+
+`igv_cents` lo escribe **solo el servidor**, con el mismo `splitIgv()` que las ventas del
+spec 022, y ningún schema de entrada acepta el campo: no existe un cuerpo capaz de fijar
+el impuesto. Se calcula **si y solo si** hay comprobante y su tipo es afecto según la
+tabla de reglas; en cualquier otro caso es `null` y **nunca `0`**, porque cero
+significaría «un IGV de cero» y eso es una afirmación distinta y falsa sobre un recibo
+por honorarios (spec 024, D-5).
+
+Las dos piezas puras que lo traducen viven en
+`src/modules/finance/lib/expense-receipt.ts`. `resolveReceiptColumns()` es la del `PATCH`
+y decide sobre el **estado fusionado** —el `before` que la transacción ya leyó para la
+bitácora, más el cuerpo parcial— y no sobre lo que llega: corregir solo el importe de un
+gasto que ya tenía factura es el caso frecuente, y sin recalcular quedaría el IGV del
+importe viejo. Devuelve `null` cuando no hay nada que escribir, que es lo que hace que
+**omitir `receipt` no borre el comprobante** mientras que `receipt: null` sí lo limpia.
 
 ### 5.4 Personal y nómina
 
@@ -830,6 +893,89 @@ Fuera de alcance por decisión: nómina y salarios (spec 018), costo de mercader
 comisiones y reembolsos de Stripe, impuestos, multimoneda, adjuntos y proveedores como
 entidad, gastos recurrentes, presupuestos y alertas, cierre contable de período,
 exportación a CSV/PDF y búsqueda por concepto.
+
+Ampliado a 2026-09-22: **crédito fiscal de compras** (spec 024, migración `0012`,
+§5.3). **Ningún permiso nuevo** —el catálogo se queda en 29 códigos— y ninguna ruta
+nueva: los tres endpoints tocados son los mismos de 017, que cambian de forma y no de
+dirección. Es deliberado (D-12): declarar con qué comprobante llegó un gasto es una
+extensión de un recurso ya protegido, no un recurso nuevo, y un permiso que separase
+«registrar el gasto» de «declarar su comprobante» describiría un reparto de trabajo que
+no existe. Sigue siendo un módulo de `super_admin` y `admin` solamente, y ahora con más
+razón: el contenido incluye identificadores tributarios de terceros.
+
+`POST`/`PATCH /api/admin/expenses[/id]` aceptan un `receipt` **anidado y nullable**, no
+cinco campos planos (D-6). El objeto es lo que hace que el `PATCH` distinga sus tres
+semánticas sin un centinela: con valor lo cambia, con `null` lo borra y **omitido no lo
+toca**. Cuidado con un detalle de Zod 4 que el spec no había previsto: `.partial()`
+envuelve el campo en `optional` pero **no elimina el `default(null)`** del schema de
+alta, así que `updateExpenseSchema` redeclara `receipt` sin default. Heredarlo tal cual
+haría que omitirlo llegara al handler como «bórralo» y que un cuerpo `{}` dejara de ser
+vacío para el guard de «no hay nada que actualizar». Hay tests que fijan las dos cosas.
+
+`GET /api/admin/finance/summary` gana `data.purchaseIgv` con cuatro números, y
+`GET /api/admin/expenses` publica `data[].receipt` como objeto entero o `null`. Ninguno
+de los dos añade una consulta: el comprobante sale del mismo `SELECT` del listado y los
+cuatro agregados de IGV —dos sumas y dos recuentos con `FILTER`— de la misma pasada de
+`findExpenseTotals()` (D-9). Al salir de la misma fila del mismo `SELECT` es imposible
+que el total de gastos y el IGV del período se calculen sobre filtros distintos. Sin
+`GROUP BY`, así que no entra en la clase de bug del `42803` del spec 015. El handler
+deriva lo no deducible **por resta entera**, que no puede divergir de la suma.
+
+La **regla de elegibilidad vive en un único sitio**, `src/lib/purchase-receipts.ts`, y es
+una **tabla de dos banderas por tipo** (`carriesIgv`, `grantsTaxCredit`), no una lista de
+elegibles (D-4). Son dos preguntas distintas —si el comprobante lleva IGV y si ese IGV es
+crédito fiscal— y colapsarlas obligaría a suponer que todo lo que no da crédito tampoco
+lleva IGV, que es **falso para la boleta**. El `TAX_CREDIT_RECEIPT_TYPES` que consume el
+`inArray` del agregado se **deriva** de esa tabla, así que el SQL y la vista no pueden
+discrepar, y no hay ningún `=== 'factura'` suelto en el código.
+
+> **La tabla no está verificada contra la normativa SUNAT.** Su T1 era bloqueante y se
+> cerró sin fuente: ninguna de las dos sesiones —la del spec ni la de implementación—
+> tuvo acceso a la normativa. Los valores de arranque son los **conservadores**: solo
+> `factura` otorga crédito fiscal, `boleta` lleva IGV pero no lo otorga, y
+> `recibo_honorarios` no lleva IGV en absoluto por ser renta de cuarta categoría.
+> Subdeclarar crédito fiscal es recuperable; sobredeclararlo es una infracción. Mientras
+> no se confirme, **el sistema subdeclara a propósito**. Corregir una celda es editar ese
+> objeto y su test, pero ojo con el efecto que no se ve: `igv_cents` se calculó al
+> guardar, así que abrir la afectación de un tipo **no recalcula las filas ya
+> registradas** y exige un `UPDATE` ejecutado a conciencia.
+
+En la pantalla, el IGV de compras es una **cuarta tarjeta** cuyo valor principal es solo
+lo que da derecho a crédito fiscal; lo que no lo da se publica aparte con su etiqueta y
+**los dos números nunca se presentan sumados** (D-10): un único total invitaría a
+descontar IGV de boletas, que es justo la infracción que la regla evita. El encabezado
+dice que este número **no entra en el resultado del período**: `netCents`,
+`marginPercent` y el desglose por categoría siguen diciendo exactamente lo que decían.
+El filtro de categoría tampoco lo mueve, igual que el resto de los KPI. Restar este
+crédito contra el débito de ventas es el sub-proyecto de Impuestos; el enganche está
+listo en `purchaseIgv.creditableCents`.
+
+El 18 % es una **aproximación declarada**: una factura con bienes exonerados dentro
+declara más IGV del que corresponde, misma asunción que `splitIgv()` ya documenta para
+las ventas. Lo que este spec añade es que la aproximación **no** se extiende a los tipos
+que no son afectos en absoluto. Y el dato depende de que alguien lo teclee: un mes en el
+que nadie declaró comprobantes se ve igual que un mes sin compras.
+
+La bitácora **no** recibe el RUC. Los tres `logAudit()` —`expense.created`, `updated` y
+`deleted`— pasan la fila por `toAuditableExpense()`
+(`src/modules/finance/lib/expense-audit.ts`) antes de escribir `changes`: una proyección
+positiva que enumera lo que sale, deja `supplier_ruc` fuera y conserva `supplier_name`
+—razón social, no documento de identidad—, porque sin él la bitácora no diría de qué
+proveedor se habla. El motivo es que un RUC que empieza por `10` es el de una persona
+natural y lleva el DNI en sus ocho primeros dígitos: es PII, no solo un identificador
+tributario, y `audit_logs` es append-only y la leen `manager` y `audit`, que tienen
+`audit_logs.read` y **no** `finance.read`. Mismo patrón que `toAuditableEmployee()`
+(spec 018, D-8) y `toAuditableProduct()` (spec 021, D-9); es lo que sostiene la
+afirmación de más arriba de que el RUC no sale del módulo de `super_admin` y `admin`.
+Por la misma razón `ExpenseMutated` **no** se amplió con el comprobante: solo alimenta el
+toast, y publicar un RUC en una respuesta que nadie lee sería superficie gratis.
+
+Fuera de alcance de esta ampliación, por decisión: catálogo de proveedores (RUC y razón
+social son texto libre por gasto, como `concept`), validación en línea del RUC contra el
+padrón de SUNAT —la comprobación es aritmética y offline: dice que el número no está
+tecleado al azar, no que exista—, adjuntar el PDF del comprobante, retroactividad,
+detracciones y retenciones, tasas distintas del 18 %, afectación por línea de gasto, y
+filtro por comprobante o búsqueda por RUC en la tabla (D-15).
 
 Construido a 2026-09-17: **personal y nómina** (`/admin/payroll`, spec 018), con
 migración `0007` (§5.4) y **dos** permisos nuevos —el catálogo pasa de 23 a 25

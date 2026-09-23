@@ -66,6 +66,52 @@ export const NO_REVENUE_MESSAGE = 'Sin ingresos en el rango';
 
 export const FINANCE_SUMMARY_ERROR_MESSAGE = 'No se pudo cargar el resumen financiero.';
 
+// ── Comprobante de compra e IGV (spec 024) ──────────────────────────────────
+
+export const PURCHASE_IGV_CARD_TITLE = 'IGV de compras';
+
+// El subtítulo de la cifra principal: dice que lo que se pinta arriba es solo lo que da
+// derecho a crédito, porque los dos números nunca se presentan sumados (AC14, D-10).
+export const PURCHASE_IGV_CREDITABLE_LABEL = 'Con derecho a crédito fiscal';
+
+export const PURCHASE_IGV_NON_CREDITABLE_LABEL = 'Sin derecho a crédito fiscal';
+
+// Un rango sin IGV de compras no es un error ni una carga: es S/ 0.00 con su copy
+// (AC15). Dice «sin IGV» y no «sin comprobantes» porque los dos recuentos que disparan
+// este estado solo cuentan filas con `igv_cents is not null`: un rango entero de recibos
+// por honorarios sí tiene comprobantes declarados y aun así llega aquí. Tampoco
+// distingue «no hubo facturas» de «nadie las anotó» (§10).
+export const EMPTY_PURCHASE_IGV_MESSAGE = 'Sin IGV de compras en el rango.';
+
+// El aviso del encabezado: el IGV de compras es un dato al lado, no un sumando del
+// resultado del período (§3).
+export const PURCHASE_IGV_INFORMATIVE_NOTE =
+  'El IGV de compras es informativo y no entra en el resultado del período: se publica para el cálculo del crédito fiscal, no para restarlo de los gastos.';
+
+// La celda de las filas sin comprobante: un guion con texto accesible, nunca «S/ 0.00»
+// —que diría «un IGV de cero»— ni una celda en blanco (AC19).
+export const NO_RECEIPT_LABEL = 'Sin comprobante declarado';
+
+export const NO_IGV_LABEL = 'Este comprobante no lleva IGV';
+
+// ── Formulario ──────────────────────────────────────────────────────────────
+
+export const HAS_RECEIPT_SWITCH_LABEL = '¿Tiene comprobante?';
+
+export const HAS_RECEIPT_SWITCH_HINT =
+  'Actívalo si el gasto llegó con factura, boleta o recibo. Sin comprobante el gasto se registra igual.';
+
+// Lo que el usuario no debe intentar teclear: el IGV no es un campo (AC7).
+export const IGV_COMPUTED_HINT =
+  'El IGV lo calcula el sistema a partir del importe y del tipo de comprobante. No se teclea.';
+
+export const SUPPLIER_RUC_HINT =
+  'Once dígitos. Se comprueba el dígito verificador, no que el proveedor exista en SUNAT.';
+
+export const SUPPLIER_NAME_HINT = 'Razón social tal y como figura en el comprobante.';
+
+export const RECEIPT_SERIES_HINT = 'Opcional, pero serie y número van juntos.';
+
 // ── Precio unitario (spec 021) ──────────────────────────────────────────────
 
 export const PRICING_PAGE_SIZE = 20;

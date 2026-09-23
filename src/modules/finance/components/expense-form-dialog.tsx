@@ -1,7 +1,7 @@
 'use client';
 
 import { zodResolver } from '@hookform/resolvers/zod';
-import { Controller, useForm } from 'react-hook-form';
+import { Controller, useForm, useWatch } from 'react-hook-form';
 
 import { Button } from '@/components/ui/button';
 import {
@@ -27,10 +27,23 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { Switch } from '@/components/ui/switch';
+import {
+  PURCHASE_RECEIPT_TYPE_LABELS,
+  PURCHASE_RECEIPT_TYPES,
+} from '@/lib/purchase-receipts';
 import { toReportingDayKey } from '@/lib/reporting';
 import { fromCents, toCents } from '@/modules/products/lib/price';
 
-import { EXPENSE_CATEGORY_LABELS } from '../constants';
+import {
+  EXPENSE_CATEGORY_LABELS,
+  HAS_RECEIPT_SWITCH_HINT,
+  HAS_RECEIPT_SWITCH_LABEL,
+  IGV_COMPUTED_HINT,
+  RECEIPT_SERIES_HINT,
+  SUPPLIER_NAME_HINT,
+  SUPPLIER_RUC_HINT,
+} from '../constants';
 import { useCreateExpense, useUpdateExpense } from '../hooks/use-expense-mutations';
 import { EXPENSE_CATEGORIES } from '../schemas/finance.schema';
 import { expenseFormSchema, type ExpenseFormValues } from '../schemas/expense-form.schema';
@@ -43,10 +56,30 @@ type ExpenseFormDialogProps = {
   expense: ExpenseRow | null;
 };
 
+// Los seis campos del comprobante apagados. El `receiptType` arranca en `factura` y no
+// vacío porque el `Select` necesita un valor: con el interruptor apagado no se pinta y no
+// viaja en el cuerpo (AC18).
+const EMPTY_RECEIPT_FIELDS = {
+  hasReceipt: false,
+  receiptType: 'factura',
+  supplierRuc: '',
+  supplierName: '',
+  receiptSeries: '',
+  receiptNumber: '',
+} as const satisfies Partial<ExpenseFormValues>;
+
 function toFormValues(expense: ExpenseRow | null, today: string): ExpenseFormValues {
   if (!expense) {
-    return { concept: '', amount: '', category: 'suppliers', incurredOn: today };
+    return {
+      concept: '',
+      amount: '',
+      category: 'suppliers',
+      incurredOn: today,
+      ...EMPTY_RECEIPT_FIELDS,
+    };
   }
+
+  const { receipt } = expense;
 
   return {
     concept: expense.concept,
@@ -55,6 +88,37 @@ function toFormValues(expense: ExpenseRow | null, today: string): ExpenseFormVal
     amount: fromCents(expense.amountCents),
     category: expense.category,
     incurredOn: expense.incurredOn,
+    // En edición el interruptor arranca encendido si el gasto ya tenía comprobante.
+    ...EMPTY_RECEIPT_FIELDS,
+    ...(receipt
+      ? {
+          hasReceipt: true,
+          receiptType: receipt.type,
+          supplierRuc: receipt.supplierRuc,
+          supplierName: receipt.supplierName,
+          receiptSeries: receipt.series ?? '',
+          receiptNumber: receipt.number ?? '',
+        }
+      : {}),
+  };
+}
+
+// El diálogo **no** manda los seis campos planos: arma el `receipt` del contrato cuando
+// el interruptor está encendido y `null` cuando no, así que lo tecleado y luego
+// descartado no viaja aunque React Hook Form lo conserve en su registro (AC18).
+//
+// `igvCents` no aparece por ningún lado: lo calcula el servidor (AC7).
+function toReceiptPayload(values: ExpenseFormValues) {
+  if (!values.hasReceipt) return null;
+
+  const hasPair = values.receiptSeries !== '' && values.receiptNumber !== '';
+
+  return {
+    type: values.receiptType,
+    supplierRuc: values.supplierRuc,
+    supplierName: values.supplierName,
+    // Los dos o ninguno: el schema de la API rechaza media referencia (AC12).
+    ...(hasPair ? { series: values.receiptSeries, number: values.receiptNumber } : {}),
   };
 }
 
@@ -80,9 +144,24 @@ function ExpenseForm({
     defaultValues: toFormValues(expense, today),
   });
 
+  // El bloque del comprobante se **desmonta** al apagar el interruptor, no se oculta con
+  // CSS: un campo oculto seguiría en el DOM y en el registro del formulario.
+  //
+  // `useWatch` y no `watch()`, mismo criterio que el diálogo de inventario (spec 021) y
+  // el checkout (022): suscribe solo a este campo y `watch()` no se puede memoizar.
+  const hasReceipt = useWatch({ control, name: 'hasReceipt' });
+
   const onSubmit = handleSubmit(async (values) => {
-    const { amount, ...rest } = values;
-    const payload = { ...rest, amountCents: toCents(amount) };
+    // El cuerpo se arma **en positivo**, campo a campo, y no con un `...rest`: así
+    // ningún campo del bloque del comprobante puede colarse por descuido, que es
+    // exactamente lo que afirma AC18.
+    const payload = {
+      concept: values.concept,
+      amountCents: toCents(values.amount),
+      category: values.category,
+      incurredOn: values.incurredOn,
+      receipt: toReceiptPayload(values),
+    };
 
     try {
       if (isEdit) {
@@ -176,6 +255,117 @@ function ExpenseForm({
           />
           <FieldError errors={[formState.errors.category]} />
         </Field>
+
+        <div className="border-t pt-4">
+          <Controller
+            control={control}
+            name="hasReceipt"
+            render={({ field }) => (
+              <Field orientation="horizontal">
+                <Switch
+                  id="expense-has-receipt"
+                  checked={field.value}
+                  onCheckedChange={field.onChange}
+                />
+                <div className="space-y-0.5">
+                  <FieldLabel htmlFor="expense-has-receipt">
+                    {HAS_RECEIPT_SWITCH_LABEL}
+                  </FieldLabel>
+                  <FieldDescription>{HAS_RECEIPT_SWITCH_HINT}</FieldDescription>
+                </div>
+              </Field>
+            )}
+          />
+        </div>
+
+        {/* Montaje condicional y no `hidden`: al apagar el interruptor los campos dejan
+            de existir en el DOM, y el cuerpo se arma desde `toReceiptPayload` (AC18). */}
+        {hasReceipt ? (
+          <>
+            <Field data-invalid={Boolean(formState.errors.receiptType)}>
+              <FieldLabel htmlFor="expense-receipt-type">Tipo de comprobante</FieldLabel>
+              <Controller
+                control={control}
+                name="receiptType"
+                render={({ field }) => (
+                  <Select value={field.value} onValueChange={field.onChange}>
+                    <SelectTrigger id="expense-receipt-type" className="w-full">
+                      <SelectValue>{PURCHASE_RECEIPT_TYPE_LABELS[field.value]}</SelectValue>
+                    </SelectTrigger>
+                    <SelectContent>
+                      {PURCHASE_RECEIPT_TYPES.map((type) => (
+                        <SelectItem key={type} value={type}>
+                          {PURCHASE_RECEIPT_TYPE_LABELS[type]}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+              />
+              <FieldDescription>{IGV_COMPUTED_HINT}</FieldDescription>
+              <FieldError errors={[formState.errors.receiptType]} />
+            </Field>
+
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field data-invalid={Boolean(formState.errors.supplierRuc)}>
+                <FieldLabel htmlFor="expense-supplier-ruc">RUC del proveedor</FieldLabel>
+                <Input
+                  id="expense-supplier-ruc"
+                  inputMode="numeric"
+                  placeholder="20100128056"
+                  autoComplete="off"
+                  aria-invalid={Boolean(formState.errors.supplierRuc)}
+                  {...register('supplierRuc')}
+                />
+                <FieldDescription>{SUPPLIER_RUC_HINT}</FieldDescription>
+                <FieldError errors={[formState.errors.supplierRuc]} />
+              </Field>
+
+              <Field data-invalid={Boolean(formState.errors.supplierName)}>
+                <FieldLabel htmlFor="expense-supplier-name">Razón social</FieldLabel>
+                <Input
+                  id="expense-supplier-name"
+                  autoComplete="off"
+                  placeholder="Distribuidora Andina SAC"
+                  aria-invalid={Boolean(formState.errors.supplierName)}
+                  {...register('supplierName')}
+                />
+                <FieldDescription>{SUPPLIER_NAME_HINT}</FieldDescription>
+                <FieldError errors={[formState.errors.supplierName]} />
+              </Field>
+            </div>
+
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field data-invalid={Boolean(formState.errors.receiptSeries)}>
+                <FieldLabel htmlFor="expense-receipt-series">Serie</FieldLabel>
+                <Input
+                  id="expense-receipt-series"
+                  placeholder="F001"
+                  autoComplete="off"
+                  aria-invalid={Boolean(formState.errors.receiptSeries)}
+                  {...register('receiptSeries')}
+                />
+                <FieldDescription>{RECEIPT_SERIES_HINT}</FieldDescription>
+                <FieldError errors={[formState.errors.receiptSeries]} />
+              </Field>
+
+              <Field data-invalid={Boolean(formState.errors.receiptNumber)}>
+                <FieldLabel htmlFor="expense-receipt-number">Número</FieldLabel>
+                <Input
+                  id="expense-receipt-number"
+                  inputMode="numeric"
+                  // Se guarda como cadena: `00001234` no es `1234` cuando hay que
+                  // cotejarlo con el papel (D-14).
+                  placeholder="00001234"
+                  autoComplete="off"
+                  aria-invalid={Boolean(formState.errors.receiptNumber)}
+                  {...register('receiptNumber')}
+                />
+                <FieldError errors={[formState.errors.receiptNumber]} />
+              </Field>
+            </div>
+          </>
+        ) : null}
 
         {formState.errors.root ? <FieldError errors={[formState.errors.root]} /> : null}
       </FieldGroup>

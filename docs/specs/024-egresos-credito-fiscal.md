@@ -1,7 +1,7 @@
 ---
 id: 024
 title: Egresos v2 — crédito fiscal de compras
-status: approved
+status: done
 module: finance
 scope: admin
 created: 2026-09-22
@@ -159,7 +159,9 @@ del período da derecho a crédito fiscal y cuánto no.
       guion con texto accesible, nunca `S/ 0.00` ni una celda en blanco.
 - [ ] AC20 — Dado un alta o una edición, entonces `audit_logs` registra las
       columnas nuevas dentro de `changes` en la misma transacción, igual que el
-      resto de la fila.
+      resto de la fila, **salvo `supplier_ruc`**, que se proyecta fuera con
+      `toAuditableExpense()`: la bitácora la leen `manager` y `audit` sin
+      `finance.read`, y un RUC `10…` lleva el DNI embebido (§10).
 - [ ] AC21 — Dados los gastos registrados antes de la migración, entonces el
       listado y el resumen los siguen devolviendo con `receipt: null` y sin
       error: no hay backfill y no hace falta ninguno.
@@ -206,6 +208,37 @@ infracción.
 editar un objeto literal con su test: ninguna otra pieza del spec depende de los
 valores concretos, solo de que la tabla exista. Es el mismo mecanismo que el
 D-12 del spec 023.
+
+#### 5.1.1 Resultado de T1 (2026-09-22) — **sigue sin verificar contra fuente**
+
+La sesión de implementación **tampoco tuvo acceso a la web ni a ninguna fuente
+normativa**: no hay herramienta de búsqueda ni de fetch habilitada, así que no se
+pudo abrir el TUO de la Ley del IGV, el Reglamento de Comprobantes de Pago ni
+ninguna resolución de SUNAT. T1 se cierra por la vía que el propio enunciado
+prevé —«si no se consigue confirmar, dejarlo escrito como tal y conservar los
+valores conservadores»— y **no** por la vía de dar la regla por buena.
+
+Lo único que se aporta es la lectura razonada que ya estaba en esta sección, sin
+cita y por tanto sin valor probatorio:
+
+- `recibo_honorarios` documenta rentas de **cuarta categoría** y no es un
+  comprobante afecto a IGV. Por eso queda con `carriesIgv: false`: calcularle un
+  18 % guardaría un número que no existe (D-5).
+- `boleta` sí es un comprobante afecto —lleva IGV incluido en el precio— pero la
+  regla general es que **no sustenta crédito fiscal**. Existen regímenes
+  especiales que admiten un porcentaje parcial, y es justamente lo que no se ha
+  podido contrastar. Se mantiene `grantsTaxCredit: false`.
+- `otro` es un cajón sin comprobante identificado: no se le calcula IGV ni se le
+  reconoce crédito.
+
+**Ninguna celda de la tabla cambia.** Los cuatro tipos se implementan con los
+valores conservadores de §5.1 tal cual. Quien tenga acceso a la normativa debe
+revisar esta tabla antes de que el sub-proyecto #4 (Impuestos) consuma
+`purchaseIgv.creditableCents`: hasta entonces el sistema **subdeclara** crédito
+fiscal, que es el sentido del error elegido a propósito. El efecto colateral de
+corregirla después está anotado en §10: `igv_cents` se calculó al guardar, así
+que abrir la afectación de un tipo exige un recálculo explícito sobre las filas
+ya registradas.
 
 Consecuencia para el usuario al aprobar: **este spec propone calcular
 `igv_cents` solo en los tipos afectos**, lo que es más estrecho que el §5 del
@@ -467,6 +500,30 @@ export const updateExpenseSchema = createExpenseSchema.partial().refine(/* sin c
 export type PurchaseReceiptInput = z.output<typeof purchaseReceiptSchema>;
 ```
 
+**Corrección durante la implementación (T8).** El comentario de arriba sobre
+`.partial()` **no se cumple en Zod 4** y se comprobó ejecutándolo: `.partial()`
+envuelve el campo en `optional` pero **el `default(null)` sigue rellenando la
+clave ausente**. Con la forma literal del spec, `updateExpenseSchema.parse({
+amountCents: 500 })` devolvía `{ amountCents: 500, receipt: null }` —es decir,
+«borra el comprobante» en cada `PATCH` que lo omite, rompiendo AC11— y
+`safeParse({})` pasaba a `success: true`, porque la clave rellenada hacía que el
+`refine` de «cuerpo vacío» viera una clave y dejara de disparar: una regresión
+sobre el comportamiento del spec 017.
+
+Se implementa **la intención declarada** —las tres semánticas: valor, `null`,
+ausente— con el mecanismo que sí la produce, redeclarando el campo sin default
+en el schema del PATCH:
+
+```ts
+export const updateExpenseSchema = createExpenseSchema
+  .partial()
+  .extend({ receipt: purchaseReceiptSchema.nullable().optional() })
+  .refine((value) => Object.keys(value).length > 0, { … });
+```
+
+Las dos propiedades quedan fijadas con tests en T9 (`'receipt' in parsed` es
+`false` al omitirlo, y `{}` sigue siendo cuerpo vacío).
+
 ### 6.2 Zod del formulario — `src/modules/finance/schemas/expense-form.schema.ts`
 
 Plano y con `superRefine`, siguiendo el precedente de
@@ -546,6 +603,11 @@ puede importar. Publicarlo sería una segunda fuente de la misma regla (AC16).
 - `src/modules/finance/lib/expense-receipt.ts` + `.test.ts` — **nuevo**:
   `toReceiptColumns()` y `resolveReceiptColumns()`, las dos piezas puras que
   traducen el `receipt` del contrato a las seis columnas y calculan el IGV.
+- `src/modules/finance/lib/expense-audit.ts` + `.test.ts` — **nuevo, añadido en
+  revisión**: `toAuditableExpense()`, la proyección positiva que deja
+  `supplier_ruc` fuera de `changes` en los tres `logAudit()` (§10). No estaba
+  previsto al redactar el spec; se añade por el mismo motivo y con el mismo patrón
+  que el `product-audit.ts` del spec 021.
 - `src/modules/finance/lib/igv.ts` — **sin cambios**: se importa `splitIgv()`.
 - `src/modules/orders/lib/peru-document.ts` — **sin cambios**: se importa
   `isValidRuc()` (D-11).
@@ -691,7 +753,7 @@ Orden de dependencia: verificación normativa → catálogo puro → esquema →
 migración → lógica pura → schemas → tipos y copys → repositorio → handlers → UI
 → documentación → cierre.
 
-- [ ] **T1** — **Bloqueante.** Confirmar contra la normativa SUNAT vigente, por
+- [x] **T1** — **Bloqueante.** Confirmar contra la normativa SUNAT vigente, por
       cada uno de los cuatro tipos: (a) si el comprobante es afecto a IGV y por
       tanto tiene un 18 % contenido que desglosar, y (b) si ese IGV otorga
       derecho a crédito fiscal a un comprador con RUC. Prestar atención expresa
@@ -702,34 +764,34 @@ migración → lógica pura → schemas → tipos y copys → repositorio → ha
       como tal y conservar los valores conservadores · archivo:
       `docs/specs/024-egresos-credito-fiscal.md` · verificación: la tabla de
       §5.1 cita su fuente o declara que sigue sin verificar
-- [ ] **T2** — Catálogo puro con `PURCHASE_RECEIPT_TYPES`,
+- [x] **T2** — Catálogo puro con `PURCHASE_RECEIPT_TYPES`,
       `PURCHASE_RECEIPT_RULES` (con los valores que fije T1),
       `carriesIgv()`, `grantsTaxCredit()`, `TAX_CREDIT_RECEIPT_TYPES` y
       `PURCHASE_RECEIPT_TYPE_LABELS` según §5.3 · archivo:
       `src/lib/purchase-receipts.ts` · verificación: `npm run typecheck`
-- [ ] **T3** — Tests del catálogo: la tabla cubre los cuatro tipos sin huecos;
+- [x] **T3** — Tests del catálogo: la tabla cubre los cuatro tipos sin huecos;
       `TAX_CREDIT_RECEIPT_TYPES` contiene exactamente los de
       `grantsTaxCredit: true` y **se deriva**, no está escrita a mano (un tipo
       que cambie de bandera cambia la lista sin tocarla); ningún tipo tiene
       `grantsTaxCredit: true` con `carriesIgv: false`, que sería crédito fiscal
       sobre un impuesto inexistente; y las etiquetas están completas · archivo:
       `src/lib/purchase-receipts.test.ts` · verificación: `npm test`
-- [ ] **T4** — Enum `purchase_receipt_type` derivado del catálogo, las seis
+- [x] **T4** — Enum `purchase_receipt_type` derivado del catálogo, las seis
       columnas y los cuatro `CHECK` de §5.2; exportar el enum desde el barrel ·
       archivos: `src/server/db/schema/expense.ts`,
       `src/server/db/schema/index.ts` · verificación: `npm run typecheck`
-- [ ] **T5** — Generar la migración y **leer el SQL antes de aplicarlo**: debe
+- [x] **T5** — Generar la migración y **leer el SQL antes de aplicarlo**: debe
       crear el tipo, añadir seis columnas nullable y cuatro constraints a
       `expenses`, y nada más; en particular, ninguna columna `NOT NULL` sin
       default sobre una tabla con filas, y ningún `DROP` · comandos:
       `npm run db:generate` y `npm run db:migrate` · verificación: el archivo
       `drizzle/0012_*.sql` leído + `npm run db:studio` mostrando las columnas en
       `null` en los gastos existentes (AC21)
-- [ ] **T6** — `toReceiptColumns()` y `resolveReceiptColumns()` según §7.1,
+- [x] **T6** — `toReceiptColumns()` y `resolveReceiptColumns()` según §7.1,
       apoyadas en `splitIgv()` y en `carriesIgv()` · archivo:
       `src/modules/finance/lib/expense-receipt.ts` · verificación:
       `npm run typecheck`
-- [ ] **T7** — Tests de `expense-receipt`: `toReceiptColumns(null, …)` devuelve
+- [x] **T7** — Tests de `expense-receipt`: `toReceiptColumns(null, …)` devuelve
       las seis en `null`; un tipo afecto con `11800` da `igvCents: 1800` y
       `amount − igv === round(amount / 1.18)`; un tipo no afecto da
       `igvCents: null` conservando proveedor y serie (AC8); el importe mínimo
@@ -740,11 +802,11 @@ migración → lógica pura → schemas → tipos y copys → repositorio → ha
       (AC10); y sobre un gasto sin comprobante con `receipt` omitido no inventa
       ninguno · archivo: `src/modules/finance/lib/expense-receipt.test.ts` ·
       verificación: `npm test`
-- [ ] **T8** — `purchaseReceiptSchema` y el campo `receipt` en
+- [x] **T8** — `purchaseReceiptSchema` y el campo `receipt` en
       `createExpenseSchema` / `updateExpenseSchema` según §6.1 · archivo:
       `src/modules/finance/schemas/finance.schema.ts` · verificación:
       `npm run typecheck`
-- [ ] **T9** — Tests de los schemas: un alta sin `receipt` pasa y produce
+- [x] **T9** — Tests de los schemas: un alta sin `receipt` pasa y produce
       `receipt: null` (AC3); un RUC con el dígito verificador cambiado, uno de
       diez dígitos y uno con prefijo `11` fallan (AC4); un `receipt` sin `type`,
       sin `supplierRuc` o sin `supplierName` falla (AC5); serie sin número falla
@@ -754,34 +816,34 @@ migración → lógica pura → schemas → tipos y copys → repositorio → ha
       `receipt: null` de `receipt` ausente · archivo:
       `src/modules/finance/schemas/finance.schema.test.ts` · verificación:
       `npm test`
-- [ ] **T10** — Campos del formulario y `superRefine` según §6.2 · archivo:
+- [x] **T10** — Campos del formulario y `superRefine` según §6.2 · archivo:
       `src/modules/finance/schemas/expense-form.schema.ts` · verificación:
       `npm run typecheck`
-- [ ] **T11** — Tests del schema del formulario: con `hasReceipt: false` un RUC
+- [x] **T11** — Tests del schema del formulario: con `hasReceipt: false` un RUC
       vacío o basura **pasa** —los campos ocultos no se validan—; con
       `hasReceipt: true` el RUC inválido falla y el error cuelga de
       `['supplierRuc']`, no de la raíz; y el par serie-número se exige junto ·
       archivo: `src/modules/finance/schemas/expense-form.schema.test.ts` ·
       verificación: `npm test`
-- [ ] **T12** — `ExpenseReceipt`, `PurchaseIgvTotals` y los dos tipos ampliados
+- [x] **T12** — `ExpenseReceipt`, `PurchaseIgvTotals` y los dos tipos ampliados
       según §6.3 · archivo: `src/modules/finance/types/finance.types.ts` ·
       verificación: `npm run typecheck`
-- [ ] **T13** — Copys: título y subtítulo de la card, etiqueta de «sin derecho a
+- [x] **T13** — Copys: título y subtítulo de la card, etiqueta de «sin derecho a
       crédito fiscal», estado vacío del período sin comprobantes, rótulo del
       interruptor y las ayudas de los campos del comprobante —incluida la que
       advierte de que el IGV lo calcula el sistema y no se teclea— · archivo:
       `src/modules/finance/constants.ts` · verificación: `npm run typecheck`
-- [ ] **T14** — Repositorio: proyectar el comprobante en `findManyExpenses()`
+- [x] **T14** — Repositorio: proyectar el comprobante en `findManyExpenses()`
       como objeto `receipt` (o `null` cuando `receipt_type` lo sea), sin añadir
       ninguna consulta ni tocar el `innerJoin` ni el orden existentes · archivo:
       `src/server/repositories/finance.repository.ts` · verificación:
       `npm run typecheck`
-- [ ] **T15** — Repositorio: los cuatro agregados de §5.4 dentro de
+- [x] **T15** — Repositorio: los cuatro agregados de §5.4 dentro de
       `findExpenseTotals()`, con `inArray` sobre `TAX_CREDIT_RECEIPT_TYPES` y el
       `::bigint` + `Number()` de las sumas (017, D-11) · archivo:
       `src/server/repositories/finance.repository.ts` · verificación:
       `npm run typecheck`
-- [ ] **T16** — Tests del repositorio con `PgDialect`, patrón exacto del
+- [x] **T16** — Tests del repositorio con `PgDialect`, patrón exacto del
       existente: el SQL de `findExpenseTotals` renderiza los cuatro agregados con
       `filter (where …)`, el `in` lleva los tipos elegibles como parámetros y no
       interpolados, el `WHERE` del rango sigue siendo el de
@@ -789,34 +851,38 @@ migración → lógica pura → schemas → tipos y copys → repositorio → ha
       de `findManyExpenses` incluye las seis columnas nuevas · archivo:
       `src/server/repositories/finance.repository.test.ts` · verificación:
       `npm test`
-- [ ] **T17** — `POST /api/admin/expenses`: construir las columnas con
+- [x] **T17** — `POST /api/admin/expenses`: construir las columnas con
       `toReceiptColumns(body.data.receipt, body.data.amountCents)` dentro de la
       transacción que ya existe, sin tocar `logAudit` ni la respuesta
       `ExpenseMutated` · archivo: `src/app/api/admin/expenses/route.ts` ·
       verificación: `npm run build`
-- [ ] **T18** — `PATCH /api/admin/expenses/[id]`: pasar el `before` ya leído por
+      · **corrección en revisión**: el «sin tocar `logAudit`» de esta tarea era un
+      error del spec. `changes` guardaba la fila entera y la fila ahora trae
+      `supplier_ruc`, así que los tres `logAudit()` de este spec pasan por
+      `toAuditableExpense()` (§10). La tarea sí toca `logAudit`, y debía.
+- [x] **T18** — `PATCH /api/admin/expenses/[id]`: pasar el `before` ya leído por
       el `tx` a `resolveReceiptColumns()` y añadir sus columnas al `UPDATE` solo
       cuando devuelva algo, dejando intacto el `404` y el `changes` de la
       bitácora · archivo: `src/app/api/admin/expenses/[id]/route.ts` ·
       verificación: `npm run build`
-- [ ] **T19** — `GET /api/admin/finance/summary`: derivar `nonCreditable*` por
+- [x] **T19** — `GET /api/admin/finance/summary`: derivar `nonCreditable*` por
       resta entera y publicar `purchaseIgv` en `data`, sin añadir ninguna
       consulta al `Promise.all` · archivo:
       `src/app/api/admin/finance/summary/route.ts` · verificación:
       `npm run build`
-- [ ] **T20** — Card «IGV de compras» como cuarta tarjeta de la rejilla, con
+- [x] **T20** — Card «IGV de compras» como cuarta tarjeta de la rejilla, con
       `formatPrice`, la cifra con derecho a crédito como valor principal, el
       recuento de comprobantes y la línea del IGV sin derecho cuando lo hay; su
       esqueleto y su estado de error entran en los que el componente ya tiene
       (AC14, AC15) · archivo:
       `src/modules/finance/components/finance-summary-cards.tsx` ·
       verificación: `npm run typecheck`
-- [ ] **T21** — Columna «Comprobante» con la etiqueta del tipo y `serie-número`
+- [x] **T21** — Columna «Comprobante» con la etiqueta del tipo y `serie-número`
       debajo, la razón social del proveedor bajo el concepto y el IGV bajo el
       importe; guion con texto accesible en las filas sin comprobante (AC19) ·
       archivo: `src/modules/finance/components/expense-columns.tsx` ·
       verificación: `npm run typecheck`
-- [ ] **T22** — Formulario: `Switch` «¿Tiene comprobante?» (el componente ya
+- [x] **T22** — Formulario: `Switch` «¿Tiene comprobante?» (el componente ya
       está en `src/components/ui/switch.tsx`, verificado), los cinco campos en
       un bloque que se **desmonta** al apagarlo, y un `onSubmit` que arma
       `receipt` solo cuando el interruptor está encendido y manda `null` cuando
@@ -824,14 +890,14 @@ migración → lógica pura → schemas → tipos y copys → repositorio → ha
       tenía comprobante · archivo:
       `src/modules/finance/components/expense-form-dialog.tsx` ·
       verificación: `npm run typecheck`
-- [ ] **T23** — Encabezado de `/admin/finance`: una línea que diga que el IGV de
+- [x] **T23** — Encabezado de `/admin/finance`: una línea que diga que el IGV de
       compras es informativo y no entra en el resultado del período · archivo:
       `src/app/(admin)/admin/finance/page.tsx` · verificación: `npm run build`
-- [ ] **T24** — Documentar en `docs/SETUP.md`: §5.3 las seis columnas, el enum
+- [x] **T24** — Documentar en `docs/SETUP.md`: §5.3 las seis columnas, el enum
       `purchase_receipt_type`, los cuatro `CHECK` y la migración `0012`; §6 la
       card de IGV de compras, la regla de elegibilidad y dónde vive, y que no hay
       permisos nuevos · archivo: `docs/SETUP.md` · verificación: lectura
-- [ ] **T25** — Cierre:
+- [x] **T25** — Cierre:
       `npm run typecheck && npm run lint && npm test && npm run build` en verde y
       recorrido manual contra Neon real de AC3, AC6, AC8, AC9, AC10, AC13, AC14 y
       AC21 con una cuenta `super_admin`. El recorrido manual no es opcional: el
@@ -860,13 +926,20 @@ migración → lógica pura → schemas → tipos y copys → repositorio → ha
   comprobantes se ve como un mes sin crédito fiscal. No hay forma de distinguir
   «no hubo facturas» de «nadie las anotó», igual que el 017 ya advirtió para los
   gastos mismos.
-- **El RUC del proveedor entra en `audit_logs`.** `expense.created`,
-  `expense.updated` y `expense.deleted` guardan la fila completa en `changes`, y
-  ahora la fila incluye `supplier_ruc` y `supplier_name`. Un RUC que empieza por
-  `10` es el de una persona natural, así que hay un dato personal en una bitácora
-  append-only. No se enmascara —es el contenido auditado, y el 017 tomó la misma
-  decisión con `concept`— pero se anota: la bitácora hereda la sensibilidad del
-  campo nuevo. `ExpenseMutated` se deja sin ampliar por lo mismo (§6).
+- **El RUC del proveedor NO entra en `audit_logs`.** Los tres `logAudit()` de
+  `expense.created`, `expense.updated` y `expense.deleted` guardaban la fila
+  completa en `changes`, y la fila ahora incluye `supplier_ruc`. Eso era una fuga:
+  `/admin/audit-logs` lo leen `manager` y `audit` —tienen `audit_logs.read` y no
+  `finance.read`— y `audit-log-columns.tsx` pinta `changes` sin redacción; un RUC
+  que empieza por `10` es el de una persona natural y lleva el DNI en sus ocho
+  primeros dígitos, así que es PII y no solo un identificador tributario. Se cierra
+  con `toAuditableExpense()` en `src/modules/finance/lib/expense-audit.ts`, una
+  proyección **positiva** —enumera lo que sale— igual que el `toAuditableProduct()`
+  del spec 021 (D-9) y por el mismo motivo que el spec 018 (D-8) con los sueldos.
+  `supplier_name` sí se conserva: es una razón social, no un documento de
+  identidad, y sin él la bitácora no diría de qué proveedor se habla.
+  `ExpenseMutated` se deja sin ampliar por lo mismo (§6), así que el RUC no sale
+  por ninguna de las dos puertas.
 - **El `CHECK` de IGV no atrapa un IGV desfasado.** `igv_cents < amount_cents`
   descarta lo absurdo, no lo simplemente viejo: un IGV del importe anterior
   seguiría cumpliéndolo. Por eso D-7 recalcula en el `PATCH`, y por eso AC9 es un
@@ -902,7 +975,11 @@ migración → lógica pura → schemas → tipos y copys → repositorio → ha
   cuatro permisos, el mismo `authorize()` en la primera línea de cada verbo. Lo
   que cambia es la sensibilidad del contenido —identificadores tributarios de
   terceros—, que refuerza el D-3 del 017: solo `super_admin` y `admin` leen este
-  módulo, `manager` y `audit` no.
+  módulo, `manager` y `audit` no. Esa afirmación solo es cierta porque el RUC no
+  llega a `audit_logs`: la bitácora sí la leen `manager` y `audit`, y era la única
+  puerta por la que el dato salía del módulo. La cierra `toAuditableExpense()`
+  (bullet anterior); sin ella, «`manager` y `audit` no leen este módulo» sería
+  falso para el campo más sensible que el spec añade.
 - **Sin caché.** Igual que el resto del panel: vista autenticada, por usuario y
   con el resultado del negocio; nada de `revalidate` ni `s-maxage`.
 

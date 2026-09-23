@@ -5,8 +5,15 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { formatPrice } from '@/modules/products/lib/price';
 
-import { FINANCE_SUMMARY_ERROR_MESSAGE, NO_REVENUE_MESSAGE } from '../constants';
-import type { FinanceSummary } from '../types/finance.types';
+import {
+  EMPTY_PURCHASE_IGV_MESSAGE,
+  FINANCE_SUMMARY_ERROR_MESSAGE,
+  NO_REVENUE_MESSAGE,
+  PURCHASE_IGV_CARD_TITLE,
+  PURCHASE_IGV_CREDITABLE_LABEL,
+  PURCHASE_IGV_NON_CREDITABLE_LABEL,
+} from '../constants';
+import type { FinanceSummary, PurchaseIgvTotals } from '../types/finance.types';
 
 const percentFormatter = new Intl.NumberFormat('es-PE', {
   maximumFractionDigits: 1,
@@ -64,6 +71,39 @@ function NetResult({ netCents, marginPercent }: Pick<FinanceSummary, 'netCents' 
   );
 }
 
+// Los dos números **nunca** se presentan sumados (AC14, D-10): el valor principal de la
+// card es solo el que da derecho a crédito fiscal, y el resto se publica aparte con su
+// propia etiqueta. Un único total invitaría a descontar IGV de boletas, que es
+// exactamente la infracción que la regla evita.
+function PurchaseIgvFooter({ purchaseIgv }: { purchaseIgv: PurchaseIgvTotals }) {
+  const { creditableCount, nonCreditableCents, nonCreditableCount } = purchaseIgv;
+
+  // Los dos recuentos solo cuentan filas con `igv_cents is not null`, así que esta rama
+  // significa «no hay IGV de compras que mostrar», no «no hay comprobantes»: un rango de
+  // puros recibos por honorarios entra aquí con sus comprobantes declarados. El copy lo
+  // dice así. No es un error ni una carga: es S/ 0.00 con su estado vacío (AC15).
+  if (creditableCount === 0 && nonCreditableCount === 0) {
+    return <p className="text-muted-foreground text-xs">{EMPTY_PURCHASE_IGV_MESSAGE}</p>;
+  }
+
+  return (
+    <div className="text-muted-foreground space-y-0.5 text-xs">
+      <p>
+        {PURCHASE_IGV_CREDITABLE_LABEL} · {creditableCount}{' '}
+        {creditableCount === 1 ? 'comprobante' : 'comprobantes'}
+      </p>
+      {/* La línea solo aparece cuando hay algo que decir: sin IGV no deducible, una
+          línea con S/ 0.00 sería ruido. */}
+      {nonCreditableCount > 0 ? (
+        <p>
+          {PURCHASE_IGV_NON_CREDITABLE_LABEL}: {formatPrice(nonCreditableCents)} ·{' '}
+          {nonCreditableCount} {nonCreditableCount === 1 ? 'comprobante' : 'comprobantes'}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
 function SummaryCardSkeleton() {
   return (
     <Card>
@@ -112,7 +152,8 @@ export function FinanceSummaryCards({
 
   if (isLoading || !summary) {
     return (
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <SummaryCardSkeleton />
         <SummaryCardSkeleton />
         <SummaryCardSkeleton />
         <SummaryCardSkeleton />
@@ -121,7 +162,7 @@ export function FinanceSummaryCards({
   }
 
   return (
-    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
       <SummaryCard
         title="Ingresos por ventas"
         value={formatPrice(summary.revenueCents)}
@@ -147,6 +188,13 @@ export function FinanceSummaryCards({
         footer={
           <NetResult netCents={summary.netCents} marginPercent={summary.marginPercent} />
         }
+      />
+      {/* Cuarta tarjeta y no un sumando del resultado: el IGV de compras es el insumo
+          del crédito fiscal, no un gasto más (§3). */}
+      <SummaryCard
+        title={PURCHASE_IGV_CARD_TITLE}
+        value={formatPrice(summary.purchaseIgv.creditableCents)}
+        footer={<PurchaseIgvFooter purchaseIgv={summary.purchaseIgv} />}
       />
     </div>
   );

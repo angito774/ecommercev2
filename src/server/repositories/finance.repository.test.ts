@@ -2,7 +2,14 @@ import { SQL } from 'drizzle-orm';
 import { PgDialect } from 'drizzle-orm/pg-core';
 import { describe, expect, it } from 'vitest';
 
-import { buildExpenseFilters, findSalesTotals } from './finance.repository';
+import { TAX_CREDIT_RECEIPT_TYPES } from '@/lib/purchase-receipts';
+
+import {
+  buildExpenseFilters,
+  findExpenseTotals,
+  findManyExpenses,
+  findSalesTotals,
+} from './finance.repository';
 
 // El dialecto real compila el árbol a texto y parámetros, así que las aserciones miran
 // el SQL que llegaría a Postgres en vez de la forma interna del objeto. Sin mocks:
@@ -149,5 +156,242 @@ describe('findSalesTotals', () => {
     const query = captureSalesQuery(RANGE_INSTANTS);
 
     expect(query.sql).not.toContain('"expenses"');
+  });
+});
+
+// ── IGV de compras (spec 024) ───────────────────────────────────────────────
+
+// Mismo sumidero que `captureSalesQuery`, pero guardando además el objeto de campos del
+// `select`: los cuatro agregados son plantillas `sql` y se compilan una a una, que es
+// exactamente el texto que llegaría a Postgres.
+function captureExpenseTotals(range: { fromDay: string; toDay: string }) {
+  let fields: Record<string, SQL> | undefined;
+  let where: SQL | undefined;
+  let grouped = false;
+
+  const chain = {
+    where: (condition: SQL) => {
+      where = condition;
+      return Promise.resolve([]);
+    },
+    groupBy: () => {
+      grouped = true;
+      return chain;
+    },
+  };
+
+  const reader = {
+    select: (selected: Record<string, SQL>) => {
+      fields = selected;
+      return { from: () => chain };
+    },
+  };
+
+  void findExpenseTotals(range, reader as never);
+
+  if (!fields || !where) throw new Error('findExpenseTotals no construyó la consulta');
+  return { fields, where, grouped };
+}
+
+const renderField = (fields: Record<string, SQL>, key: string) =>
+  dialect.sqlToQuery(fields[key]);
+
+describe('findExpenseTotals — agregados de IGV', () => {
+  it('keeps the two totals that already existed', () => {
+    const { fields } = captureExpenseTotals(RANGE);
+
+    expect(fields).toHaveProperty('expensesCents');
+    expect(fields).toHaveProperty('expenseCount');
+  });
+
+  it('adds the four IGV aggregates of §5.4', () => {
+    const { fields } = captureExpenseTotals(RANGE);
+
+    expect(Object.keys(fields)).toEqual(
+      expect.arrayContaining([
+        'igvCreditableCents',
+        'igvCreditableCount',
+        'igvTotalCents',
+        'igvCount',
+      ]),
+    );
+  });
+
+  it('renders the creditable sum as a conditional aggregate with FILTER', () => {
+    const query = renderField(captureExpenseTotals(RANGE).fields, 'igvCreditableCents');
+
+    expect(query.sql).toContain('filter (where');
+    expect(query.sql).toContain('"igv_cents"');
+  });
+
+  it('renders the creditable count with FILTER too', () => {
+    const query = renderField(captureExpenseTotals(RANGE).fields, 'igvCreditableCount');
+
+    expect(query.sql).toContain('filter (where');
+  });
+
+  it('counts only rows whose IGV was actually computed, not every eligible row', () => {
+    const query = renderField(captureExpenseTotals(RANGE).fields, 'igvCreditableCount');
+
+    expect(query.sql).toContain('"igv_cents" is not null');
+  });
+
+  it('restricts the creditable aggregates by receipt_type', () => {
+    const query = renderField(captureExpenseTotals(RANGE).fields, 'igvCreditableCents');
+
+    expect(query.sql).toContain('"receipt_type"');
+  });
+
+  // AC16: el SQL lee la misma regla que la vista, y los valores viajan como parámetros.
+  it('sends the eligible types as parameters, never inlined into the SQL text', () => {
+    const query = renderField(captureExpenseTotals(RANGE).fields, 'igvCreditableCents');
+
+    expect(query.params).toEqual([...TAX_CREDIT_RECEIPT_TYPES]);
+    expect(query.sql).not.toContain('factura');
+  });
+
+  it('derives the eligible list from the catalogue, so SQL and view cannot disagree (AC16)', () => {
+    const query = renderField(captureExpenseTotals(RANGE).fields, 'igvCreditableCount');
+
+    expect(query.params).toEqual([...TAX_CREDIT_RECEIPT_TYPES]);
+  });
+
+  // El total del período no filtra por tipo: la resta del handler es la que separa lo no
+  // deducible, y si este agregado llevara el `in` la resta daría siempre cero.
+  it('sums every computed IGV in the total, with no receipt_type restriction', () => {
+    const query = renderField(captureExpenseTotals(RANGE).fields, 'igvTotalCents');
+
+    expect(query.sql).toContain('"igv_cents"');
+    expect(query.sql).not.toContain('"receipt_type"');
+  });
+
+  it('counts every row with a computed IGV in igvCount, with no receipt_type restriction', () => {
+    const query = renderField(captureExpenseTotals(RANGE).fields, 'igvCount');
+
+    expect(query.sql).toContain('"igv_cents" is not null');
+    expect(query.sql).not.toContain('"receipt_type"');
+  });
+
+  // 017 D-11: `sum(int4)` desborda el int4 y el driver entrega los bigint como texto.
+  it('casts both IGV sums to bigint, like every other sum of the module', () => {
+    const { fields } = captureExpenseTotals(RANGE);
+
+    expect(renderField(fields, 'igvCreditableCents').sql).toContain('::bigint');
+    expect(renderField(fields, 'igvTotalCents').sql).toContain('::bigint');
+  });
+
+  it('coalesces both IGV sums to 0: a range with no receipts is a number, not null (AC15)', () => {
+    const { fields } = captureExpenseTotals(RANGE);
+
+    expect(renderField(fields, 'igvCreditableCents').sql).toContain('coalesce');
+    expect(renderField(fields, 'igvTotalCents').sql).toContain('coalesce');
+  });
+
+  it('casts both counts to int', () => {
+    const { fields } = captureExpenseTotals(RANGE);
+
+    expect(renderField(fields, 'igvCreditableCount').sql).toContain('::int');
+    expect(renderField(fields, 'igvCount').sql).toContain('::int');
+  });
+
+  // El WHERE es el mismo de siempre: los agregados no pueden ensanchar ni estrechar el
+  // rango, porque salen de la misma pasada (D-9).
+  it('keeps the range WHERE of buildExpenseFilters untouched', () => {
+    const { where } = captureExpenseTotals(RANGE);
+    const query = dialect.sqlToQuery(where);
+
+    expect(query.sql).toMatch(/"incurred_on" >= \$\d/);
+    expect(query.sql).toMatch(/"incurred_on" <= \$\d/);
+    expect(query.params).toEqual(['2026-09-01', '2026-09-30']);
+  });
+
+  it('never filters the summary by category, not even with the new aggregates (AC17)', () => {
+    const query = dialect.sqlToQuery(captureExpenseTotals(RANGE).where);
+
+    expect(query.sql).not.toContain('"category"');
+  });
+
+  // Sin `GROUP BY` no entra en la clase de bug del 42803 que documenta el spec 015.
+  it('has no GROUP BY: the four FILTER aggregates come from a single ungrouped row', () => {
+    expect(captureExpenseTotals(RANGE).grouped).toBe(false);
+  });
+});
+
+// El listado proyecta las seis columnas nuevas desde el mismo SELECT: ni una consulta
+// más, ni un N+1 (§10).
+function captureExpenseListSelects() {
+  const selects: Record<string, unknown>[] = [];
+
+  const chain: Record<string, unknown> = {};
+  for (const method of ['innerJoin', 'where', 'orderBy', 'limit', 'offset']) {
+    chain[method] = () => chain;
+  }
+  // Thenable, para que el `await Promise.all` de la función resuelva sin base de datos.
+  chain.then = (resolve: (rows: unknown[]) => void) => resolve([]);
+
+  const reader = {
+    select: (selected: Record<string, unknown>) => {
+      selects.push(selected);
+      return { from: () => chain };
+    },
+  };
+
+  void findManyExpenses(
+    { page: 1, pageSize: 20, category: 'all' } as never,
+    RANGE,
+    reader as never,
+  );
+
+  return selects;
+}
+
+describe('findManyExpenses — proyección del comprobante', () => {
+  const RECEIPT_KEYS = [
+    'receiptType',
+    'supplierRuc',
+    'supplierName',
+    'receiptSeries',
+    'receiptNumber',
+    'igvCents',
+  ];
+
+  it('selects the six new columns in the listing query', () => {
+    const [rowSelect] = captureExpenseListSelects();
+
+    expect(Object.keys(rowSelect)).toEqual(expect.arrayContaining(RECEIPT_KEYS));
+  });
+
+  it('maps each key to its own physical column', () => {
+    const [rowSelect] = captureExpenseListSelects();
+    const expected: Record<string, string> = {
+      receiptType: 'receipt_type',
+      supplierRuc: 'supplier_ruc',
+      supplierName: 'supplier_name',
+      receiptSeries: 'receipt_series',
+      receiptNumber: 'receipt_number',
+      igvCents: 'igv_cents',
+    };
+
+    for (const [key, column] of Object.entries(expected)) {
+      expect((rowSelect[key] as { name: string }).name).toBe(column);
+    }
+  });
+
+  it('keeps the columns the listing already selected', () => {
+    const [rowSelect] = captureExpenseListSelects();
+
+    expect(Object.keys(rowSelect)).toEqual(
+      expect.arrayContaining(['id', 'concept', 'amountCents', 'category', 'incurredOn']),
+    );
+  });
+
+  it('adds no extra query: still the rows read plus the count', () => {
+    expect(captureExpenseListSelects()).toHaveLength(2);
+  });
+
+  it('keeps the count query free of the receipt columns: the filters live in expenses', () => {
+    const [, countSelect] = captureExpenseListSelects();
+
+    expect(Object.keys(countSelect)).toEqual(['value']);
   });
 });

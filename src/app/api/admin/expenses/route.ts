@@ -3,6 +3,8 @@ import { NextResponse } from 'next/server';
 import { authorize, badRequest, parseJsonBody, toErrorResponse } from '@/lib/api-guard';
 import { getAuditContext, logAudit } from '@/lib/audit';
 import { can } from '@/lib/permissions';
+import { toAuditableExpense } from '@/modules/finance/lib/expense-audit';
+import { toReceiptColumns } from '@/modules/finance/lib/expense-receipt';
 import { resolveFinanceRange } from '@/modules/finance/lib/finance-range';
 import {
   createExpenseSchema,
@@ -69,11 +71,19 @@ export async function POST(request: Request) {
     const body = await parseJsonBody(request, createExpenseSchema, 'Datos del gasto inválidos');
     if (!body.ok) return body.response;
 
+    const { receipt, ...expenseValues } = body.data;
+
+    // El IGV se calcula en el servidor, nunca lo teclea ni lo envía el cliente (AC7).
+    // Sin comprobante, las seis columnas quedan en `null` y el gasto se registra
+    // exactamente igual que antes de este spec (AC3).
+    const receiptColumns = toReceiptColumns(receipt, expenseValues.amountCents);
+
     // La fila y su entrada de bitácora en la misma transacción: si el INSERT falla, no
     // queda ninguna de las dos (D-15, AC14).
     const created = await db.transaction(async (tx) => {
       const expense = await financeRepository.createExpense(tx, {
-        ...body.data,
+        ...expenseValues,
+        ...receiptColumns,
         // Lo pone el servidor a partir de la sesión, nunca el cuerpo: quien registra el
         // gasto es quien está autenticado.
         createdById: actor.id,
@@ -84,7 +94,10 @@ export async function POST(request: Request) {
         action: 'expense.created',
         entityType: 'expense',
         entityId: expense.id,
-        changes: { before: null, after: expense },
+        // La fila pasa por la proyección: `manager` y `audit` leen la bitácora con
+        // `audit_logs.read` y no tienen `finance.read`, y `supplier_ruc` de una persona
+        // natural lleva su DNI embebido. Mismo criterio que el spec 021 (D-9).
+        changes: { before: null, after: toAuditableExpense(expense) },
         context: getAuditContext(request),
       });
 

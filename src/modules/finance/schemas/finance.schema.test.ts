@@ -6,8 +6,19 @@ import {
   expenseQuerySchema,
   financeRangeSchema,
   MAX_EXPENSE_AMOUNT_CENTS,
+  purchaseReceiptSchema,
   updateExpenseSchema,
 } from './finance.schema';
+
+// RUC reales en forma —pasan el módulo 11— y sin relación con ningún contribuyente
+// concreto: lo que se prueba es la aritmética, no el padrón.
+const VALID_RUC = '20100128056';
+
+const VALID_RECEIPT = {
+  type: 'factura',
+  supplierRuc: VALID_RUC,
+  supplierName: 'Proveedor SAC',
+} as const;
 
 describe('financeRangeSchema', () => {
   it('accepts an empty query and leaves both bounds undefined (AC4)', () => {
@@ -79,6 +90,162 @@ describe('expenseQuerySchema', () => {
   });
 });
 
+describe('purchaseReceiptSchema', () => {
+  it('accepts a well-formed receipt with no series-number pair (AC12)', () => {
+    expect(purchaseReceiptSchema.parse(VALID_RECEIPT)).toEqual(VALID_RECEIPT);
+  });
+
+  it('accepts the four types of the catalogue', () => {
+    for (const type of ['factura', 'boleta', 'recibo_honorarios', 'otro']) {
+      expect(purchaseReceiptSchema.safeParse({ ...VALID_RECEIPT, type }).success).toBe(true);
+    }
+  });
+
+  it('rejects a type outside the catalogue', () => {
+    expect(
+      purchaseReceiptSchema.safeParse({ ...VALID_RECEIPT, type: 'guia_remision' }).success,
+    ).toBe(false);
+  });
+
+  // AC5: el comprobante viaja completo o no viaja. Cada caso se construye con los dos
+  // campos que sí van, en vez de desestructurar para descartar uno.
+  it('rejects a receipt with no type (AC5)', () => {
+    expect(
+      purchaseReceiptSchema.safeParse({
+        supplierRuc: VALID_RUC,
+        supplierName: 'Proveedor SAC',
+      }).success,
+    ).toBe(false);
+  });
+
+  it('rejects a receipt with no supplierRuc (AC5)', () => {
+    expect(
+      purchaseReceiptSchema.safeParse({ type: 'factura', supplierName: 'Proveedor SAC' }).success,
+    ).toBe(false);
+  });
+
+  it('rejects a receipt with no supplierName (AC5)', () => {
+    expect(
+      purchaseReceiptSchema.safeParse({ type: 'factura', supplierRuc: VALID_RUC }).success,
+    ).toBe(false);
+  });
+
+  // AC4: el dígito verificador, reutilizado de `isValidRuc()` del spec 022.
+  it('rejects a RUC whose check digit was changed (AC4)', () => {
+    expect(
+      purchaseReceiptSchema.safeParse({ ...VALID_RECEIPT, supplierRuc: '20100128057' }).success,
+    ).toBe(false);
+  });
+
+  it('rejects a RUC of ten digits (AC4)', () => {
+    expect(
+      purchaseReceiptSchema.safeParse({ ...VALID_RECEIPT, supplierRuc: '2010012805' }).success,
+    ).toBe(false);
+  });
+
+  it('rejects a RUC whose prefix is not a taxpayer type, like 11 (AC4)', () => {
+    expect(
+      purchaseReceiptSchema.safeParse({ ...VALID_RECEIPT, supplierRuc: '11100128056' }).success,
+    ).toBe(false);
+  });
+
+  it('rejects a RUC with letters (AC4)', () => {
+    expect(
+      purchaseReceiptSchema.safeParse({ ...VALID_RECEIPT, supplierRuc: '2010012805X' }).success,
+    ).toBe(false);
+  });
+
+  it('hangs the RUC error on its own field, not on the root', () => {
+    const parsed = purchaseReceiptSchema.safeParse({
+      ...VALID_RECEIPT,
+      supplierRuc: '20100128057',
+    });
+
+    expect(parsed.success).toBe(false);
+    expect(parsed.error?.issues[0]?.path).toEqual(['supplierRuc']);
+  });
+
+  it('rejects a supplier name of two characters', () => {
+    expect(purchaseReceiptSchema.safeParse({ ...VALID_RECEIPT, supplierName: 'ab' }).success).toBe(
+      false,
+    );
+  });
+
+  it('rejects a supplier name of 161 characters', () => {
+    expect(
+      purchaseReceiptSchema.safeParse({ ...VALID_RECEIPT, supplierName: 'a'.repeat(161) }).success,
+    ).toBe(false);
+  });
+
+  it('trims the surrounding whitespace of the supplier name', () => {
+    const parsed = purchaseReceiptSchema.parse({
+      ...VALID_RECEIPT,
+      supplierName: '  Proveedor SAC  ',
+    });
+
+    expect(parsed.supplierName).toBe('Proveedor SAC');
+  });
+
+  it('uppercases the series: the paper prints F001, not f001', () => {
+    const parsed = purchaseReceiptSchema.parse({
+      ...VALID_RECEIPT,
+      series: 'f001',
+      number: '00001234',
+    });
+
+    expect(parsed.series).toBe('F001');
+  });
+
+  it('keeps the leading zeros of the correlative: it is a string, not an integer (D-14)', () => {
+    const parsed = purchaseReceiptSchema.parse({
+      ...VALID_RECEIPT,
+      series: 'F001',
+      number: '00001234',
+    });
+
+    expect(parsed.number).toBe('00001234');
+  });
+
+  it('rejects a series of five characters', () => {
+    expect(
+      purchaseReceiptSchema.safeParse({ ...VALID_RECEIPT, series: 'F0011', number: '1' }).success,
+    ).toBe(false);
+  });
+
+  it('rejects a correlative that is not digits', () => {
+    expect(
+      purchaseReceiptSchema.safeParse({ ...VALID_RECEIPT, series: 'F001', number: '12-34' })
+        .success,
+    ).toBe(false);
+  });
+
+  it('rejects a series with no number (AC12)', () => {
+    expect(purchaseReceiptSchema.safeParse({ ...VALID_RECEIPT, series: 'F001' }).success).toBe(
+      false,
+    );
+  });
+
+  it('rejects a number with no series (AC12)', () => {
+    expect(purchaseReceiptSchema.safeParse({ ...VALID_RECEIPT, number: '00001234' }).success).toBe(
+      false,
+    );
+  });
+
+  it('accepts both of them together (AC12)', () => {
+    expect(
+      purchaseReceiptSchema.safeParse({ ...VALID_RECEIPT, series: 'F001', number: '00001234' })
+        .success,
+    ).toBe(true);
+  });
+
+  // AC7: no hay ningún camino en el que el cliente fije el impuesto.
+  it('drops an igvCents smuggled into the receipt (AC7)', () => {
+    const parsed = purchaseReceiptSchema.parse({ ...VALID_RECEIPT, igvCents: 999 });
+
+    expect(parsed).not.toHaveProperty('igvCents');
+  });
+});
+
 describe('createExpenseSchema', () => {
   // El día se fija para que «hoy» y «mañana» sean deterministas: el schema compara
   // contra `new Date()` porque la validación de fecha futura no admite inyectar el
@@ -102,8 +269,55 @@ describe('createExpenseSchema', () => {
     vi.useRealTimers();
   });
 
-  it('accepts a well-formed expense', () => {
-    expect(createExpenseSchema.parse(valid)).toEqual(valid);
+  // El alta sin comprobante sigue produciendo exactamente lo de antes del spec 024, más
+  // el `receipt: null` que el resto del código espera en vez de un `undefined` (AC3).
+  it('accepts a well-formed expense and defaults the receipt to null (AC3)', () => {
+    expect(createExpenseSchema.parse(valid)).toEqual({ ...valid, receipt: null });
+  });
+
+  it('accepts an explicit receipt: null exactly like an omitted one (AC3)', () => {
+    expect(createExpenseSchema.parse({ ...valid, receipt: null }).receipt).toBeNull();
+  });
+
+  it('accepts a well-formed receipt and keeps it in the output', () => {
+    const parsed = createExpenseSchema.parse({ ...valid, receipt: VALID_RECEIPT });
+
+    expect(parsed.receipt).toEqual(VALID_RECEIPT);
+  });
+
+  it('rejects the whole body when the receipt RUC is invalid: no row is inserted (AC4)', () => {
+    expect(
+      createExpenseSchema.safeParse({
+        ...valid,
+        receipt: { ...VALID_RECEIPT, supplierRuc: '20100128057' },
+      }).success,
+    ).toBe(false);
+  });
+
+  it('rejects the whole body when the receipt is incomplete (AC5)', () => {
+    expect(
+      createExpenseSchema.safeParse({
+        ...valid,
+        receipt: { type: 'factura', supplierRuc: VALID_RUC },
+      }).success,
+    ).toBe(false);
+  });
+
+  // AC7: el cuerpo se acepta —Zod no es estricto— pero el campo no llega a la salida, así
+  // que no existe un camino por el que el cliente fije el impuesto.
+  it('accepts a body carrying igvCents but never propagates it to the parsed output (AC7)', () => {
+    const parsed = createExpenseSchema.parse({ ...valid, igvCents: 999 });
+
+    expect(parsed).not.toHaveProperty('igvCents');
+  });
+
+  it('never propagates a receipt.igvCents either (AC7)', () => {
+    const parsed = createExpenseSchema.parse({
+      ...valid,
+      receipt: { ...VALID_RECEIPT, igvCents: 777 },
+    });
+
+    expect(parsed.receipt).not.toHaveProperty('igvCents');
   });
 
   it('trims the surrounding whitespace of the concept', () => {
@@ -192,6 +406,49 @@ describe('updateExpenseSchema', () => {
 
   it('keeps the amount rules of the create schema (AC12)', () => {
     expect(updateExpenseSchema.safeParse({ amountCents: 0 }).success).toBe(false);
+  });
+
+  // Las tres semánticas del PATCH. La primera es la que el `default(null)` del alta
+  // rompería si se heredase tal cual: omitir tiene que llegar como ausente, no como null.
+  it('leaves the receipt key absent when it is omitted: omitting is not deleting (AC11)', () => {
+    const parsed = updateExpenseSchema.parse({ amountCents: 500 });
+
+    expect('receipt' in parsed).toBe(false);
+  });
+
+  it('keeps an explicit receipt: null as null, which means delete it (AC10)', () => {
+    expect(updateExpenseSchema.parse({ receipt: null })).toEqual({ receipt: null });
+  });
+
+  it('distinguishes receipt: null from an omitted receipt (AC10, AC11)', () => {
+    const cleared = updateExpenseSchema.parse({ receipt: null });
+    const untouched = updateExpenseSchema.parse({ concept: 'Alquiler de octubre' });
+
+    expect(cleared.receipt).toBeNull();
+    expect(untouched.receipt).toBeUndefined();
+  });
+
+  it('accepts a receipt with a value', () => {
+    expect(updateExpenseSchema.parse({ receipt: VALID_RECEIPT }).receipt).toEqual(VALID_RECEIPT);
+  });
+
+  it('keeps the RUC rules of the create schema (AC4)', () => {
+    expect(
+      updateExpenseSchema.safeParse({ receipt: { ...VALID_RECEIPT, supplierRuc: '20100128057' } })
+        .success,
+    ).toBe(false);
+  });
+
+  // El `default(null)` heredado también habría roto esto: `{}` habría parseado a
+  // `{ receipt: null }`, con una clave, y el cuerpo vacío habría dejado de serlo.
+  it('still rejects an empty body now that the create schema has a defaulted field', () => {
+    expect(updateExpenseSchema.safeParse({}).success).toBe(false);
+  });
+
+  it('never propagates an igvCents in the patch either (AC7)', () => {
+    const parsed = updateExpenseSchema.parse({ amountCents: 500, igvCents: 999 });
+
+    expect(parsed).not.toHaveProperty('igvCents');
   });
 });
 

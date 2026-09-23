@@ -5,7 +5,10 @@ import { REPORTING_TIME_ZONE } from '@/lib/reporting';
 import { marginPercent } from '@/modules/finance/lib/finance-math';
 import { resolveFinanceRange } from '@/modules/finance/lib/finance-range';
 import { financeRangeSchema } from '@/modules/finance/schemas/finance.schema';
-import type { FinanceSummaryResponse } from '@/modules/finance/types/finance.types';
+import type {
+  FinanceSummaryResponse,
+  PurchaseIgvTotals,
+} from '@/modules/finance/types/finance.types';
 import * as financeRepository from '@/server/repositories/finance.repository';
 
 // Solo lectura. El endpoint no acepta `category` a propósito: «resultado del período»
@@ -40,15 +43,36 @@ export async function GET(request: Request) {
     // ocurre al formatear en la vista (AC22).
     const netCents = sales.revenueCents - expenseTotals.expensesCents;
 
+    const {
+      igvCreditableCents,
+      igvCreditableCount,
+      igvTotalCents,
+      igvCount,
+      ...expenseSums
+    } = expenseTotals;
+
+    // Lo no deducible se **deriva por resta entera** y no con una quinta consulta: al
+    // salir los dos de la misma fila del mismo SELECT, es imposible que diverjan (D-9).
+    // Los dos números se publican por separado y nunca sumados (AC14, D-10).
+    const purchaseIgv: PurchaseIgvTotals = {
+      creditableCents: igvCreditableCents,
+      creditableCount: igvCreditableCount,
+      nonCreditableCents: igvTotalCents - igvCreditableCents,
+      nonCreditableCount: igvCount - igvCreditableCount,
+    };
+
     // Un rango sin ventas y sin gastos es un 200 con ceros, nunca un 404: el recurso
     // «resumen del rango» existe siempre (AC11).
     const body: FinanceSummaryResponse = {
       data: {
         ...sales,
-        ...expenseTotals,
+        ...expenseSums,
         netCents,
         marginPercent: marginPercent(sales.revenueCents, netCents),
         expensesByCategory: byCategory,
+        // Dato al lado, no un sumando: `netCents` y `marginPercent` siguen diciendo
+        // exactamente lo que decían antes de este spec (§3).
+        purchaseIgv,
       },
       meta: {
         range: { from: range.fromDay, to: range.toDay },

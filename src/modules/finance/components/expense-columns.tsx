@@ -5,11 +5,25 @@ import { Pencil, Trash2 } from 'lucide-react';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { PURCHASE_RECEIPT_TYPE_LABELS } from '@/lib/purchase-receipts';
 import { formatDayKey } from '@/lib/utils';
 import { formatPrice } from '@/modules/products/lib/price';
 
-import { EXPENSE_CATEGORY_LABELS } from '../constants';
+import { EXPENSE_CATEGORY_LABELS, NO_IGV_LABEL, NO_RECEIPT_LABEL } from '../constants';
 import type { ExpenseRow } from '../types/finance.types';
+
+// Un guion con texto accesible, nunca una celda en blanco ni un «S/ 0.00» —que diría
+// «un IGV de cero», que es otra cosa— (AC19).
+function EmptyCell({ label }: { label: string }) {
+  return (
+    <>
+      <span aria-hidden className="text-muted-foreground">
+        —
+      </span>
+      <span className="sr-only">{label}</span>
+    </>
+  );
+}
 
 type ExpenseColumnsOptions = {
   // Resueltos por el servidor en `meta`: el cliente no deduce permisos, solo decide qué
@@ -44,7 +58,19 @@ export function getExpenseColumns({
       accessorKey: 'concept',
       header: 'Concepto',
       enableSorting: false,
-      cell: ({ row }) => <span className="font-medium">{row.original.concept}</span>,
+      // La razón social va bajo el concepto y no en columna propia: responde «a quién se
+      // le pagó esto», que es una precisión del concepto, no un dato independiente.
+      cell: ({ row }) => (
+        <div className="space-y-0.5">
+          <span className="font-medium">{row.original.concept}</span>
+          {row.original.receipt ? (
+            <p className="text-muted-foreground text-xs">
+              {row.original.receipt.supplierName}
+              <span className="tabular-nums"> · RUC {row.original.receipt.supplierRuc}</span>
+            </p>
+          ) : null}
+        </div>
+      ),
     },
     {
       accessorKey: 'category',
@@ -56,14 +82,55 @@ export function getExpenseColumns({
       ),
     },
     {
+      id: 'receipt',
+      header: 'Comprobante',
+      enableSorting: false,
+      size: 170,
+      cell: ({ row }) => {
+        const { receipt } = row.original;
+
+        if (!receipt) return <EmptyCell label={NO_RECEIPT_LABEL} />;
+
+        return (
+          <div className="space-y-0.5">
+            <Badge variant="outline">{PURCHASE_RECEIPT_TYPE_LABELS[receipt.type]}</Badge>
+            {/* Serie y número viajan juntos o no viajan (AC12), así que basta con mirar
+                uno de los dos para saber si hay referencia que pintar. */}
+            {receipt.series ? (
+              <p className="text-muted-foreground text-xs tabular-nums">
+                {receipt.series}-{receipt.number}
+              </p>
+            ) : null}
+          </div>
+        );
+      },
+    },
+    {
       accessorKey: 'amountCents',
       header: 'Importe',
       enableSorting: false,
-      size: 120,
+      size: 140,
       // La división por 100 solo ocurre aquí, al pintar (AC22).
-      cell: ({ row }) => (
-        <span className="tabular-nums">{formatPrice(row.original.amountCents)}</span>
-      ),
+      cell: ({ row }) => {
+        const { amountCents, receipt } = row.original;
+
+        return (
+          <div className="space-y-0.5">
+            <span className="tabular-nums">{formatPrice(amountCents)}</span>
+            {/* `null` en `igvCents` no es cero: es que el comprobante no lleva IGV, o que
+                no hay comprobante (AC8, AC19). */}
+            {receipt === null ? null : receipt.igvCents === null ? (
+              <p className="text-muted-foreground text-xs">
+                <EmptyCell label={NO_IGV_LABEL} />
+              </p>
+            ) : (
+              <p className="text-muted-foreground text-xs tabular-nums">
+                IGV {formatPrice(receipt.igvCents)}
+              </p>
+            )}
+          </div>
+        );
+      },
     },
     {
       accessorKey: 'createdByName',

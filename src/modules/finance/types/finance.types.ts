@@ -1,3 +1,4 @@
+import type { PurchaseReceiptType } from '@/lib/purchase-receipts';
 import type { expenses } from '@/server/db/schema';
 
 import type { ExpenseCategory } from '../schemas/finance.schema';
@@ -16,6 +17,33 @@ export type ExpenseCategoryTotal = {
   count: number;
 };
 
+// El comprobante de compra de un gasto, publicado como fila completa y no como seis
+// campos sueltos: el componente hace una comprobación, no seis.
+//
+// **No** publica si otorga crédito fiscal: es derivable de `type` con
+// `grantsTaxCredit()`, que es un módulo puro que el cliente puede importar. Publicarlo
+// sería una segunda fuente de la misma regla (AC16).
+export type ExpenseReceipt = {
+  type: PurchaseReceiptType;
+  supplierRuc: string;
+  supplierName: string;
+  series: string | null;
+  number: string | null;
+  /** `null` cuando el tipo no es afecto a IGV (§5.1). Nunca `0`. */
+  igvCents: number | null;
+};
+
+// Los dos números del IGV de compras del período, siempre separados: sumarlos invitaría
+// a descontar IGV de comprobantes que no dan derecho a crédito (AC14, D-10).
+export type PurchaseIgvTotals = {
+  /** Suma del IGV de los comprobantes que otorgan crédito fiscal. */
+  creditableCents: number;
+  creditableCount: number;
+  /** El resto del IGV calculado del período. Se publica, nunca se suma al anterior. */
+  nonCreditableCents: number;
+  nonCreditableCount: number;
+};
+
 export type FinanceSummary = {
   // Lo cobrado: `sum(amount_total_cents)` de los pedidos `paid`, envío incluido
   // (D-10). Mismo número que el KPI de ventas del dashboard para igual rango.
@@ -30,6 +58,9 @@ export type FinanceSummary = {
   // Solo las categorías con al menos una fila, orden descendente por importe. El
   // porcentaje de cada barra lo calcula la vista: es un dato de pintado.
   expensesByCategory: ExpenseCategoryTotal[];
+  // Dato al lado, no un sumando: el IGV de compras no entra en `netCents` ni en
+  // `marginPercent`, que siguen diciendo exactamente lo que decían (§3).
+  purchaseIgv: PurchaseIgvTotals;
 };
 
 export type FinanceSummaryResponse = {
@@ -55,6 +86,8 @@ export type ExpenseRow = Pick<
   /** `firstName` + `lastName` de quien registró; `null` si Clerk no los dio. */
   createdByName: string | null;
   createdByEmail: string;
+  /** `null` = gasto sin comprobante formal, que es todo lo anterior al spec 024 (AC21). */
+  receipt: ExpenseReceipt | null;
 };
 
 // Las mutaciones no devuelven marcas de tiempo, y no por olvido: `createdAt` y

@@ -1,7 +1,12 @@
-import { and, asc, count, desc, eq, gte, lt, lte, sql, type SQL } from 'drizzle-orm';
+import { and, asc, count, desc, eq, gte, inArray, lt, lte, sql, type SQL } from 'drizzle-orm';
 
+import { TAX_CREDIT_RECEIPT_TYPES } from '@/lib/purchase-receipts';
 import type { ExpenseQueryParams } from '@/modules/finance/schemas/finance.schema';
-import type { ExpenseCategoryTotal, ExpenseRow } from '@/modules/finance/types/finance.types';
+import type {
+  ExpenseCategoryTotal,
+  ExpenseReceipt,
+  ExpenseRow,
+} from '@/modules/finance/types/finance.types';
 import { db, type Reader, type Tx } from '@/server/db';
 import { expenses, orders, users } from '@/server/db/schema';
 
@@ -74,11 +79,28 @@ export function buildExpenseFilters({ fromDay, toDay, category }: ExpenseFilters
   return and(...conditions) as SQL;
 }
 
-export type ExpenseTotals = { expensesCents: number; expenseCount: number };
+export type ExpenseTotals = {
+  expensesCents: number;
+  expenseCount: number;
+  igvCreditableCents: number;
+  igvCreditableCount: number;
+  igvTotalCents: number;
+  igvCount: number;
+};
+
+// El `in (…)` se construye con `inArray` sobre la tupla **derivada** del catálogo: el
+// SQL del agregado y la vista leen la misma regla, así que no pueden discrepar sobre qué
+// cuenta como crédito fiscal (AC16, D-4).
+const CREDITABLE = inArray(expenses.receiptType, TAX_CREDIT_RECEIPT_TYPES);
 
 // Sin el filtro de categoría: el resumen es el resultado del período completo y la
-// categoría filtra el detalle, no el resultado (D-17, AC20). La firma es lo que hace
-// imposible colárselo.
+// categoría filtra el detalle, no el resultado (D-17, AC20, AC17). La firma es lo que
+// hace imposible colárselo.
+//
+// Los cuatro agregados de IGV salen de **esta misma pasada** y no de una quinta función
+// (D-9): misma tabla, mismo rango y mismo `WHERE`, así que una segunda consulta sería un
+// segundo escaneo para números que por definición no pueden divergir del primero. Sin
+// `GROUP BY`, así que no entra en la clase de bug del 42803 del spec 015.
 export async function findExpenseTotals(
   range: DayRange,
   reader: Reader = db,
@@ -87,6 +109,15 @@ export async function findExpenseTotals(
     .select({
       expensesCents: sql<string>`coalesce(sum(${expenses.amountCents}), 0)::bigint`,
       expenseCount: sql<number>`count(*)::int`,
+      // `::bigint` + `Number()` como el resto de las sumas del módulo (017, D-11): el
+      // driver entrega los bigint como texto y sin la conversión dos importes se
+      // concatenarían como cadenas.
+      igvCreditableCents: sql<string>`coalesce(sum(${expenses.igvCents}) filter (where ${CREDITABLE}), 0)::bigint`,
+      // Cuenta comprobantes con IGV calculado, no filas: un tipo elegible sin IGV no es
+      // un comprobante del que se tome crédito.
+      igvCreditableCount: sql<number>`count(*) filter (where ${expenses.igvCents} is not null and ${CREDITABLE})::int`,
+      igvTotalCents: sql<string>`coalesce(sum(${expenses.igvCents}), 0)::bigint`,
+      igvCount: sql<number>`count(*) filter (where ${expenses.igvCents} is not null)::int`,
     })
     .from(expenses)
     .where(buildExpenseFilters(range));
@@ -94,6 +125,10 @@ export async function findExpenseTotals(
   return {
     expensesCents: toCents(row?.expensesCents ?? null),
     expenseCount: row?.expenseCount ?? 0,
+    igvCreditableCents: toCents(row?.igvCreditableCents ?? null),
+    igvCreditableCount: row?.igvCreditableCount ?? 0,
+    igvTotalCents: toCents(row?.igvTotalCents ?? null),
+    igvCount: row?.igvCount ?? 0,
   };
 }
 
@@ -132,6 +167,32 @@ export async function findExpenseTotalsByCategory(
 
 export type ExpenseListResult = { data: ExpenseRow[]; total: number };
 
+type ReceiptColumns = Pick<
+  Expense,
+  'receiptType' | 'supplierRuc' | 'supplierName' | 'receiptSeries' | 'receiptNumber' | 'igvCents'
+>;
+
+// `null` cuando el gasto no declaró comprobante, que es todo lo anterior a la migración
+// `0012` (AC21).
+//
+// La comprobación mira las tres columnas y no solo `receipt_type` porque es lo que
+// estrecha el tipo sin un `as`: el `CHECK expenses_receipt_all_or_nothing` ya garantiza
+// que las tres viajan juntas, pero TypeScript no lee constraints de Postgres.
+function toExpenseReceipt(columns: ReceiptColumns): ExpenseReceipt | null {
+  const { receiptType, supplierRuc, supplierName } = columns;
+
+  if (receiptType === null || supplierRuc === null || supplierName === null) return null;
+
+  return {
+    type: receiptType,
+    supplierRuc,
+    supplierName,
+    series: columns.receiptSeries,
+    number: columns.receiptNumber,
+    igvCents: columns.igvCents,
+  };
+}
+
 // Orden fijo, sin `sortBy` en la query: un registro de gastos se lee por fecha, de lo
 // más reciente a lo más antiguo. `created_at` desempata los del mismo día y el `id`
 // cierra el desempate para que la paginación sea estable: sin él, dos gastos idénticos
@@ -154,6 +215,14 @@ export async function findManyExpenses(
         incurredOn: expenses.incurredOn,
         createdById: expenses.createdById,
         createdAt: expenses.createdAt,
+        // Las seis columnas del comprobante salen del mismo SELECT: ni una consulta más
+        // ni un N+1 (spec 024, §10).
+        receiptType: expenses.receiptType,
+        supplierRuc: expenses.supplierRuc,
+        supplierName: expenses.supplierName,
+        receiptSeries: expenses.receiptSeries,
+        receiptNumber: expenses.receiptNumber,
+        igvCents: expenses.igvCents,
         firstName: users.firstName,
         lastName: users.lastName,
         createdByEmail: users.email,
@@ -172,15 +241,38 @@ export async function findManyExpenses(
 
   return {
     total: totals?.value ?? 0,
-    data: rows.map(({ firstName, lastName, createdAt, ...row }) => ({
-      ...row,
-      // ISO y no `Date`: JSON no transporta fechas y el tipo del cliente no debe
-      // mentir sobre lo que recibe.
-      createdAt: createdAt.toISOString(),
-      // `null` cuando Clerk no dio ni nombre ni apellido: la celda cae al correo en
-      // vez de pintar una cadena vacía.
-      createdByName: [firstName, lastName].filter(Boolean).join(' ') || null,
-    })),
+    data: rows.map(
+      ({
+        firstName,
+        lastName,
+        createdAt,
+        receiptType,
+        supplierRuc,
+        supplierName,
+        receiptSeries,
+        receiptNumber,
+        igvCents,
+        ...row
+      }) => ({
+        ...row,
+        // ISO y no `Date`: JSON no transporta fechas y el tipo del cliente no debe
+        // mentir sobre lo que recibe.
+        createdAt: createdAt.toISOString(),
+        // `null` cuando Clerk no dio ni nombre ni apellido: la celda cae al correo en
+        // vez de pintar una cadena vacía.
+        createdByName: [firstName, lastName].filter(Boolean).join(' ') || null,
+        // El objeto entero o `null`, no seis campos sueltos: el componente hace una
+        // comprobación en vez de seis.
+        receipt: toExpenseReceipt({
+          receiptType,
+          supplierRuc,
+          supplierName,
+          receiptSeries,
+          receiptNumber,
+          igvCents,
+        }),
+      }),
+    ),
   };
 }
 
