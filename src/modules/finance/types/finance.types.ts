@@ -112,6 +112,54 @@ export type FinanceSummaryResponse = {
   };
 };
 
+// ── Impuestos (spec 026) ────────────────────────────────────────────────────
+
+// Los dos lados del IGV del período y su resta. Nunca se publican sumados ni
+// pre-etiquetados: el signo es el dato y la etiqueta es de la vista (D-5).
+export type IgvSettlement = {
+  /** IGV de las ventas declarables del rango: originales + notas de débito − notas de crédito. */
+  debitCents: number;
+  /** Comprobantes originales contados en el débito. */
+  debitDocumentCount: number;
+  /** Notas de crédito y débito contadas. Explica por qué el débito no es el bruto. */
+  debitAdjustmentCount: number;
+  /**
+   * IGV de compras **con derecho a crédito fiscal**. Sale de `findExpenseTotals()`, la
+   * misma función que alimenta la card «IGV de compras» del resumen, así que las dos
+   * pantallas no pueden discrepar (AC13).
+   */
+  creditCents: number;
+  creditReceiptCount: number;
+  /** `debitCents − creditCents`, con signo. Positivo = por pagar; negativo = saldo a favor. */
+  netCents: number;
+};
+
+// Estimado del rango, no la declaración. La **tasa no viaja en la respuesta**: es
+// derivable de un módulo puro que el cliente puede importar, y publicarla sería una
+// segunda fuente de la misma regla (D-8, mismo criterio que `grantsTaxCredit()` en 024).
+export type IncomeTaxEstimate = {
+  /** Ingresos netos del rango, **sin IGV**. Se publica con su signo real. */
+  baseCents: number;
+  /** `round(base × 1.5 %)` en aritmética entera; `0` cuando la base no es positiva (D-6). */
+  estimatedCents: number;
+};
+
+export type FinanceTaxes = {
+  igv: IgvSettlement;
+  incomeTax: IncomeTaxEstimate;
+};
+
+export type FinanceTaxesResponse = {
+  data: FinanceTaxes;
+  meta: {
+    // El rango realmente consultado, resuelto en el servidor: la UI rotula con esto y
+    // un error de huso queda visible en la respuesta. Misma forma que el resumen.
+    range: { from: string; to: string };
+    timeZone: string;
+    generatedAt: string;
+  };
+};
+
 // `incurredOn` ya es `string` en el tipo inferido gracias a `mode: 'string'`, así que
 // no repite la deuda de `ProductListResponse` (spec 016 §11), donde dos campos se
 // declaran `Date` y JSON entrega `string`.

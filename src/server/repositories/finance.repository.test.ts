@@ -9,6 +9,7 @@ import {
   buildDeclarableFilter,
   buildExpenseFilters,
   findDeclarableSalesByKind,
+  findDeclarableTaxTotals,
   findExpenseTotals,
   findManyExpenses,
   findSalesTotals,
@@ -391,6 +392,178 @@ describe('findDeclarableSalesByKind', () => {
       expect(field(key).sql).not.toContain('"base_cents"');
       expect(field(key).sql).not.toContain('"igv_cents"');
     }
+  });
+});
+
+// ── Impuestos: débito fiscal de ventas (spec 026) ───────────────────────────
+
+// Mismo sumidero que `captureDeclarableQuery`, pero con `groupBy` y `orderBy` también
+// enganchados para poder afirmar que **no** se llaman: el IGV se declara junto, sin
+// desglose por familia (§5.2).
+function captureTaxTotalsQuery(range: { from: Date; to: Date }) {
+  let fields: Record<string, SQL> | undefined;
+  let where: SQL | undefined;
+  let joined = false;
+  let grouped = false;
+  let ordered = false;
+
+  const chain: Record<string, unknown> = {
+    leftJoin: () => {
+      joined = true;
+      return chain;
+    },
+    where: (condition: SQL) => {
+      where = condition;
+      return chain;
+    },
+    groupBy: () => {
+      grouped = true;
+      return chain;
+    },
+    orderBy: () => {
+      ordered = true;
+      return chain;
+    },
+  };
+  // Thenable, para que el `await` de la función resuelva sin base de datos.
+  chain.then = (resolve: (rows: unknown[]) => void) => resolve([]);
+
+  const reader = {
+    select: (selected: Record<string, SQL>) => {
+      fields = selected;
+      return { from: () => chain };
+    },
+  };
+
+  void findDeclarableTaxTotals(range, reader as never);
+
+  if (!fields || !where) throw new Error('findDeclarableTaxTotals no construyó la consulta');
+  return { fields, where, joined, grouped, ordered };
+}
+
+describe('findDeclarableTaxTotals', () => {
+  const fields = () => captureTaxTotalsQuery(DECLARABLE_RANGE).fields;
+  const field = (key: string) => dialect.sqlToQuery(fields()[key]);
+  const where = () => dialect.sqlToQuery(captureTaxTotalsQuery(DECLARABLE_RANGE).where);
+
+  // AC6 y D-2: la aserción no es «se parece al filtro de ventas declarables», es que el
+  // texto compilado es **el mismo**. Si alguien copiara la condición en vez de
+  // importarla, las dos pantallas podrían divergir en silencio (§10).
+  it('sends the very buildDeclarableFilter of the declarable sales, not a copy (AC6)', () => {
+    const parent = alias(electronicDocuments, 'parent_document');
+    const direct = dialect.sqlToQuery(buildDeclarableFilter(DECLARABLE_RANGE, parent));
+
+    expect(where().sql).toBe(direct.sql);
+    expect(where().params).toEqual(direct.params);
+  });
+
+  it('is byte-for-byte the WHERE that findDeclarableSalesByKind sends (AC6)', () => {
+    expect(where().sql).toBe(declarableFilter().sql);
+    expect(where().params).toEqual(declarableFilter().params);
+  });
+
+  it('counts only issued documents: a voided original contributes nothing (AC8)', () => {
+    expect(where().sql).toContain('"electronic_documents"."status"');
+    expect(where().params).toContain('issued');
+  });
+
+  it('bounds both ends of issued_at, the upper one strictly (AC5)', () => {
+    expect(where().sql).toMatch(/"issued_at" >= \$\d/);
+    expect(where().sql).toMatch(/"issued_at" < \$\d/);
+    expect(where().sql).not.toMatch(/"issued_at" <= \$\d/);
+  });
+
+  // AC5: el rango se aplica sobre `issued_at` y nunca sobre `created_at` ni `updated_at`,
+  // que lleva `$onUpdate` y movería el IGV de un mes a otro.
+  it('never bounds the range by created_at or updated_at (AC5)', () => {
+    expect(where().sql).not.toContain('"created_at"');
+    expect(where().sql).not.toContain('"updated_at"');
+  });
+
+  // La disyunción es la que hace que una anulación total no reste dos veces: la venta sale
+  // por el lado del original y la nota anulatoria queda fuera con él (AC10).
+  it('keeps the disjunction "no parent OR parent still issued" (AC9, AC10)', () => {
+    expect(where().sql).toContain(
+      '("electronic_documents"."related_document_id" is null or "parent_document"."status" = ',
+    );
+  });
+
+  it('never names comunicacion_baja: it leaves the sum through the parent rule (AC11)', () => {
+    expect(where().sql).not.toContain('comunicacion_baja');
+  });
+
+  it('joins the parent, so the disjunction has a table to read (§5.1)', () => {
+    expect(captureTaxTotalsQuery(DECLARABLE_RANGE).joined).toBe(true);
+  });
+
+  it('sums igv_cents negated only for credit notes (AC7, AC9, AC12)', () => {
+    const query = field('igvCents');
+
+    expect(query.sql).toContain(`case when "electronic_documents"."kind" = 'nota_credito'`);
+    expect(query.sql).toContain('then -"electronic_documents"."igv_cents"');
+    expect(query.sql).toContain('else "electronic_documents"."igv_cents"');
+  });
+
+  it('sums base_cents with the same sign rule (AC17)', () => {
+    const query = field('baseCents');
+
+    expect(query.sql).toContain(`case when "electronic_documents"."kind" = 'nota_credito'`);
+    expect(query.sql).toContain('then -"electronic_documents"."base_cents"');
+    expect(query.sql).toContain('else "electronic_documents"."base_cents"');
+  });
+
+  it('does not negate debit notes: they add to the debit (AC12)', () => {
+    expect(field('igvCents').sql).not.toContain(`= 'nota_debito'`);
+    expect(field('baseCents').sql).not.toContain(`= 'nota_debito'`);
+  });
+
+  it('never sums amount_cents: this screen declares tax, not totals', () => {
+    expect(field('igvCents').sql).not.toContain('"amount_cents"');
+    expect(field('baseCents').sql).not.toContain('"amount_cents"');
+  });
+
+  // 017 D-11, agravado aquí: las dos sumas llevan signo, así que el int4 desborda por los
+  // dos extremos.
+  it('casts both signed sums to bigint and coalesces them to 0 (AC21)', () => {
+    for (const key of ['igvCents', 'baseCents']) {
+      expect(field(key).sql).toContain('::bigint');
+      expect(field(key).sql).toContain('coalesce');
+    }
+  });
+
+  it('counts originals and adjustments apart, each with its own FILTER', () => {
+    expect(field('documentCount').sql).toBe(
+      'count(*) filter (where "electronic_documents"."related_document_id" is null)::int',
+    );
+    expect(field('adjustmentCount').sql).toBe(
+      'count(*) filter (where "electronic_documents"."related_document_id" is not null)::int',
+    );
+  });
+
+  it('publishes exactly the four columns of DeclarableTaxTotals', () => {
+    expect(Object.keys(fields())).toEqual([
+      'igvCents',
+      'baseCents',
+      'documentCount',
+      'adjustmentCount',
+    ]);
+  });
+
+  // D-3: sin `GROUP BY` el IGV se declara junto, y la consulta ni siquiera roza la clase
+  // de bug del 42803 del spec 015.
+  it('has no GROUP BY nor ORDER BY: the IGV is declared as one figure (D-3)', () => {
+    const captured = captureTaxTotalsQuery(DECLARABLE_RANGE);
+
+    expect(captured.grouped).toBe(false);
+    expect(captured.ordered).toBe(false);
+  });
+
+  it('never touches the expenses table: the credit side is a separate read (D-4)', () => {
+    expect(where().sql).not.toContain('"expenses"');
+  });
+
+  it('never inlines the instants into the SQL text', () => {
+    expect(where().sql).not.toContain('2026-09-01');
   });
 });
 

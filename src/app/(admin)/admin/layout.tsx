@@ -3,6 +3,7 @@ import { auth } from '@clerk/nextjs/server';
 import {
   Boxes,
   HandCoins,
+  Landmark,
   LayoutDashboard,
   Package,
   Percent,
@@ -47,6 +48,12 @@ const NAV_ITEMS: readonly NavItem[] = [
   // resumen se mira por rango de fechas y esto es un estado actual del catálogo, sin
   // fechas, así que el filtro de rango de arriba no significaría nada en una de las dos.
   { href: '/admin/finance/pricing', label: 'Precio unitario', icon: Percent, permission: 'finance.read' },
+  // Tercera pantalla de Finanzas y con su mismo permiso, así que las tres aparecen y
+  // desaparecen juntas (spec 026, AC4, AC25). Detrás de «Precio unitario» porque es lo
+  // último que se mira: el resumen al revisar cómo va el mes, esto al declarar (D-9).
+  // `Landmark` y no un glifo ya usado: dos entradas con el mismo icono se leen como la
+  // misma, y la hacienda pública es exactamente lo que este bloque representa.
+  { href: '/admin/finance/taxes', label: 'Impuestos', icon: Landmark, permission: 'finance.read' },
   // Junto a «Finanzas» porque también es dinero que sale, y delante de «Usuarios» para
   // que se lea «nómina» antes que «personas con acceso»: son dos cosas distintas y
   // confundirlas es el riesgo principal del módulo (spec 018, D-18). El icono no es

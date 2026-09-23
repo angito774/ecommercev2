@@ -738,7 +738,8 @@ gestión de pedidos y cambio de estado · control de inventario con notas de ing
 salida · resumen financiero
 con ventas confirmadas y declarables, registro de gastos operativos y crédito fiscal de
 compras · precio unitario con costo promedio y margen por
-producto · personal y nómina · emisión manual de comprobantes electrónicos ·
+producto · impuestos con el IGV neto del período y la Renta RER estimada ·
+personal y nómina · emisión manual de comprobantes electrónicos ·
 listado de clientes.
 
 Construido a 2026-09-02: categorías (spec 001), accesos y bitácora (spec 002) y
@@ -1052,6 +1053,79 @@ contra el IGV de compras es el sub-proyecto #4), `base_cents`/`igv_cents` en la 
 el KPI de ventas del dashboard (spec 015, que sigue con su definición), filtros por URL en
 `/admin/orders`, ventas declarables por moneda, serie o vendedor, y exportación del
 Registro de Ventas a CSV.
+
+Construido a 2026-09-23: **impuestos** (`/admin/finance/taxes`, spec 026). Es la tercera
+pantalla del módulo financiero y el sub-proyecto que cruza las dos mitades que 024 y 025
+dejaron preparadas: el IGV que se cobró en las ventas menos el que se pagó en las compras
+con derecho a crédito, y la Renta RER estimada sobre la base sin IGV de esas mismas
+ventas. **Sin migración** —el journal de `drizzle/` se queda en `0012_careful_cargill`—,
+**sin índice nuevo** y **sin permiso nuevo**: el catálogo sigue en 29 códigos y la
+pantalla entera está detrás de `finance.read`, así que «Finanzas», «Precio unitario» e
+«Impuestos» aparecen y desaparecen juntas de la navegación. Nada del esquema cambia:
+`electronic_documents.base_cents` e `igv_cents` existen desde 022, `expenses.igv_cents`
+desde 024, y los dos índices que acotan los rangos (`electronic_documents_issued_at_idx` y
+`expenses_incurred_on_idx`) también. Un índice sobre `igv_cents` no participaría en el
+plan: el crédito fiscal no **filtra** por esa columna, la agrega sobre las filas que el
+rango ya selecciona (D-11).
+
+Ruta y endpoint propios, `GET /api/admin/finance/taxes` (D-1): esta pantalla no consume
+ninguno de los campos del resumen ni el resumen ninguno de estos, y compartir endpoint
+haría que cada una pagara las lecturas de la otra. `/admin/finance` se queda **exactamente
+como está** —sus cinco cards, `netCents` y `marginPercent` no se tocan—: alinear el
+resultado del período con los impuestos es el sub-proyecto #5. El handler autoriza antes
+de mirar la query, valida con el `financeRangeSchema` que ya existía y hace **dos**
+lecturas en `Promise.all`.
+
+Las dos lecturas son reutilización, no código nuevo, y ese es el punto de todo el spec.
+El **débito fiscal** sale de `findDeclarableTaxTotals()`, que importa el mismo
+`buildDeclarableFilter()` de las ventas declarables y solo cambia la columna que suma
+—`igv_cents` y `base_cents` en vez de `amount_cents`—, sin `GROUP BY` porque el IGV se
+declara junto y no por familia de comprobante. Importar el filtro en vez de copiar su
+condición es lo que hace **estructuralmente imposible** que las ventas declarables y el
+IGV débito discrepen sobre qué documento cuenta; los tests compilan el `WHERE` con
+`PgDialect` y afirman que el texto es byte a byte el mismo. Es agregado propio y no una
+ampliación de `findDeclarableSalesByKind()` porque aquella devuelve el tipo publicado
+`DeclarableSalesByKind[]` y ampliarla filtraría base e IGV al contrato de `/summary`, que
+025 dejó fuera a propósito (D-3). El **crédito fiscal** no tiene función nueva: se llama a
+`findExpenseTotals()` tal cual y se leen dos de sus seis campos, así que el número de esta
+pantalla es **el mismo** que el de la card «IGV de compras» del resumen, con la misma
+tabla `TAX_CREDIT_RECEIPT_TYPES` aplicada (D-4).
+
+`netCents` se publica **con signo** y la etiqueta la elige la vista (D-5): positivo es
+«IGV por pagar», negativo es «Saldo a favor» por su valor absoluto y el cero tiene copy
+propio, con etiqueta, icono y color en las tres ramas. Nunca un «por pagar» en negativo.
+La Renta es `round(base × 150 / 10 000)` en **aritmética entera de puntos básicos** y no
+`× 0.015`, que no es representable en binario (D-7), y vale `0` cuando la base no es
+positiva —un rango cuyas notas de crédito superan lo emitido no genera «Renta a favor»—,
+aunque la base sí viaja con su signo real al lado. La tasa **no viaja en la respuesta**:
+vive en `RER_RATE_BASIS_POINTS` (`src/modules/finance/lib/rer.ts`), módulo puro que el
+cliente importa para formatear el rótulo, mismo criterio que `grantsTaxCredit()` en 024
+(D-8). Sin Recharts: son cuatro números y dos barras de ancho porcentual en CSS (D-12).
+
+> **Dos valores normativos siguen sin confirmar.** La tasa de 1.5 % de RER no se pudo
+> contrastar contra fuente en ninguna sesión, igual que la tabla de crédito fiscal del
+> spec 024. La tasa vive en **una sola constante con su test**, así que corregirla es
+> editar un número y una prueba; la tabla de compras arrastra además el efecto que no se
+> ve —`expenses.igv_cents` se calculó al guardar y no se recalcula hacia atrás—.
+
+Y hay que tenerlo escrito porque la pantalla presenta juntos dos números de distinta
+calidad: el débito es **exacto** —`base_cents` e `igv_cents` son el desglose que se envió
+al proveedor, con `base + igv = total` garantizado por `CHECK`—, mientras que el crédito
+es una **aproximación** sobre un importe tecleado a mano. Restar un exacto menos un
+aproximado da un neto aproximado, y el copy no presenta el neto como «lo que hay que
+pagar»: el cálculo ignora retenciones, percepciones y detracciones, y asume que todo el
+catálogo tributa al 18 % general. Dos avisos permanentes y **no condicionales** (D-13) lo
+dicen en el encabezado: que el saldo a favor es informativo del rango y que este panel no
+lo arrastra ni registra declaraciones presentadas, y que la Renta es un estimado mientras
+que la declaración real es mensual exacta. Permanentes porque un aviso que aparece y
+desaparece enseña a ignorarlo, y porque un rango elegido a mano no es un período
+declarable aunque las fechas cuadren con un mes.
+
+Fuera de alcance de este sub-proyecto, por decisión: registro de declaraciones presentadas
+y cierre de período, arrastre automático del saldo a favor entre períodos (D-10), ajuste
+anual de Renta y cambio de régimen (RMT, General), otros tributos y regímenes de retención
+—ITAN, ESSALUD, ONP, cuarta categoría, detracciones, percepciones y retenciones de IGV—,
+presentación ante SUNAT y exportación del Registro de Ventas y de Compras.
 
 Construido a 2026-09-17: **personal y nómina** (`/admin/payroll`, spec 018), con
 migración `0007` (§5.4) y **dos** permisos nuevos —el catálogo pasa de 23 a 25

@@ -168,6 +168,70 @@ export async function findDeclarableSalesByKind(
   }));
 }
 
+// ── Impuestos: débito fiscal de ventas (spec 026) ───────────────────────────
+
+// El mismo `CASE` de signo que `DECLARABLE_AMOUNT`, sobre las dos columnas del desglose:
+// original `+`, nota de crédito `−`, nota de débito `+`. `base_cents` e `igv_cents` son
+// `null` en la `comunicacion_baja` por el `CHECK electronic_documents_amount_breakdown` y
+// `sum` ignora los nulos, así que ni siquiera hace falta nombrarla (AC11).
+//
+// `::bigint` con `Number()` de vuelta (017, D-11): la suma lleva signo, así que un `int4`
+// desborda por los dos extremos, y el driver entrega los bigint como texto.
+type DocumentAmountColumn =
+  | typeof electronicDocuments.igvCents
+  | typeof electronicDocuments.baseCents;
+
+const signedDocumentSum = (column: DocumentAmountColumn) =>
+  sql<string>`coalesce(sum(case when ${electronicDocuments.kind} = 'nota_credito' then -${column} else ${column} end), 0)::bigint`;
+
+export type DeclarableTaxTotals = {
+  /** Débito fiscal del rango, en céntimos y con signo. */
+  igvCents: number;
+  /** Base sin IGV de los mismos documentos, con el mismo signo. */
+  baseCents: number;
+  documentCount: number;
+  adjustmentCount: number;
+};
+
+/**
+ * Los cuatro números del lado de ventas, de **una sola pasada** y con el mismo
+ * `buildDeclarableFilter()` que las ventas declarables (§5.2). Sin `GROUP BY`: el IGV se
+ * declara junto y no por familia de comprobante, así que esta consulta ni siquiera roza
+ * la clase de bug del `42803` del spec 015.
+ *
+ * Lo único que cambia respecto a `findDeclarableSalesByKind()` es la columna que se suma.
+ * El filtro se **importa**, no se copia (D-2, AC6): es lo que hace estructuralmente
+ * imposible que las ventas declarables y el IGV débito discrepen sobre qué documento
+ * cuenta. Agregado propio y no una ampliación de aquella función porque aquella devuelve
+ * el tipo publicado `DeclarableSalesByKind[]`, y ampliarla filtraría base e IGV al
+ * contrato de `/summary`, que el spec 025 dejó fuera a propósito (D-3).
+ */
+export async function findDeclarableTaxTotals(
+  range: InstantRange,
+  reader: Reader = db,
+): Promise<DeclarableTaxTotals> {
+  const [row] = await reader
+    .select({
+      igvCents: signedDocumentSum(electronicDocuments.igvCents),
+      baseCents: signedDocumentSum(electronicDocuments.baseCents),
+      documentCount: sql<number>`count(*) filter (where ${electronicDocuments.relatedDocumentId} is null)::int`,
+      adjustmentCount: sql<number>`count(*) filter (where ${electronicDocuments.relatedDocumentId} is not null)::int`,
+    })
+    .from(electronicDocuments)
+    // El mismo alias de módulo que `findDeclarableSalesByKind()`: el `WHERE` y el `JOIN`
+    // tienen que hablar de la misma tabla, y el lado indexado del join es `p.id`, la
+    // clave primaria (§5.1).
+    .leftJoin(parentDocuments, eq(parentDocuments.id, electronicDocuments.relatedDocumentId))
+    .where(buildDeclarableFilter(range, parentDocuments));
+
+  return {
+    igvCents: toCents(row?.igvCents ?? null),
+    baseCents: toCents(row?.baseCents ?? null),
+    documentCount: row?.documentCount ?? 0,
+    adjustmentCount: row?.adjustmentCount ?? 0,
+  };
+}
+
 // El `NOT EXISTS` mira «original `issued`», no «tiene alguna fila»: un pedido cuyo
 // comprobante quedó `voided` y cuyo reemitido sigue `pending` cuenta como pendiente
 // (AC17), que es la verdad —hoy no tiene comprobante ante SUNAT—. Se escribe como

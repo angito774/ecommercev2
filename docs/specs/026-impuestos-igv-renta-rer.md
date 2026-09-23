@@ -1,7 +1,7 @@
 ---
 id: 026
 title: Impuestos — IGV por pagar y Renta RER estimada
-status: approved
+status: done
 module: finance
 scope: admin
 created: 2026-09-23
@@ -537,53 +537,53 @@ Orden de dependencia: tipos → módulo puro → tests → repositorio → tests
 handler → service → copys → hook → componentes → página → navegación →
 documentación → cierre.
 
-- [ ] **T1** — Tipos `IgvSettlement`, `IncomeTaxEstimate`, `FinanceTaxes` y
+- [x] **T1** — Tipos `IgvSettlement`, `IncomeTaxEstimate`, `FinanceTaxes` y
       `FinanceTaxesResponse` con los comentarios de §6.1 · archivo:
       `src/modules/finance/types/finance.types.ts` · verificación:
       `npm run typecheck`
-- [ ] **T2** — Módulo puro de Renta: `RER_RATE_BASIS_POINTS` y
+- [x] **T2** — Módulo puro de Renta: `RER_RATE_BASIS_POINTS` y
       `estimateRerIncomeTax()` según §6.4, con el comentario que señala el valor
       normativo pendiente (§5.1.1) · archivo:
       `src/modules/finance/lib/rer.ts` · verificación: `npm run typecheck`
-- [ ] **T3** — Tests de T2, al estilo de `igv.test.ts`: el 1.5% de un importe
+- [x] **T3** — Tests de T2, al estilo de `igv.test.ts`: el 1.5% de un importe
       redondo; el redondeo de un importe que cae a medio céntimo; base `0` →
       `0`; base negativa → `0` (AC18); y que el resultado es siempre un entero ·
       archivo: `src/modules/finance/lib/rer.test.ts` · verificación: `npm test`
-- [ ] **T4** — `findDeclarableTaxTotals()` según §5.2 y §6.2: `leftJoin` al alias
+- [x] **T4** — `findDeclarableTaxTotals()` según §5.2 y §6.2: `leftJoin` al alias
       `parentDocuments` ya existente, `where(buildDeclarableFilter(range,
       parentDocuments))` **importado y no reescrito**, los dos `CASE` de signo
       sobre `igv_cents` y `base_cents`, los dos `FILTER` de conteo y el
       `::bigint` con `toCents()` · archivo:
       `src/server/repositories/finance.repository.ts` · verificación:
       `npm run typecheck`
-- [ ] **T5** — Tests del SQL compilado de T4 con `PgDialect`, siguiendo el patrón
+- [x] **T5** — Tests del SQL compilado de T4 con `PgDialect`, siguiendo el patrón
       de `finance.repository.test.ts`: contiene `status = 'issued'`, acota los
       dos extremos de `issued_at` con el superior **estricto**, contiene la
       disyunción «sin padre o padre `issued`», suma `igv_cents` y `base_cents` en
       negativo solo para `nota_credito`, y **no** contiene `group by` · archivo:
       `src/server/repositories/finance.repository.test.ts` · verificación:
       `npm test`
-- [ ] **T6** — Route Handler `GET /api/admin/finance/taxes` según §6.3:
+- [x] **T6** — Route Handler `GET /api/admin/finance/taxes` según §6.3:
       `authorize('finance.read')` antes de la query, `financeRangeSchema`, las
       dos lecturas en `Promise.all`, la resta entera del neto y `meta` con el
       mismo `now` · archivo: `src/app/api/admin/finance/taxes/route.ts` ·
       verificación: `npm run typecheck && npm run lint`
-- [ ] **T7** — `fetchFinanceTaxes(range)` en el service, con la misma forma que
+- [x] **T7** — `fetchFinanceTaxes(range)` en el service, con la misma forma que
       `fetchFinanceSummary` · archivo:
       `src/modules/finance/services/finance.service.ts` · verificación:
       `npm run typecheck`
-- [ ] **T8** — Copys y clave de consulta: `financeKeys.taxes(range)`, títulos de
+- [x] **T8** — Copys y clave de consulta: `financeKeys.taxes(range)`, títulos de
       los dos bloques, etiquetas de débito y crédito, las tres etiquetas del neto
       («IGV por pagar», «Saldo a favor», neto cero), la nota de que el saldo a
       favor es informativo y no se arrastra (AC20), la nota de que la Renta es un
       estimado por rango (AC19), los dos estados vacíos y el mensaje de error.
       **El porcentaje de la tasa no se escribe a mano** (D-8) · archivo:
       `src/modules/finance/constants.ts` · verificación: `npm run typecheck`
-- [ ] **T9** — Hook `useFinanceTaxes(range)` con `placeholderData:
+- [x] **T9** — Hook `useFinanceTaxes(range)` con `placeholderData:
       keepPreviousData` y sin `refetchInterval`, igual que `useFinanceSummary` ·
       archivo: `src/modules/finance/hooks/use-finance-taxes.ts` · verificación:
       `npm run typecheck`
-- [ ] **T10** — Componente presentacional de los dos bloques: recibe
+- [x] **T10** — Componente presentacional de los dos bloques: recibe
       `FinanceTaxes | undefined`, `isLoading`, `isError`, `message` y `onRetry`;
       esqueletos en la primera carga y mensaje con «Reintentar» en el error
       (AC23); el neto con etiqueta, icono y color según el signo y **nunca un
@@ -593,28 +593,28 @@ documentación → cierre.
       `RER_RATE_BASIS_POINTS` · archivo:
       `src/modules/finance/components/finance-taxes-cards.tsx` · verificación:
       `npm run typecheck && npm run lint`
-- [ ] **T11** — Contenedor `"use client"`: estado del rango con
+- [x] **T11** — Contenedor `"use client"`: estado del rango con
       `currentMonthRange(new Date())` memoizado en el montaje, el
       `FinanceRangeFilter` existente y el hook de T9, con `query.isPending` como
       `isLoading` · archivo:
       `src/modules/finance/components/finance-taxes-overview.tsx` ·
       verificación: `npm run typecheck && npm run lint`
-- [ ] **T12** — Página Server Component con `requirePagePermission('finance.read')`,
+- [x] **T12** — Página Server Component con `requirePagePermission('finance.read')`,
       `metadata`, encabezado que dice que el panel **calcula y no declara**, y
       las dos notas informativas (saldo a favor y estimado de Renta) · archivo:
       `src/app/(admin)/admin/finance/taxes/page.tsx` · verificación:
       `npm run typecheck && npm run lint`
-- [ ] **T13** — Entrada «Impuestos» en `NAV_ITEMS` con `permission:
+- [x] **T13** — Entrada «Impuestos» en `NAV_ITEMS` con `permission:
       'finance.read'`, detrás de «Precio unitario» y con un icono propio
       (`Landmark`), que no repita ninguno de los ya usados · archivo:
       `src/app/(admin)/admin/layout.tsx` · verificación: `npm run typecheck`
-- [ ] **T14** — Documentar en `docs/SETUP.md` §6: la pantalla nueva, el endpoint
+- [x] **T14** — Documentar en `docs/SETUP.md` §6: la pantalla nueva, el endpoint
       nuevo, que el débito reutiliza `buildDeclarableFilter()` y el crédito
       `findExpenseTotals()`, que no hay migración ni permiso nuevo, y las dos
       advertencias normativas pendientes (tasa RER y tabla de crédito fiscal).
       **Sin tocar §5.3**: no hay cambio de esquema que registrar · archivo:
       `docs/SETUP.md` · verificación: lectura
-- [ ] **T15** — Cierre: confirmar que `drizzle/` sigue en `0012_careful_cargill`
+- [x] **T15** — Cierre: confirmar que `drizzle/` sigue en `0012_careful_cargill`
       y que `src/lib/permissions.ts` sigue en 29 códigos (AC25, AC26) ·
       verificación: `npm run typecheck && npm run lint && npm test && npm run build`
 

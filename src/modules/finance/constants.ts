@@ -40,6 +40,9 @@ export const financeKeys = {
   // El rango entra en la clave: cambiar de mes es otra consulta, no una invalidación
   // de la anterior, y `keepPreviousData` necesita distinguirlas.
   summary: (range: FinanceRange) => [...financeKeys.all, 'summary', range] as const,
+  // Clave propia y no una rama de `summary`: son dos endpoints distintos y compartir
+  // clave haría que una invalidación arrastrara a la otra pantalla (spec 026, D-1).
+  taxes: (range: FinanceRange) => [...financeKeys.all, 'taxes', range] as const,
 };
 
 export const expenseKeys = {
@@ -169,6 +172,73 @@ export const UNINVOICED_ORDERS_HREF = '/admin/orders';
 // (§10). Se dice aquí, arriba del todo, porque es interpretación y no código.
 export const DECLARABLE_SALES_INFORMATIVE_NOTE =
   'Las ventas confirmadas son lo cobrado por Stripe; las declarables, lo emitido ante SUNAT neto de notas de crédito y débito. Casi nunca coinciden: la emisión es manual, un pedido cobrado el día 30 puede facturarse el 1, y una corrección posterior cambia lo facturado sin devolver el cobro.';
+
+// ── Impuestos: IGV y Renta RER (spec 026) ───────────────────────────────────
+
+export const TAXES_IGV_BLOCK_TITLE = 'IGV del período';
+
+export const TAXES_INCOME_TAX_BLOCK_TITLE = 'Renta RER estimada';
+
+// «Débito» y «crédito» con su origen entre paréntesis: son los términos de la
+// declaración, pero quien mira la pantalla no tiene por qué saber cuál es cuál.
+export const IGV_DEBIT_LABEL = 'Débito fiscal (ventas)';
+
+export const IGV_CREDIT_LABEL = 'Crédito fiscal (compras)';
+
+// Las tres etiquetas del neto. El servidor publica `netCents` con signo y la etiqueta la
+// elige la vista (D-5): un «IGV por pagar» en negativo sería mentira, y el cero tiene su
+// propio caso porque «S/ 0.00 por pagar» se lee como un importe pendiente (AC16).
+export const IGV_NET_PAYABLE_LABEL = 'IGV por pagar';
+
+export const IGV_NET_CREDIT_BALANCE_LABEL = 'Saldo a favor';
+
+export const IGV_NET_ZERO_LABEL = 'Sin IGV por pagar';
+
+// El crédito de compras sale de la misma función que la card «IGV de compras» del
+// resumen, y solo de los comprobantes que dan derecho a crédito fiscal (AC13, AC14).
+export const IGV_CREDIT_HINT = 'Solo comprobantes con derecho a crédito fiscal';
+
+// La etiqueta de un importe negativo del bloque de IGV. Un débito negativo es real —las
+// notas de crédito del rango corrigen IGV facturado en otro— y el «-» de `formatPrice`
+// no lo comunica: en una fila de `text-sm` se lee como un importe positivo más (017,
+// AC9). Copy propio y no el de ventas declarables: lo que queda en negativo aquí es el
+// impuesto, no la venta. Va en minúscula porque sigue a la cifra, no la encabeza.
+export const IGV_NEGATIVE_AMOUNT_LABEL = 'corrección neta de IGV';
+
+export const INCOME_TAX_BASE_LABEL = 'Base de cálculo · ingresos netos sin IGV';
+
+// Mismo criterio que `IGV_NEGATIVE_AMOUNT_LABEL`, con su propio copy: esta cifra son
+// ingresos sin IGV, no el impuesto.
+export const INCOME_TAX_BASE_NEGATIVE_LABEL = 'corrección neta de ingresos';
+
+export const INCOME_TAX_ESTIMATE_LABEL = 'Renta estimada del rango';
+
+// Un rango sin comprobantes emitidos y sin compras con crédito no es un error ni una
+// carga: es S/ 0.00 con su copy (AC21).
+export const EMPTY_TAXES_IGV_MESSAGE =
+  'No se emitió ningún comprobante ni se registró ninguna compra con crédito fiscal en el rango.';
+
+export const EMPTY_INCOME_TAX_MESSAGE =
+  'Sin ingresos netos en el rango: no hay base sobre la que estimar la Renta.';
+
+// Base negativa y base cero acaban las dos en un estimado de `0` (D-6, AC18), pero no
+// significan lo mismo: una es «no hubo actividad» y la otra «se corrigió más de lo que se
+// emitió». Sin esta frase, las dos se leen igual en pantalla.
+export const NEGATIVE_INCOME_TAX_BASE_MESSAGE =
+  'Las correcciones del rango superan lo emitido: no hay base positiva sobre la que estimar la Renta.';
+
+export const FINANCE_TAXES_ERROR_MESSAGE = 'No se pudo cargar el cálculo de impuestos.';
+
+// El aviso del saldo a favor. Es el malentendido más probable de toda la pantalla (§10):
+// se muestra siempre, no solo cuando el neto es negativo (AC20).
+export const IGV_CREDIT_BALANCE_NOTE =
+  'El saldo a favor es informativo del rango elegido: este panel no lo arrastra al período siguiente ni registra qué declaraciones se presentaron. El neto tampoco descuenta retenciones, percepciones ni detracciones, así que no es «lo que hay que pagar», sino el resultado de restar el crédito fiscal al débito.';
+
+// El aviso del estimado de Renta. Permanente y no condicional (D-13): un aviso que
+// aparece y desaparece enseña a ignorarlo, y la declaración real tampoco coincide con un
+// rango elegido a mano aunque las fechas cuadren (AC19).
+export const RER_ESTIMATE_NOTE =
+  'La Renta del Régimen Especial es un estimado sobre los ingresos netos del rango elegido. La declaración real es mensual y exacta: se presenta por mes calendario, con el cronograma de SUNAT y sobre los libros del contribuyente. Lo mismo vale para el IGV, que también se declara por mes completo.';
 
 // ── Precio unitario (spec 021) ──────────────────────────────────────────────
 
