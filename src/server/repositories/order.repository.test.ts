@@ -3,6 +3,7 @@ import { PgDialect } from 'drizzle-orm/pg-core';
 import { describe, expect, it } from 'vitest';
 
 import type { AdminOrderQueryParams } from '@/modules/orders/schemas/admin-order.schema';
+import { products } from '@/server/db/schema';
 
 import {
   applyRefund,
@@ -10,6 +11,7 @@ import {
   buildRefundGuard,
   buildRefundIncrement,
   findByIdForUpdate,
+  snapshotItemCosts,
   updateBuyer,
 } from './order.repository';
 
@@ -180,6 +182,100 @@ describe('buildRefundGuard', () => {
 
   it('never compares the status: the refund state is derived, order_status does not move', () => {
     expect(dialect.sqlToQuery(buildRefundGuard(ORDER_ID, 0)).sql).not.toContain('"status"');
+  });
+});
+
+// ── Costo congelado de las líneas (spec 027) ────────────────────────────────
+
+// `snapshotItemCosts` no expone su SQL como pieza aparte, así que se le pasa un `tx`
+// falso que captura el `set` y el `where` en vez de ejecutarlos. Mismo sumidero que el de
+// `finance.repository.test.ts`: no es un mock del dominio, es lo que deja compilar el
+// árbol que Drizzle habría enviado.
+function captureSnapshotCosts(orderId: string) {
+  let values: Record<string, SQL> | undefined;
+  let where: SQL | undefined;
+  let fromTable: unknown;
+
+  const chain: Record<string, unknown> = {
+    set: (selected: Record<string, SQL>) => {
+      values = selected;
+      return chain;
+    },
+    from: (table: unknown) => {
+      fromTable = table;
+      return chain;
+    },
+    where: (condition: SQL) => {
+      where = condition;
+      return Promise.resolve([]);
+    },
+  };
+
+  void snapshotItemCosts({ update: () => chain } as never, orderId);
+
+  if (!values || !where) throw new Error('snapshotItemCosts no construyó la consulta');
+  return { values, where, fromTable };
+}
+
+describe('snapshotItemCosts', () => {
+  const ORDER_ID = '55555555-5555-4555-8555-555555555555';
+  const captured = () => captureSnapshotCosts(ORDER_ID);
+  const assignment = () => dialect.sqlToQuery(captured().values.costCentsSnapshot);
+  const where = () => dialect.sqlToQuery(captured().where);
+
+  it('writes exactly one column: the cost snapshot and nothing else', () => {
+    expect(Object.keys(captured().values)).toEqual(['costCentsSnapshot']);
+  });
+
+  // §5.2: el costo se copia del catálogo en el instante de la venta, sin releerlo aparte
+  // y sin depender del array de líneas que el servicio ya cargó (D-2).
+  it('assigns from the catalogue average cost, read in the same statement', () => {
+    expect(assignment().sql).toBe('"products"."average_cost_cents"');
+  });
+
+  it('joins the catalogue with an UPDATE … FROM instead of a second read (D-2)', () => {
+    // La tabla exacta, no solo "algo definido": esto es lo único que distinguiría un
+    // `.from(products)` correcto de un `.from(users)` que compilaría igual de "definido"
+    // pero uniría con la tabla equivocada (revisión del spec 027, hallazgo menor).
+    expect(captured().fromTable).toBe(products);
+  });
+
+  it('matches each line with its own product', () => {
+    expect(where().sql).toContain('"products"."id" = "order_items"."product_id"');
+  });
+
+  it('bounds the update to the order at hand, with the id as a parameter', () => {
+    expect(where().sql).toMatch(/"order_items"\."order_id" = \$\d/);
+    expect(where().params).toEqual([ORDER_ID]);
+  });
+
+  it('never inlines the order id into the SQL text', () => {
+    expect(where().sql).not.toContain(ORDER_ID);
+  });
+
+  // AC4 y D-3: un costo `0` no es «no sé cuánto costó», es «me costó gratis», e inflaría
+  // la utilidad bruta. Es exactamente el bug que este spec existe para evitar.
+  it('never coalesces a null average cost: the snapshot stays null (AC4)', () => {
+    expect(assignment().sql).not.toContain('coalesce');
+    expect(assignment().sql).not.toContain('0');
+    expect(assignment().params).toEqual([]);
+  });
+
+  it('never falls back to zero anywhere in the statement (AC4)', () => {
+    expect(where().sql).not.toContain('coalesce');
+    expect(where().params).not.toContain(0);
+  });
+
+  // AC5: el snapshot es histórico, igual que `price_cents_snapshot`. Sin esta condición,
+  // reescribiría líneas ya vendidas cuando el promedio del producto se mueva.
+  it('never widens the update past the order: no other line is rewritten (AC5)', () => {
+    expect(where().sql).toContain('"order_items"."order_id"');
+  });
+
+  // Solo `Tx`: corre dentro de la transacción del webhook o no corre, así que o se guarda
+  // con el `paid` o no se guarda nada.
+  it('takes the transaction handle as its first parameter', () => {
+    expect(snapshotItemCosts.length).toBe(2);
   });
 });
 

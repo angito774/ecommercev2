@@ -8,10 +8,12 @@ import { electronicDocuments } from '@/server/db/schema';
 import {
   buildDeclarableFilter,
   buildExpenseFilters,
+  findCogsTotals,
   findDeclarableSalesByKind,
   findDeclarableTaxTotals,
   findExpenseTotals,
   findManyExpenses,
+  findPayrollTotals,
   findSalesTotals,
   findUninvoicedPaidOrderCount,
 } from './finance.repository';
@@ -564,6 +566,243 @@ describe('findDeclarableTaxTotals', () => {
 
   it('never inlines the instants into the SQL text', () => {
     expect(where().sql).not.toContain('2026-09-01');
+  });
+});
+
+// ── Costo de lo vendido (spec 027) ──────────────────────────────────────────
+
+// Mismo sumidero que `captureTaxTotalsQuery`, ampliado con el `innerJoin` a las líneas:
+// el COGS une tres tablas y hay que poder afirmar por qué columna lo hace.
+function captureCogsQuery(range: { from: Date; to: Date }) {
+  let fields: Record<string, SQL> | undefined;
+  let where: SQL | undefined;
+  const joins: SQL[] = [];
+  let grouped = false;
+
+  const chain: Record<string, unknown> = {
+    leftJoin: (_table: unknown, on: SQL) => {
+      joins.push(on);
+      return chain;
+    },
+    innerJoin: (_table: unknown, on: SQL) => {
+      joins.push(on);
+      return chain;
+    },
+    where: (condition: SQL) => {
+      where = condition;
+      return chain;
+    },
+    groupBy: () => {
+      grouped = true;
+      return chain;
+    },
+  };
+  // Thenable, para que el `await` de la función resuelva sin base de datos.
+  chain.then = (resolve: (rows: unknown[]) => void) => resolve([]);
+
+  const reader = {
+    select: (selected: Record<string, SQL>) => {
+      fields = selected;
+      return { from: () => chain };
+    },
+  };
+
+  void findCogsTotals(range, reader as never);
+
+  if (!fields || !where) throw new Error('findCogsTotals no construyó la consulta');
+  return { fields, where, joins, grouped };
+}
+
+describe('findCogsTotals', () => {
+  const fields = () => captureCogsQuery(DECLARABLE_RANGE).fields;
+  const field = (key: string) => dialect.sqlToQuery(fields()[key]);
+  const where = () => dialect.sqlToQuery(captureCogsQuery(DECLARABLE_RANGE).where);
+  const joins = () =>
+    captureCogsQuery(DECLARABLE_RANGE).joins.map((on) => dialect.sqlToQuery(on).sql);
+
+  // AC9 y D-5: la aserción no es «se parece al filtro de ventas declarables», es que el
+  // texto compilado es **el mismo** más `related_document_id is null`. Si alguien copiara
+  // la condición en vez de importarla, el numerador y el denominador de la utilidad bruta
+  // podrían divergir en silencio (§10).
+  it('sends the very buildDeclarableFilter plus the originals restriction (AC9, D-5)', () => {
+    const parent = alias(electronicDocuments, 'parent_document');
+    const direct = dialect.sqlToQuery(buildDeclarableFilter(DECLARABLE_RANGE, parent));
+
+    expect(where().sql).toBe(
+      `(${direct.sql} and "electronic_documents"."related_document_id" is null)`,
+    );
+    expect(where().params).toEqual(direct.params);
+  });
+
+  it('shares the period anchor byte for byte with the declarable sales (D-5)', () => {
+    expect(where().sql).toContain(declarableFilter().sql);
+    expect(where().params).toEqual(declarableFilter().params);
+  });
+
+  it('restricts to original documents: a credit note brings no cost of its own (AC9)', () => {
+    expect(where().sql).toContain('"electronic_documents"."related_document_id" is null');
+  });
+
+  it('counts only issued documents: a voided original contributes no cost (AC10)', () => {
+    expect(where().sql).toContain('"electronic_documents"."status"');
+    expect(where().params).toContain('issued');
+  });
+
+  it('bounds both ends of issued_at, the upper one strictly (AC9)', () => {
+    expect(where().sql).toMatch(/"issued_at" >= \$\d/);
+    expect(where().sql).toMatch(/"issued_at" < \$\d/);
+    expect(where().sql).not.toMatch(/"issued_at" <= \$\d/);
+  });
+
+  // AC9: el ancla del período es el comprobante, nunca la fecha del pedido. Con
+  // `orders.created_at` el costo caería en un mes y su ingreso en otro.
+  it('never anchors the period by created_at nor updated_at (AC9)', () => {
+    expect(where().sql).not.toContain('"created_at"');
+    expect(where().sql).not.toContain('"updated_at"');
+  });
+
+  it('joins the order lines by order_id, the side the existing index sustains', () => {
+    expect(joins()).toContain('"order_items"."order_id" = "electronic_documents"."order_id"');
+  });
+
+  it('still joins the parent document, so the imported filter has a table to read', () => {
+    expect(joins()).toContain(
+      '"parent_document"."id" = "electronic_documents"."related_document_id"',
+    );
+  });
+
+  // §10: `costo × cantidad` en `int4` desborda **antes** que la suma, así que el casteo va
+  // sobre el factor y no sobre el resultado.
+  it('casts to bigint before multiplying, not after (§10)', () => {
+    expect(field('amountCents').sql).toContain(
+      '"order_items"."cost_cents_snapshot"::bigint * "order_items"."quantity"',
+    );
+  });
+
+  it('coalesces the empty sum to 0: a range with no sales is a number, not null', () => {
+    expect(field('amountCents').sql).toContain('coalesce');
+    expect(field('amountCents').sql).toContain('::bigint');
+  });
+
+  // D-3: `sum` ignora los nulos por sí solo. Un `coalesce` sobre la columna afirmaría que
+  // esa mercadería salió gratis e inflaría la utilidad bruta.
+  it('never coalesces the null cost to zero inside the sum (D-3, AC12)', () => {
+    expect(field('amountCents').sql).not.toContain('coalesce("order_items"."cost_cents_snapshot"');
+    expect(field('amountCents').sql).not.toContain(', 0)::bigint * ');
+  });
+
+  it('counts the uncosted lines with a FILTER on is null (AC12)', () => {
+    expect(field('uncostedLineCount').sql).toBe(
+      'count(*) filter (where "order_items"."cost_cents_snapshot" is null)::int',
+    );
+  });
+
+  it('counts every line of the range apart from the uncosted ones', () => {
+    expect(field('lineCount').sql).toBe('count(*)::int');
+  });
+
+  it('publishes exactly the three columns of CostOfGoodsSold', () => {
+    expect(Object.keys(fields())).toEqual(['amountCents', 'lineCount', 'uncostedLineCount']);
+  });
+
+  it('never reads the sale price: this is the cost side (§5.3)', () => {
+    for (const key of Object.keys(fields())) {
+      expect(field(key).sql).not.toContain('"price_cents_snapshot"');
+    }
+  });
+
+  it('never touches the expenses table: the operating side is a separate read', () => {
+    expect(where().sql).not.toContain('"expenses"');
+  });
+
+  it('never filters by category: the summary is the whole period', () => {
+    expect(where().sql).not.toContain('"category"');
+  });
+
+  // Sin `GROUP BY` no entra en la clase de bug del 42803 que documenta el spec 015.
+  it('has no GROUP BY: the COGS is one figure for the range', () => {
+    expect(captureCogsQuery(DECLARABLE_RANGE).grouped).toBe(false);
+  });
+
+  it('never inlines the instants into the SQL text', () => {
+    expect(where().sql).not.toContain('2026-09-01');
+  });
+});
+
+// ── Nómina del período (spec 027) ───────────────────────────────────────────
+
+function capturePayrollQuery(range: { fromDay: string; toDay: string }) {
+  let fields: Record<string, SQL> | undefined;
+  let where: SQL | undefined;
+
+  const reader = {
+    select: (selected: Record<string, SQL>) => ({
+      from: () => ({
+        where: (condition: SQL) => {
+          fields = selected;
+          where = condition;
+          return Promise.resolve([]);
+        },
+      }),
+    }),
+  };
+
+  void findPayrollTotals(range, reader as never);
+
+  if (!fields || !where) throw new Error('findPayrollTotals no construyó la consulta');
+  return { fields, where };
+}
+
+describe('findPayrollTotals', () => {
+  const captured = () => capturePayrollQuery(RANGE);
+  const where = () => dialect.sqlToQuery(captured().where);
+  const field = (key: string) => dialect.sqlToQuery(captured().fields[key]);
+
+  // AC17: un pago anulado no suma, aunque su `paid_at` siga en el rango.
+  it('sums only live payments: voided_at is null (AC17)', () => {
+    expect(where().sql).toContain('"payroll_payments"."voided_at" is null');
+  });
+
+  // AC16: `paid_at` es una columna `date` sin hora, igual que `expenses.incurred_on`, así
+  // que los dos extremos entran. La ventana semiabierta de los instantes dejaría fuera el
+  // último día del rango.
+  it('bounds paid_at with both ends inclusive, like the expenses (AC16)', () => {
+    expect(where().sql).toMatch(/"paid_at" >= \$\d/);
+    expect(where().sql).toMatch(/"paid_at" <= \$\d/);
+  });
+
+  it('never closes the window strictly: that would drop the last day (AC16)', () => {
+    expect(where().sql).not.toMatch(/"paid_at" < \$\d/);
+  });
+
+  it('sends both days as parameters, not inlined into the SQL text', () => {
+    expect(where().params).toEqual(['2026-09-01', '2026-09-30']);
+    expect(where().sql).not.toContain('2026-09-01');
+  });
+
+  // D-7: `findMany()` de nómina filtra por `period` (`'AAAA-MM'`), que mentiría en cuanto
+  // el rango elegido no sea un mes calendario.
+  it('never filters by period: the range is arbitrary, not a calendar month (D-7)', () => {
+    expect(where().sql).not.toContain('"period"');
+  });
+
+  it('never filters by employee: the figure is the payroll of the whole range', () => {
+    expect(where().sql).not.toContain('"employee_id"');
+  });
+
+  // 017 D-11: `sum(int4)` desborda y el driver entrega los bigint como texto.
+  it('casts the sum to bigint and coalesces it to 0, like every sum of the module', () => {
+    expect(field('amountCents').sql).toContain('::bigint');
+    expect(field('amountCents').sql).toContain('coalesce');
+  });
+
+  it('sums the frozen amount and never the base salary of the employee (018, D-6)', () => {
+    expect(field('amountCents').sql).toContain('"payroll_payments"."amount_cents"');
+    expect(field('amountCents').sql).not.toContain('base_salary');
+  });
+
+  it('publishes exactly the two columns of PayrollTotals', () => {
+    expect(Object.keys(captured().fields)).toEqual(['amountCents', 'paymentCount']);
   });
 });
 

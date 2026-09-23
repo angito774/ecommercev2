@@ -96,6 +96,13 @@ export async function fulfillCheckoutSession(
     const order = await orderRepository.findByIdWithItems(orderId, tx);
     if (order) await decrementStockAndAudit(tx, order.items, session, eventId, orderId);
 
+    // Aquí y no antes (spec 027, §5.2): es el mismo instante en que se descuenta el stock
+    // —el momento en que la venta se concreta, no el de crearse el carrito (AC6)— y queda
+    // antes de `queueOriginalDocument`, la única operación de este bloque que puede lanzar
+    // por datos del comprador. El `markPaid` condicional de arriba es lo que impide que una
+    // reentrega del mismo evento reescriba el costo ya congelado (AC7).
+    await orderRepository.snapshotItemCosts(tx, orderId);
+
     // Dentro de la misma transacción y **sin ninguna llamada de red** (spec 022, AC7,
     // D-7): lo único que hace es consumir un correlativo e insertar una fila `pending`
     // sobre la conexión que ya está abierta, así que no compite con el corte de ~10 s del

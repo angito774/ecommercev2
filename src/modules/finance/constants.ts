@@ -65,8 +65,10 @@ export const NO_RESULTS_MESSAGE = 'Ningún gasto del rango pertenece a esa categ
 
 export const EMPTY_BREAKDOWN_MESSAGE = 'Sin gastos registrados en el rango.';
 
-// `null` en `marginPercent` no es un fallo: es que el rango no tuvo ingresos y sin
-// base no hay porcentaje que calcular (D-12, AC10).
+// `null` en `marginPercent` no es un fallo: es que el **ingreso neto del rango no es
+// positivo** y sin base no hay porcentaje que calcular. Dice «no positivo» y no «no hubo
+// ingresos» porque desde el spec 027 la base también puede ser negativa —las correcciones
+// del rango superan lo emitido— y los dos casos llegan aquí (027, AC21, AC22).
 export const NO_REVENUE_MESSAGE = 'Sin ingresos en el rango';
 
 export const FINANCE_SUMMARY_ERROR_MESSAGE = 'No se pudo cargar el resumen financiero.';
@@ -239,6 +241,75 @@ export const IGV_CREDIT_BALANCE_NOTE =
 // rango elegido a mano aunque las fechas cuadren (AC19).
 export const RER_ESTIMATE_NOTE =
   'La Renta del Régimen Especial es un estimado sobre los ingresos netos del rango elegido. La declaración real es mensual y exacta: se presenta por mes calendario, con el cronograma de SUNAT y sobre los libros del contribuyente. Lo mismo vale para el IGV, que también se declara por mes completo.';
+
+// ── Utilidad del período (spec 027) ─────────────────────────────────────────
+
+export const PERIOD_PROFIT_BLOCK_TITLE = 'Resultado del período';
+
+// Las ocho etiquetas de la cascada. Los cinco sustraendos se rotulan igual que los tres
+// niveles porque en un estado de resultados se leen en la misma columna; lo que los
+// distingue es la jerarquía tipográfica, no el copy.
+export const PROFIT_NET_REVENUE_LABEL = 'Ingresos netos';
+
+export const PROFIT_COGS_LABEL = 'Costo de lo vendido';
+
+export const PROFIT_GROSS_LABEL = 'Utilidad bruta';
+
+// «Netos» en la etiqueta y no solo en el comentario (D-8): la card «Gastos operativos»
+// publica el importe **registrado**, el que cuadra con el banco, y este descuenta el IGV
+// que vuelve como crédito fiscal. Son dos preguntas distintas y el rótulo tiene que decir
+// cuál es cuál.
+export const PROFIT_OPERATING_EXPENSES_LABEL = 'Gastos operativos netos';
+
+export const PROFIT_PAYROLL_LABEL = 'Nómina';
+
+export const PROFIT_OPERATING_LABEL = 'Utilidad operativa';
+
+export const PROFIT_INCOME_TAX_LABEL = 'Renta estimada';
+
+export const PROFIT_NET_LABEL = 'Utilidad neta';
+
+// El pie del ingreso base: dice de cuál de las dos cifras de ventas cuelga toda la
+// jerarquía, porque la pantalla publica las dos y la utilidad solo usa una (AC8).
+export const PROFIT_NET_REVENUE_HINT = 'Ventas declarables sin IGV';
+
+// Las tres etiquetas de signo. El signo se comunica con etiqueta, icono **y** color —los
+// tres, nunca solo color—, porque solo color es inaccesible para daltonismo y en
+// impresión (017, AC9; 027, AC23).
+export const PROFIT_POSITIVE_LABEL = 'Ganancia';
+
+export const PROFIT_NEGATIVE_LABEL = 'Pérdida';
+
+export const PROFIT_BREAK_EVEN_LABEL = 'Equilibrio';
+
+// El aviso de COGS parcial. Solo se pinta con `uncostedLineCount > 0` (AC12, AC13): una
+// advertencia permanente que casi siempre dice cero es ruido que se deja de leer.
+export const PARTIAL_COGS_NOTE =
+  'El costo de lo vendido de este rango está incompleto: la utilidad bruta está sobreestimada. Se registra el costo promedio congelado al confirmarse cada venta, y las líneas anteriores a esa función o de productos sin compras registradas no lo tienen.';
+
+export const PARTIAL_COGS_BADGE_LABEL = 'Cálculo parcial';
+
+// El enlace va a la pantalla donde se resuelve: cargar el costo inicial de un producto o
+// registrar la compra que mueve su promedio (021).
+export const PARTIAL_COGS_LINK_LABEL = 'Ver precio unitario';
+
+export const PARTIAL_COGS_HREF = '/admin/finance/pricing';
+
+// AC20: el IGV no resta en ninguno de los tres niveles, y la pantalla tiene que decirlo.
+// Es el malentendido más probable del bloque, porque es dinero que sí sale de la cuenta.
+export const PROFIT_IGV_EXCLUDED_NOTE =
+  'El IGV no resta de ninguno de los tres niveles: la empresa lo recauda del comprador y lo traslada a SUNAT, así que no es ingreso suyo ni costo suyo. Los ingresos de esta cascada ya son netos de IGV desde la primera línea. El IGV por pagar del período se calcula en Impuestos.';
+
+// D-8: los gastos de la cascada no son los de la card de arriba, y sin esta frase el par
+// de números se lee como una contradicción.
+export const PROFIT_NET_EXPENSES_NOTE =
+  'Los gastos operativos netos no son el importe registrado de la card de arriba: descuentan el IGV de los comprobantes con derecho a crédito fiscal, que vuelve como crédito y no es un costo. Un gasto con factura resta solo su base; uno con boleta, recibo por honorarios u otro comprobante resta su importe completo.';
+
+// La única resta tributaria de la cascada, y el copy tiene que acotarla: ESSALUD y los
+// demás tributos sobre la nómina quedaron fuera de alcance (§11).
+export const PROFIT_INCOME_TAX_HINT = 'Solo Renta RER estimada; no incluye otros tributos';
+
+export const PERIOD_PROFIT_ERROR_MESSAGE = 'No se pudo cargar el resultado del período.';
 
 // ── Precio unitario (spec 021) ──────────────────────────────────────────────
 

@@ -1,7 +1,7 @@
 ---
 id: 027
 title: Ganancias v2 — utilidad bruta, operativa y neta
-status: approved
+status: done
 module: finance
 scope: admin
 created: 2026-09-23
@@ -83,92 +83,92 @@ simplificado de hoy.
 
 ## 4. Criterios de aceptación
 
-- [ ] AC1 — Dado un visitante sin sesión, cuando pide
+- [x] AC1 — Dado un visitante sin sesión, cuando pide
       `GET /api/admin/finance/summary`, entonces recibe `401` con cuerpo
       `{ message }` y no un `307` al formulario de Clerk.
-- [ ] AC2 — Dado un usuario con sesión y sin `finance.read`, cuando pide el
+- [x] AC2 — Dado un usuario con sesión y sin `finance.read`, cuando pide el
       endpoint con una query inválida, entonces recibe `403` y no `400`.
-- [ ] AC3 — Dado un pedido que pasa a `paid` por el webhook de Stripe, entonces
+- [x] AC3 — Dado un pedido que pasa a `paid` por el webhook de Stripe, entonces
       cada una de sus líneas queda con `cost_cents_snapshot` igual al
       `average_cost_cents` que el producto tenía **en ese instante**, dentro de la
       misma transacción que descuenta el stock.
-- [ ] AC4 — Dado un producto con `average_cost_cents = null` al momento de la
+- [x] AC4 — Dado un producto con `average_cost_cents = null` al momento de la
       venta, entonces su línea queda con `cost_cents_snapshot = null` y **nunca**
       con `0`.
-- [ ] AC5 — Dado un producto cuyo costo promedio cambia después de la venta,
+- [x] AC5 — Dado un producto cuyo costo promedio cambia después de la venta,
       entonces la línea ya vendida **no** se reescribe: el snapshot es histórico,
       igual que `price_cents_snapshot`.
-- [ ] AC6 — Dada la creación del pedido en el checkout, entonces `order_items` se
+- [x] AC6 — Dada la creación del pedido en el checkout, entonces `order_items` se
       inserta **sin** `cost_cents_snapshot`: el costo se congela al confirmarse la
       venta, no al crearse el carrito.
-- [ ] AC7 — Dada una reentrega del mismo evento de Stripe, entonces el
+- [x] AC7 — Dada una reentrega del mismo evento de Stripe, entonces el
       `cost_cents_snapshot` no se reescribe: el `markPaid` condicional corta antes
       y la transacción entera no llega a ejecutarse dos veces.
-- [ ] AC8 — Dado el ingreso base de toda la jerarquía, entonces es
+- [x] AC8 — Dado el ingreso base de toda la jerarquía, entonces es
       `declarable.baseCents` de `findDeclarableTaxTotals()` —la **misma función**
       del spec 026— y por tanto **exactamente el mismo número** que la base de
       Renta de `/admin/finance/taxes` para el mismo rango.
-- [ ] AC9 — Dado el COGS del rango, entonces cuenta las líneas de los pedidos
+- [x] AC9 — Dado el COGS del rango, entonces cuenta las líneas de los pedidos
       cuyo **comprobante original vigente** (`related_document_id is null`,
       `status = 'issued'`) cae en el rango por `issued_at`, usando el mismo
       `buildDeclarableFilter()` y nunca `orders.created_at`.
-- [ ] AC10 — Dado un pedido cuyo original quedó `voided`, entonces su costo **no**
+- [x] AC10 — Dado un pedido cuyo original quedó `voided`, entonces su costo **no**
       entra en el COGS del rango, igual que su venta no entra en el ingreso.
-- [ ] AC11 — Dado un pedido con comprobante reemitido tras una corrección de
+- [x] AC11 — Dado un pedido con comprobante reemitido tras una corrección de
       comprador, entonces su costo cuenta **una sola vez**, en el rango del
       comprobante vigente.
-- [ ] AC12 — Dado un rango con al menos una línea vendida sin costo, entonces la
+- [x] AC12 — Dado un rango con al menos una línea vendida sin costo, entonces la
       respuesta trae `uncostedLineCount > 0` y la vista rotula la utilidad bruta
       como **parcial**, con el conteo y un enlace a `/admin/finance/pricing`.
-- [ ] AC13 — Dado un rango sin ninguna línea sin costo, entonces el aviso de
+- [x] AC13 — Dado un rango sin ninguna línea sin costo, entonces el aviso de
       parcial **no se pinta**: una advertencia permanente que casi siempre dice
       cero es ruido.
-- [ ] AC14 — Dados los gastos operativos de la utilidad, entonces son
+- [x] AC14 — Dados los gastos operativos de la utilidad, entonces son
       `expensesCents − igvCreditableCents` de `findExpenseTotals()`: un gasto con
       factura resta solo su base y uno con boleta, recibo por honorarios, otro
       comprobante o sin comprobante resta su importe completo.
-- [ ] AC15 — Dado un cambio en `PURCHASE_RECEIPT_RULES`, entonces la utilidad
+- [x] AC15 — Dado un cambio en `PURCHASE_RECEIPT_RULES`, entonces la utilidad
       operativa cambia con él sin tocar este spec: la elegibilidad se lee a través
       de `TAX_CREDIT_RECEIPT_TYPES`, no de una lista escrita aquí.
-- [ ] AC16 — Dada la nómina del rango, entonces suma `amount_cents` de los pagos
+- [x] AC16 — Dada la nómina del rango, entonces suma `amount_cents` de los pagos
       con `voided_at is null` cuyo `paid_at` cae entre `fromDay` y `toDay`, **con
       los dos extremos inclusive**, igual que los gastos y nunca con la ventana
       semiabierta de los instantes.
-- [ ] AC17 — Dado un pago de nómina anulado, entonces no suma, aunque su
+- [x] AC17 — Dado un pago de nómina anulado, entonces no suma, aunque su
       `paid_at` siga en el rango.
-- [ ] AC18 — Dada la utilidad bruta, entonces es `ingresoNeto − cogs`; la
+- [x] AC18 — Dada la utilidad bruta, entonces es `ingresoNeto − cogs`; la
       operativa, `bruta − gastosNetos − nómina`; y la neta, `operativa − renta`,
       todas restas de enteros en céntimos.
-- [ ] AC19 — Dada la Renta que resta de la utilidad neta, entonces sale de
+- [x] AC19 — Dada la Renta que resta de la utilidad neta, entonces sale de
       `estimateRerIncomeTax()` sobre la misma base del AC8, y es el mismo número
       que muestra `/admin/finance/taxes`.
-- [ ] AC20 — Dado el IGV del período, entonces **no** resta en ninguno de los tres
+- [x] AC20 — Dado el IGV del período, entonces **no** resta en ninguno de los tres
       niveles, y la pantalla lo dice.
-- [ ] AC21 — Dado un ingreso neto de `0`, entonces los tres márgenes son `null`
+- [x] AC21 — Dado un ingreso neto de `0`, entonces los tres márgenes son `null`
       —no `0`, `Infinity` ni `NaN`— y los tres importes se publican igualmente.
-- [ ] AC22 — Dado un ingreso neto **negativo** (las correcciones del rango superan
+- [x] AC22 — Dado un ingreso neto **negativo** (las correcciones del rango superan
       lo emitido), entonces los tres márgenes son `null`: un porcentaje sobre base
       negativa invierte el signo y afirmaría lo contrario de lo que pasó.
-- [ ] AC23 — Dado un nivel de utilidad negativo, entonces la vista lo marca como
+- [x] AC23 — Dado un nivel de utilidad negativo, entonces la vista lo marca como
       «Pérdida» con etiqueta, icono y color —los tres, nunca solo color— (017, AC9).
-- [ ] AC24 — Dado el contrato de `/api/admin/finance/summary`, entonces
+- [x] AC24 — Dado el contrato de `/api/admin/finance/summary`, entonces
       `netCents` y `marginPercent` **ya no existen** en `FinanceSummary` y ningún
       componente los lee. El `netCents` de `IgvSettlement` (spec 026) es otro campo
       de otro contrato y **no se toca**: verificado, son los dos únicos `netCents`
       del proyecto y comparten nombre sin compartir significado.
-- [ ] AC25 — Dado el encabezado de `/admin/finance`, entonces ya no afirma que la
+- [x] AC25 — Dado el encabezado de `/admin/finance`, entonces ya no afirma que la
       cifra «no es utilidad contable» por no descontar costo, nómina ni impuestos.
-- [ ] AC26 — Dado cualquier importe del JSON, entonces es un entero en céntimos;
+- [x] AC26 — Dado cualquier importe del JSON, entonces es un entero en céntimos;
       la división por 100 solo ocurre al formatear en la vista.
-- [ ] AC27 — Dado el catálogo de permisos, entonces sigue en 29 códigos, y **todo
+- [x] AC27 — Dado el catálogo de permisos, entonces sigue en 29 códigos, y **todo
       rol con `finance.read` tiene también `payroll.read`**, verificado por un test
       sobre `ROLE_PERMISSIONS`: esta pantalla publica el total de nómina del rango.
-- [ ] AC28 — Dada la primera carga, entonces el bloque de utilidad muestra
+- [x] AC28 — Dada la primera carga, entonces el bloque de utilidad muestra
       esqueletos; ante un fallo de red muestra su mensaje con «Reintentar»; y al
       cambiar de rango conserva las cifras anteriores.
-- [ ] AC29 — Dado el directorio `drizzle/`, entonces el journal pasa de
+- [x] AC29 — Dado el directorio `drizzle/`, entonces el journal pasa de
       `0012_careful_cargill` a `0013_*`, con **una sola** migración y sin backfill.
-- [ ] AC30 — Dada la arquitectura, entonces ningún componente importa `db`,
+- [x] AC30 — Dada la arquitectura, entonces ningún componente importa `db`,
       Drizzle ni un repositorio: la página consume hook → service → Route Handler.
 
 ## 5. Modelo de datos
@@ -644,43 +644,43 @@ Orden de dependencia: esquema → migración → repositorio de escritura → se
 → repositorio de lectura → módulo puro → tipos → handler → copys → vista →
 documentación → cierre.
 
-- [ ] **T1** — Columna `costCentsSnapshot` y el `CHECK`
+- [x] **T1** — Columna `costCentsSnapshot` y el `CHECK`
       `order_items_cost_cents_snapshot_positive` según §5.1, con el comentario que
       explica por qué es nullable · archivo:
       `src/server/db/schema/order-item.ts` · verificación: `npm run typecheck`
-- [ ] **T2** — Generar y aplicar la migración: `npm run db:generate` y
+- [x] **T2** — Generar y aplicar la migración: `npm run db:generate` y
       `npm run db:migrate`. Revisar el SQL antes de aplicarlo: debe ser un
       `ADD COLUMN` nullable sin default y el `ADD CONSTRAINT`, **sin ningún
       `UPDATE` de relleno** (D-4, AC29) · archivos: `drizzle/0013_*.sql`,
       `drizzle/meta/` · verificación: `npm run db:migrate` y el journal en `0013`
-- [ ] **T3** — `snapshotItemCosts(tx, orderId)` según §5.2: `update(orderItems)`
+- [x] **T3** — `snapshotItemCosts(tx, orderId)` según §5.2: `update(orderItems)`
       asignando `costCentsSnapshot` desde una plantilla `sql` sobre
       `products.averageCostCents`, con `.from(products)` y el `where` de las dos
       igualdades. **Sin `coalesce`**. El archivo importa hoy `orderItems, orders,
       users` del esquema (línea 30): hay que añadirle `products` ·
       archivo: `src/server/repositories/order.repository.ts` · verificación:
       `npm run typecheck`
-- [ ] **T4** — Test del SQL compilado de T3 con `PgDialect`, capturando el
+- [x] **T4** — Test del SQL compilado de T3 con `PgDialect`, capturando el
       builder con un `tx` falso al estilo de `finance.repository.test.ts:200-211`:
       asigna desde `"products"."average_cost_cents"`, empareja por
       `"product_id"`, acota por `"order_id"` con el id como parámetro, y el texto
       **no contiene** `coalesce` ni el literal `0` (AC4) · archivo:
       `src/server/repositories/order.repository.test.ts` · verificación:
       `npm test`
-- [ ] **T5** — Llamar a `snapshotItemCosts(tx, orderId)` dentro de
+- [x] **T5** — Llamar a `snapshotItemCosts(tx, orderId)` dentro de
       `fulfillCheckoutSession`, **entre** `decrementStockAndAudit(...)` y
       `queueOriginalDocument(...)` (§5.2), con el comentario de por qué ese
       instante y no antes · archivo:
       `src/server/services/order-fulfillment.service.ts` · verificación:
       `npm run typecheck && npm run lint`
-- [ ] **T6** — `findCogsTotals()` según §5.3 y §6.2: `leftJoin` al alias
+- [x] **T6** — `findCogsTotals()` según §5.3 y §6.2: `leftJoin` al alias
       `parentDocuments` ya existente, `innerJoin` a `order_items` por `order_id`,
       `where(and(buildDeclarableFilter(range, parentDocuments), isNull(electronicDocuments.relatedDocumentId)))`
       con el filtro **importado y no reescrito**, el producto con `::bigint` antes
       de multiplicar y el `FILTER` de líneas sin costo · archivo:
       `src/server/repositories/finance.repository.ts` · verificación:
       `npm run typecheck`
-- [ ] **T7** — Tests del SQL compilado de T6: su `where` es byte a byte el de
+- [x] **T7** — Tests del SQL compilado de T6: su `where` es byte a byte el de
       `buildDeclarableFilter` más `related_document_id is null` (mismo estilo de
       aserción que `finance.repository.test.ts:227-233`), acota `issued_at` con el
       extremo superior estricto, no menciona `"created_at"`, une `order_items` por
@@ -688,20 +688,20 @@ documentación → cierre.
       costo con un `filter` sobre `is null` · archivo:
       `src/server/repositories/finance.repository.test.ts` · verificación:
       `npm test`
-- [ ] **T8** — `findPayrollTotals()` según §5.3 y §6.2: `voided_at is null` y los
+- [x] **T8** — `findPayrollTotals()` según §5.3 y §6.2: `voided_at is null` y los
       dos extremos de `paid_at` **inclusive** · archivo:
       `src/server/repositories/finance.repository.ts` · verificación:
       `npm run typecheck`
-- [ ] **T9** — Tests del SQL compilado de T8: exige `"voided_at" is null`, acota
+- [x] **T9** — Tests del SQL compilado de T8: exige `"voided_at" is null`, acota
       `"paid_at"` con `>=` y `<=` —y **no** con `<`, que sería la ventana de los
       instantes (AC16)—, envía los dos días como parámetros y no filtra por
       `"period"` · archivo: `src/server/repositories/finance.repository.test.ts` ·
       verificación: `npm test`
-- [ ] **T10** — Módulo puro `buildPeriodProfit()` según §6.4, componiendo
+- [x] **T10** — Módulo puro `buildPeriodProfit()` según §6.4, componiendo
       `marginPercent()` de `finance-math.ts` con el guard de base no positiva ·
       archivo: `src/modules/finance/lib/profit.ts` · verificación:
       `npm run typecheck`
-- [ ] **T11** — Tests de T10, al estilo de `rer.test.ts`, un caso por
+- [x] **T11** — Tests de T10, al estilo de `rer.test.ts`, un caso por
       comportamiento: la cascada completa con números redondos; base `0` → los tres
       márgenes `null` y los tres importes calculados (AC21); base **negativa** → los
       tres márgenes `null` (AC22); COGS parcial → el importe no cambia y
@@ -709,22 +709,22 @@ documentación → cierre.
       renta `0` → la neta iguala a la operativa; y que los tres importes son
       enteros · archivo: `src/modules/finance/lib/profit.test.ts` · verificación:
       `npm test`
-- [ ] **T12** — Tipos `ProfitLevel`, `CostOfGoodsSold`, `PeriodProfit` y el campo
+- [x] **T12** — Tipos `ProfitLevel`, `CostOfGoodsSold`, `PeriodProfit` y el campo
       `profit` en `FinanceSummary`, **eliminando** `netCents` y `marginPercent`
       (AC24), con los comentarios de §6.1 · archivo:
       `src/modules/finance/types/finance.types.ts` · verificación:
       `npm run typecheck` (romperá en el handler y en la card: lo arreglan T13 y
       T17)
-- [ ] **T13** — El handler pasa a ocho lecturas en `Promise.all` y compone
+- [x] **T13** — El handler pasa a ocho lecturas en `Promise.all` y compone
       `profit` con `buildPeriodProfit()` según §6.3; fuera el cálculo de
       `netCents` y el import de `marginPercent` · archivo:
       `src/app/api/admin/finance/summary/route.ts` · verificación:
       `npm run typecheck && npm run lint`
-- [ ] **T14** — Test del invariante del AC27 sobre `ROLE_PERMISSIONS`: todo rol con
+- [x] **T14** — Test del invariante del AC27 sobre `ROLE_PERMISSIONS`: todo rol con
       `finance.read` tiene también `payroll.read`, porque el resumen publica el
       total de nómina del rango · archivo: `src/lib/permissions.test.ts` ·
       verificación: `npm test`
-- [ ] **T15** — Copys: título del bloque, las ocho etiquetas de línea (ingresos
+- [x] **T15** — Copys: título del bloque, las ocho etiquetas de línea (ingresos
       netos, costo de lo vendido, utilidad bruta, gastos operativos netos, nómina,
       utilidad operativa, Renta estimada, utilidad neta), las tres etiquetas de
       signo, el aviso de COGS parcial con su enlace, la nota de que el IGV no resta
@@ -734,7 +734,7 @@ documentación → cierre.
       pasa a decir «ingreso neto no positivo» y no «no hubo ingresos», porque ahora
       la base también puede ser negativa (AC22) · archivo:
       `src/modules/finance/constants.ts` · verificación: `npm run typecheck`
-- [ ] **T16** — Componente presentacional del bloque: recibe
+- [x] **T16** — Componente presentacional del bloque: recibe
       `PeriodProfit | undefined`, `isLoading`, `isError`, `message` y `onRetry`;
       pinta la cascada de §6.1 con los sustraendos entre los niveles; el signo con
       etiqueta, icono y color (AC23); el margen `null` con su copy y nunca «0 %»
@@ -742,29 +742,29 @@ documentación → cierre.
       a `/admin/finance/pricing` con `next/link` (AC12, AC13) · archivo:
       `src/modules/finance/components/period-profit-card.tsx` · verificación:
       `npm run typecheck && npm run lint`
-- [ ] **T17** — En `finance-summary-cards.tsx`: quitar la card «Resultado del
+- [x] **T17** — En `finance-summary-cards.tsx`: quitar la card «Resultado del
       período» y el componente `NetResult` que se queda sin uso, devolver la
       rejilla a `sm:grid-cols-2 lg:grid-cols-4` y los esqueletos a cuatro ·
       archivo: `src/modules/finance/components/finance-summary-cards.tsx` ·
       verificación: `npm run typecheck && npm run lint`
-- [ ] **T18** — Montar el bloque bajo `UninvoicedOrdersNotice` y sobre
+- [x] **T18** — Montar el bloque bajo `UninvoicedOrdersNotice` y sobre
       `ExpensesByCategory`, pasándole `summary?.profit` y el mismo `isLoading`,
       `isError`, `message` y `onRetry` que el resto (AC28) · archivo:
       `src/modules/finance/components/finance-overview.tsx` · verificación:
       `npm run typecheck && npm run lint`
-- [ ] **T19** — Reescribir el encabezado de la página: ya no puede decir que la
+- [x] **T19** — Reescribir el encabezado de la página: ya no puede decir que la
       cifra no descuenta costo, nómina ni impuestos (AC25). Debe decir qué mide
       cada nivel, que la utilidad cuelga de las ventas **declarables** mientras la
       card de confirmadas es la caja, que el COGS usa el costo promedio congelado
       y no el del lote, y que el IGV no resta · archivo:
       `src/app/(admin)/admin/finance/page.tsx` · verificación:
       `npm run typecheck && npm run lint`
-- [ ] **T20** — Documentar en `docs/SETUP.md`: en §5.3, la columna nueva y la
+- [x] **T20** — Documentar en `docs/SETUP.md`: en §5.3, la columna nueva y la
       migración `0013`; en §6, los tres niveles, de dónde sale cada sumando y que
       `netCents` ya no existe. Corregir el párrafo de §6 que hoy dice que el costo
       «no entra todavía en el resultado de `/admin/finance`» · archivo:
       `docs/SETUP.md` · verificación: lectura
-- [ ] **T21** — Cierre: confirmar que `drizzle/` quedó en `0013` con **una sola**
+- [x] **T21** — Cierre: confirmar que `drizzle/` quedó en `0013` con **una sola**
       migración nueva, que `src/lib/permissions.ts` sigue en 29 códigos y que
       ningún archivo menciona ya `summary.netCents` · verificación:
       `npm run typecheck && npm run lint && npm test && npm run build`

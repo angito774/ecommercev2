@@ -71,6 +71,53 @@ export type DeclarableSales = {
   uninvoicedOrderCount: number;
 };
 
+// ── Utilidad del período (spec 027) ─────────────────────────────────────────
+
+// Un nivel del estado de resultados. El margen viaja al lado del importe y no se
+// recalcula en la vista: es la misma regla de redondeo que el resto del módulo.
+export type ProfitLevel = {
+  amountCents: number;
+  /** `null` cuando el ingreso neto no es positivo. Nunca `0`, `Infinity` ni `NaN` (AC21, AC22). */
+  marginPercent: number | null;
+};
+
+// El costo de lo vendido y **su nivel de confianza**, juntos. Separarlos permitiría
+// pintar el importe sin la advertencia, que es exactamente el error que este spec evita.
+export type CostOfGoodsSold = {
+  /** Suma de `cost_cents_snapshot × quantity`. Las líneas sin costo aportan `0` aquí. */
+  amountCents: number;
+  /** Líneas vendidas contadas en el rango. */
+  lineCount: number;
+  /**
+   * Líneas sin `cost_cents_snapshot`. `> 0` ⇒ el COGS del rango es **parcial** y la
+   * utilidad bruta está sobreestimada. Nunca se resuelve asumiendo `0` (D-3).
+   */
+  uncostedLineCount: number;
+};
+
+// El estado de resultados del rango. Se publican también los sustraendos, no solo los
+// tres totales: tres números sin las restas que los separan no se pueden auditar a ojo.
+export type PeriodProfit = {
+  /**
+   * Ingresos netos **sin IGV** de las ventas declarables. Base de los tres márgenes y el
+   * mismo número que la base de Renta de `/admin/finance/taxes` (AC8).
+   */
+  netRevenueCents: number;
+  cogs: CostOfGoodsSold;
+  /** `netRevenueCents − cogs.amountCents`. */
+  gross: ProfitLevel;
+  /** Gastos del rango **netos del IGV con derecho a crédito fiscal** (§5.3, AC14). */
+  operatingExpensesCents: number;
+  payrollCents: number;
+  payrollPaymentCount: number;
+  /** `gross − operatingExpenses − payroll`. */
+  operating: ProfitLevel;
+  /** Renta RER estimada del rango. El IGV **no** entra aquí (D-10). */
+  incomeTaxCents: number;
+  /** `operating − incomeTax`. */
+  net: ProfitLevel;
+};
+
 export type FinanceSummary = {
   /**
    * Ventas **confirmadas**: lo cobrado, `sum(amount_total_cents)` de los pedidos `paid`,
@@ -81,24 +128,27 @@ export type FinanceSummary = {
    */
   revenueCents: number;
   orderCount: number;
+  /** Importe **registrado** de los gastos, con IGV incluido: lo que salió de caja (D-8). */
   expensesCents: number;
   expenseCount: number;
-  // revenueCents − expensesCents. Puede ser negativo (AC9).
-  netCents: number;
-  // null = no hubo ingresos en el rango; sin base no hay porcentaje (D-12, AC10).
-  marginPercent: number | null;
   // Solo las categorías con al menos una fila, orden descendente por importe. El
   // porcentaje de cada barra lo calcula la vista: es un dato de pintado.
   expensesByCategory: ExpenseCategoryTotal[];
-  // Dato al lado, no un sumando: el IGV de compras no entra en `netCents` ni en
-  // `marginPercent`, que siguen diciendo exactamente lo que decían (§3).
+  // Dato al lado, no un sumando: el IGV de compras no resta de ninguno de los tres
+  // niveles de utilidad (027, D-10, AC20).
   purchaseIgv: PurchaseIgvTotals;
   /**
-   * Ventas **declarables**: lo facturado ante SUNAT neto de correcciones. Cifra aparte y
-   * no un reemplazo: `netCents` y `marginPercent` siguen restando los gastos a
-   * `revenueCents` y dicen exactamente lo que decían (025, §3, D-10).
+   * Ventas **declarables**: lo facturado ante SUNAT neto de correcciones. Es la cifra de la
+   * que cuelga la utilidad; las confirmadas se publican al lado como la caja (025, §3).
    */
   declarableSales: DeclarableSales;
+  /**
+   * **Reemplaza** a `netCents` y `marginPercent` del spec 017 (027, D-11): dos cifras de
+   * «ganancia» distintas en la misma pantalla es peor que una sola bien definida, y la
+   * vieja pierde siempre esa comparación —es la que la propia pantalla llevaba un spec
+   * entero advirtiendo que no era utilidad—.
+   */
+  profit: PeriodProfit;
 };
 
 export type FinanceSummaryResponse = {

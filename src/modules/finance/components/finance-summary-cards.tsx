@@ -1,4 +1,4 @@
-import { ArrowDownRight, ArrowUpRight, Minus } from 'lucide-react';
+import { ArrowDownRight } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -15,7 +15,6 @@ import {
   EMPTY_DECLARABLE_SALES_MESSAGE,
   EMPTY_PURCHASE_IGV_MESSAGE,
   FINANCE_SUMMARY_ERROR_MESSAGE,
-  NO_REVENUE_MESSAGE,
   PURCHASE_IGV_CARD_TITLE,
   PURCHASE_IGV_CREDITABLE_LABEL,
   PURCHASE_IGV_NON_CREDITABLE_LABEL,
@@ -26,19 +25,13 @@ import type {
   PurchaseIgvTotals,
 } from '../types/finance.types';
 
-const percentFormatter = new Intl.NumberFormat('es-PE', {
-  maximumFractionDigits: 1,
-  signDisplay: 'exceptZero',
-});
-
-// Tres columnas y no cuatro ni cinco (D-9): con cinco cards, cuatro columnas dejan una
-// suelta y desalineada en la segunda fila, y cinco columnas dan ~200 px por card,
-// insuficientes para `S/ 1,234,567.89` en `text-2xl` sin que el importe se corte. Tres
-// reparten 3+2 y dejan las dos cifras de ventas juntas en la primera fila.
+// Cuatro columnas desde que el resultado del período dejó de ser una card y pasó a ser el
+// bloque de utilidad de ancho completo (spec 027, T17, D-12): con cuatro cards, cuatro
+// columnas llenan la fila exacta y ninguna queda suelta en una segunda.
 //
 // Constante compartida y no la misma cadena escrita dos veces: los esqueletos y las
 // cards tienen que caer en la misma rejilla o el bloque salta de tamaño al cargar.
-const CARDS_GRID = 'grid gap-4 sm:grid-cols-2 lg:grid-cols-3';
+const CARDS_GRID = 'grid gap-4 sm:grid-cols-2 lg:grid-cols-4';
 
 function SummaryCard({
   title,
@@ -62,36 +55,7 @@ function SummaryCard({
   );
 }
 
-// El signo del resultado se comunica con icono y etiqueta además del color: solo color
-// es inaccesible para daltonismo y en impresión (AC9).
-function NetResult({ netCents, marginPercent }: Pick<FinanceSummary, 'netCents' | 'marginPercent'>) {
-  const Icon = netCents === 0 ? Minus : netCents > 0 ? ArrowUpRight : ArrowDownRight;
-  const label = netCents === 0 ? 'Equilibrio' : netCents > 0 ? 'Ganancia' : 'Pérdida';
-  const tone =
-    netCents === 0
-      ? 'text-muted-foreground'
-      : netCents > 0
-        ? 'text-emerald-600 dark:text-emerald-400'
-        : 'text-destructive';
-
-  return (
-    <p className="text-muted-foreground flex flex-wrap items-center gap-1 text-xs">
-      <span className={`flex items-center gap-0.5 font-medium ${tone}`}>
-        <Icon className="size-3.5" aria-hidden />
-        {label}
-      </span>
-      {/* `null` no es un fallo: es que el rango no tuvo ingresos y sin base no hay
-          porcentaje que calcular. Nunca `Infinity`, `NaN` ni «0 %» (AC10). */}
-      {marginPercent === null ? (
-        <span>· {NO_REVENUE_MESSAGE}</span>
-      ) : (
-        <span>· margen {percentFormatter.format(marginPercent)} %</span>
-      )}
-    </p>
-  );
-}
-
-// Mismo criterio que `NetResult`: el signo se comunica con icono y etiqueta además del
+// El signo se comunica con icono y etiqueta además del
 // color, porque solo color es inaccesible para daltonismo y en impresión (spec 017, AC9).
 // Aquí el negativo es una venta declarable en crédito neto —las notas de crédito del
 // rango superan lo emitido en él—, y con el glifo «−» a secas en `text-xs` se lee como un
@@ -252,9 +216,9 @@ export function FinanceSummaryCards({
   if (isLoading || !summary) {
     return (
       <div className={CARDS_GRID}>
-        {/* Cinco y no cuatro: el esqueleto tiene que anticipar la rejilla real, o el
-            bloque salta de tamaño al llegar los datos (AC22). */}
-        {Array.from({ length: 5 }, (_, index) => (
+        {/* Cuatro, tantos como cards: el esqueleto tiene que anticipar la rejilla real, o
+            el bloque salta de tamaño al llegar los datos (AC22). */}
+        {Array.from({ length: 4 }, (_, index) => (
           <SummaryCardSkeleton key={`summary-skeleton-${index}`} />
         ))}
       </div>
@@ -304,13 +268,6 @@ export function FinanceSummaryCards({
             {summary.expenseCount}{' '}
             {summary.expenseCount === 1 ? 'gasto registrado' : 'gastos registrados'}
           </p>
-        }
-      />
-      <SummaryCard
-        title="Resultado del período"
-        value={formatPrice(summary.netCents)}
-        footer={
-          <NetResult netCents={summary.netCents} marginPercent={summary.marginPercent} />
         }
       />
       {/* Card propia y no un sumando del resultado: el IGV de compras es el insumo

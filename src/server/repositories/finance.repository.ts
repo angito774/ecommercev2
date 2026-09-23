@@ -18,13 +18,21 @@ import { alias } from 'drizzle-orm/pg-core';
 import { TAX_CREDIT_RECEIPT_TYPES } from '@/lib/purchase-receipts';
 import type { ExpenseQueryParams } from '@/modules/finance/schemas/finance.schema';
 import type {
+  CostOfGoodsSold,
   DeclarableSalesByKind,
   ExpenseCategoryTotal,
   ExpenseReceipt,
   ExpenseRow,
 } from '@/modules/finance/types/finance.types';
 import { db, type Reader, type Tx } from '@/server/db';
-import { electronicDocuments, expenses, orders, users } from '@/server/db/schema';
+import {
+  electronicDocuments,
+  expenses,
+  orderItems,
+  orders,
+  payrollPayments,
+  users,
+} from '@/server/db/schema';
 
 type Expense = typeof expenses.$inferSelect;
 type NewExpense = typeof expenses.$inferInsert;
@@ -229,6 +237,110 @@ export async function findDeclarableTaxTotals(
     baseCents: toCents(row?.baseCents ?? null),
     documentCount: row?.documentCount ?? 0,
     adjustmentCount: row?.adjustmentCount ?? 0,
+  };
+}
+
+// ── Costo de lo vendido y nómina (spec 027) ─────────────────────────────────
+
+// La multiplicación se hace ya en `bigint`, igual que `LINE_REVENUE` de
+// `metrics.repository.ts`: `costo × cantidad` en `int4` desborda **antes** que la suma, y
+// el fallo sería un 500 en la mejor venta del año (017, D-11).
+//
+// **Sin `coalesce` sobre la columna**: `sum` ignora los nulos, así que una línea sin costo
+// aporta `0` a la suma y `1` a `uncosted_line_count`. Esa asimetría es el dato —el COGS
+// que se muestra es el de lo que sí tiene costo— y sustituir el nulo por `0` afirmaría que
+// esa mercadería salió gratis (D-3). El `coalesce` exterior es otra cosa: convierte la
+// suma vacía de un rango sin ventas en `0`.
+const LINE_COST = sql<string>`coalesce(sum(${orderItems.costCentsSnapshot}::bigint * ${orderItems.quantity}), 0)::bigint`;
+
+/**
+ * COGS del rango: las líneas de los pedidos cuyo **comprobante original vigente** cae en el
+ * rango por `issued_at` (§5.3), nunca por `orders.created_at` (AC9). El ancla del período
+ * es el comprobante y no el pedido, porque el costo se reconoce en el mismo período en que
+ * se reconoce su ingreso.
+ *
+ * El filtro se **importa** y no se copia (D-5, AC9): para un original la disyunción del
+ * padre es trivialmente cierta, pero lo que se reutiliza es el anclaje del período
+ * —`status = 'issued'` y la ventana de `issued_at` con su extremo superior estricto—. Una
+ * tercera copia de esa regla se quedaría atrás en silencio el día que alguien la toque, y
+ * descuadraría el COGS contra el ingreso del que se resta.
+ *
+ * `related_document_id is null` restringe a originales. No abanica filas: el índice único
+ * parcial `electronic_documents_one_original_per_order_idx` garantiza un solo original no
+ * anulado por pedido, así que un original `voided` queda fuera por `status` (AC10) y el
+ * reemitido aporta en su propio rango (AC11).
+ *
+ * Devuelve el tipo **publicado** y no uno propio del repositorio, igual que
+ * `findDeclarableSalesByKind()`: los tres campos viajan al contrato tal cual.
+ */
+export async function findCogsTotals(
+  range: InstantRange,
+  reader: Reader = db,
+): Promise<CostOfGoodsSold> {
+  const [row] = await reader
+    .select({
+      amountCents: LINE_COST,
+      lineCount: sql<number>`count(*)::int`,
+      uncostedLineCount: sql<number>`count(*) filter (where ${orderItems.costCentsSnapshot} is null)::int`,
+    })
+    .from(electronicDocuments)
+    // El mismo alias de módulo que los otros dos agregados declarables: el `WHERE` y el
+    // `JOIN` tienen que hablar de la misma tabla (§5.1).
+    .leftJoin(parentDocuments, eq(parentDocuments.id, electronicDocuments.relatedDocumentId))
+    // `innerJoin` por `order_id`, que es el lado sostenido por `order_items_order_id_idx`.
+    .innerJoin(orderItems, eq(orderItems.orderId, electronicDocuments.orderId))
+    .where(
+      and(
+        buildDeclarableFilter(range, parentDocuments),
+        isNull(electronicDocuments.relatedDocumentId),
+      ),
+    );
+
+  return {
+    amountCents: toCents(row?.amountCents ?? null),
+    lineCount: row?.lineCount ?? 0,
+    uncostedLineCount: row?.uncostedLineCount ?? 0,
+  };
+}
+
+export type PayrollTotals = { amountCents: number; paymentCount: number };
+
+/**
+ * Pagos de nómina **vivos** del rango, por `paid_at` (§5.3, AC16, AC17). `voided_at is
+ * null` es «pago vivo» y el importe es el congelado al pagar, independiente del salario
+ * base vigente (018, D-6).
+ *
+ * Vive aquí y no en `payroll-payment.repository.ts` por el mismo precedente que
+ * `findSalesTotals()` consultando `orders`: es un agregado del resumen financiero, no una
+ * lectura de aquel dominio (017, D-1; D-7). Y no reutiliza `findMany()`, que pagina y
+ * filtra por `period` (`'AAAA-MM'`): sumar sus páginas en TypeScript sería traerse la
+ * bitácora entera para un número, y filtrar por `period` mentiría en cuanto el rango
+ * elegido no sea un mes calendario.
+ */
+export async function findPayrollTotals(
+  { fromDay, toDay }: DayRange,
+  reader: Reader = db,
+): Promise<PayrollTotals> {
+  const [row] = await reader
+    .select({
+      amountCents: sql<string>`coalesce(sum(${payrollPayments.amountCents}), 0)::bigint`,
+      paymentCount: sql<number>`count(*)::int`,
+    })
+    .from(payrollPayments)
+    .where(
+      and(
+        isNull(payrollPayments.voidedAt),
+        // `gte`/`lte` y no la ventana semiabierta de los instantes: `paid_at` es una
+        // columna `date` sin hora, igual que `expenses.incurred_on`, así que el último
+        // día se incluye tal cual (AC16).
+        gte(payrollPayments.paidAt, fromDay),
+        lte(payrollPayments.paidAt, toDay),
+      ),
+    );
+
+  return {
+    amountCents: toCents(row?.amountCents ?? null),
+    paymentCount: row?.paymentCount ?? 0,
   };
 }
 

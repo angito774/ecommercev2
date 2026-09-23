@@ -92,6 +92,13 @@
       "when": 1790124018551,
       "tag": "0012_careful_cargill",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1790180914273,
+      "tag": "0013_unusual_yellow_claw",
+      "breakpoints": true
     }
   ]
 }

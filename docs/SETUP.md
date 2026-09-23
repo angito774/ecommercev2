@@ -476,6 +476,39 @@ gasto que ya tenía factura es el caso frecuente, y sin recalcular quedaría el 
 importe viejo. Devuelve `null` cuando no hay nada que escribir, que es lo que hace que
 **omitir `receipt` no borre el comprobante** mientras que `receipt: null` sí lo limpia.
 
+Construido a 2026-09-23: `order_items.cost_cents_snapshot` (spec 027, migración `0013`).
+Es el eslabón que faltaba entre el costo y la venta: hasta aquí `order_items` congelaba
+nombre, imagen y precio, así que era imposible saber cuánto costó lo que se vendió en un
+pedido. Entra `integer` **nullable y sin `DEFAULT`**, como `products.average_cost_cents`
+(§5.3) y por el mismo motivo: `null` significa «sin costo registrado entonces» y un `0`
+diría «me costó gratis», que es una afirmación distinta, falsa y que **infla la utilidad
+bruta** justo en los productos peor registrados. Lleva su `CHECK`,
+`cost_cents_snapshot IS NULL OR cost_cents_snapshot > 0`, con el criterio de siempre: un
+`0` o un negativo aquí solo puede venir de un `psql` a mano o de una migración de datos.
+
+Es el **cuarto `_snapshot` de la tabla y por la misma razón que los otros tres**: un pedido
+pasado debe decir lo que costó *entonces*, no lo que costaría hoy, así que una subida del
+costo promedio posterior **no reescribe** la línea ya vendida. Lo escribe
+`snapshotItemCosts()` desde `fulfillCheckoutSession()`, **en la misma transacción en que se
+descuenta el stock** y entre el descuento y `queueOriginalDocument`: es el instante en que
+la venta se concreta —no el de crearse el carrito, así que el checkout sigue insertando las
+líneas sin costo— y queda antes de la única operación que puede lanzar por datos del
+comprador. Es un `UPDATE order_items SET cost_cents_snapshot = p.average_cost_cents FROM
+products p WHERE …` de **una sola sentencia**, declarativa sobre `order_id`: no relee el
+catálogo, no amplía el `RETURNING` de `decrementStock()` —que ya hace un UPDATE por línea y
+duplicaría los viajes dentro de una transacción que compite con el corte de ~10 s de
+Stripe— y **no lleva `coalesce`**, que es exactamente el bug que la columna existe para
+evitar. La idempotencia la sigue dando el `markPaid` condicional: una reentrega del mismo
+evento sale antes y la transacción entera no llega a ejecutarse dos veces.
+
+**Sin backfill y no lo habrá** (spec 027, D-4). La migración es un `ADD COLUMN` a secas: los
+pedidos fulfillados antes quedan en `null` para siempre. El `average_cost_cents` de hoy es
+el de las compras registradas hasta hoy, no el vigente cuando aquellas ventas ocurrieron, y
+rellenar produciría una utilidad histórica con aspecto de exacta y contenido inventado, que
+es peor que una marcada como parcial. **Sin índice nuevo** (D-13): `order_items_order_id_idx`
+es el que sostiene el join del COGS, y la columna se **agrega**, no se filtra, así que un
+índice sobre ella no participaría en el plan.
+
 ### 5.4 Personal y nómina
 
 | Tabla | Propósito | Relaciones |
@@ -736,8 +769,9 @@ Dashboard con métricas (Recharts: ventas, pedidos, top productos, stock bajo) �
 CRUD de productos y categorías (TanStack Table: paginación, orden, filtros) ·
 gestión de pedidos y cambio de estado · control de inventario con notas de ingreso y
 salida · resumen financiero
-con ventas confirmadas y declarables, registro de gastos operativos y crédito fiscal de
-compras · precio unitario con costo promedio y margen por
+con ventas confirmadas y declarables, registro de gastos operativos, crédito fiscal de
+compras y la utilidad bruta, operativa y neta del período · precio unitario con costo
+promedio y margen por
 producto · impuestos con el IGV neto del período y la Renta RER estimada ·
 personal y nómina · emisión manual de comprobantes electrónicos ·
 listado de clientes.
@@ -946,11 +980,11 @@ En la pantalla, el IGV de compras es una **cuarta tarjeta** cuyo valor principal
 lo que da derecho a crédito fiscal; lo que no lo da se publica aparte con su etiqueta y
 **los dos números nunca se presentan sumados** (D-10): un único total invitaría a
 descontar IGV de boletas, que es justo la infracción que la regla evita. El encabezado
-dice que este número **no entra en el resultado del período**: `netCents`,
-`marginPercent` y el desglose por categoría siguen diciendo exactamente lo que decían.
-El filtro de categoría tampoco lo mueve, igual que el resto de los KPI. Restar este
-crédito contra el débito de ventas es el sub-proyecto de Impuestos; el enganche está
-listo en `purchaseIgv.creditableCents`.
+dice que este número **no entra en el resultado del período**, y sigue siendo cierto tras
+el spec 027: el IGV no resta en ninguno de los tres niveles de utilidad. El filtro de
+categoría tampoco lo mueve, igual que el resto de los KPI. Restar este crédito contra el
+débito de ventas es el sub-proyecto de Impuestos; el enganche está listo en
+`purchaseIgv.creditableCents`, y el spec 027 lo reutiliza otra vez para los gastos netos.
 
 El 18 % es una **aproximación declarada**: una factura con bienes exonerados dentro
 declara más IGV del que corresponde, misma asunción que `splitIgv()` ya documenta para
@@ -995,8 +1029,9 @@ handler, repositorio, service, hook y dos componentes sin alterar un céntimo y 
 cualquier caché de TanStack Query en vuelo durante el despliegue. **Ventas declarables**
 es lo emitido ante SUNAT neto de correcciones, agregado sobre `electronic_documents` por
 `issued_at` y nunca por `created_at` ni `updated_at` —`updated_at` lleva `$onUpdate` y
-movería una venta de mes—. `netCents` y `marginPercent` siguen restando los gastos a las
-**confirmadas** (D-10): alinear el resultado con lo declarado es el sub-proyecto #5.
+movería una venta de mes—. En este spec, `netCents` y `marginPercent` seguían restando los
+gastos a las **confirmadas** (D-10); alinear el resultado con lo declarado era el
+sub-proyecto #5, y lo hizo el spec 027: la utilidad cuelga hoy de las **declarables**.
 
 **La regla de conteo es el punto delicado y se apartó del diseño aprobado.** Aquel
 proponía restar toda nota de crédito `issued`, razonando que la `comunicacion_baja` no
@@ -1070,9 +1105,10 @@ rango ya selecciona (D-11).
 
 Ruta y endpoint propios, `GET /api/admin/finance/taxes` (D-1): esta pantalla no consume
 ninguno de los campos del resumen ni el resumen ninguno de estos, y compartir endpoint
-haría que cada una pagara las lecturas de la otra. `/admin/finance` se queda **exactamente
-como está** —sus cinco cards, `netCents` y `marginPercent` no se tocan—: alinear el
-resultado del período con los impuestos es el sub-proyecto #5. El handler autoriza antes
+haría que cada una pagara las lecturas de la otra. En este spec `/admin/finance` se quedaba
+**exactamente como estaba** —sus cinco cards, `netCents` y `marginPercent` sin tocar—, y
+alinear el resultado del período con los impuestos era el sub-proyecto #5: el spec 027 lo
+cerró reutilizando estas dos piezas. El handler autoriza antes
 de mirar la query, valida con el `financeRangeSchema` que ya existía y hace **dos**
 lecturas en `Promise.all`.
 
@@ -1126,6 +1162,96 @@ y cierre de período, arrastre automático del saldo a favor entre períodos (D-
 anual de Renta y cambio de régimen (RMT, General), otros tributos y regímenes de retención
 —ITAN, ESSALUD, ONP, cuarta categoría, detracciones, percepciones y retenciones de IGV—,
 presentación ante SUNAT y exportación del Registro de Ventas y de Compras.
+
+Construido a 2026-09-23: **Ganancias v2** en `/admin/finance` (spec 027), con migración
+`0013` (§5.3) y **ningún permiso nuevo**: el catálogo se queda en 29 códigos. Es el
+sub-proyecto #5 y el más dependiente del roadmap —se apoya en 018, 021, 024, 025 y 026—, y
+es exactamente lo que la advertencia del encabezado del spec 017 dejó pendiente: aquel
+«resultado del período» era `revenueCents − expensesCents` y la propia pantalla llevaba un
+spec entero diciendo que **no era utilidad contable**.
+
+`netCents` y `marginPercent` **ya no existen** en `FinanceSummary` (D-11): se **reemplazan**
+por `profit`, un estado de resultados de tres niveles. No coexisten, y no por prisa: dos
+cifras de «ganancia» en la misma pantalla obligan a explicar cuál es la buena cada vez que
+alguien la mira, y la vieja pierde siempre esa comparación. Ojo al homónimo —el `netCents`
+de `IgvSettlement` (spec 026) es **otro campo de otro contrato**, el IGV por pagar del
+período, y no se toca: son los dos únicos `netCents` del proyecto y comparten nombre sin
+compartir significado—.
+
+La cascada, toda en aritmética entera de céntimos y calculada en `buildPeriodProfit()`
+(`src/modules/finance/lib/profit.ts`), módulo puro con test:
+
+```
+utilidadBruta     = ingresoNeto − cogs
+utilidadOperativa = utilidadBruta − gastosNetos − nómina
+utilidadNeta      = utilidadOperativa − rentaEstimada
+```
+
+**Lo decisivo es de dónde sale cada sumando, y la respuesta es «de lo que ya existía».** El
+**ingreso neto** es `findDeclarableTaxTotals().baseCents` tal cual —la misma función del
+spec 026—, así que es por construcción el mismo número que la base de Renta de
+`/admin/finance/taxes`: no se deriva ninguna fórmula nueva, porque la del brainstorming era
+la que el spec 025 ya había descartado. Los **gastos netos** son
+`expensesCents − igvCreditableCents` de `findExpenseTotals()`, dos campos que salen de la
+misma fila del mismo `SELECT` que el handler ya pedía: ni una consulta más, y la
+elegibilidad la decide un solo sitio, `TAX_CREDIT_RECEIPT_TYPES`. La regla correcta no es
+«lleva IGV» sino «**ese IGV vuelve como crédito fiscal**»: una factura resta solo su base;
+una boleta, un recibo por honorarios, otro comprobante o un gasto sin comprobante restan su
+importe completo. La **Renta** es `estimateRerIncomeTax()` sobre esa misma base. Solo hay
+**dos funciones nuevas** en `finance.repository.ts`: `findCogsTotals()` y
+`findPayrollTotals()`.
+
+El **COGS** se ancla en el **comprobante original vigente** y nunca en `orders.created_at`:
+el costo se reconoce en el mismo período en que se reconoce su ingreso. Importa el mismo
+`buildDeclarableFilter()` y le suma `related_document_id is null` —lo que se reutiliza no es
+la disyunción del padre, trivial para un original, sino el anclaje del período (`issued`
+más la ventana de `issued_at` con extremo superior estricto)—, y los tests compilan las dos
+con `PgDialect` afirmando que el texto es el mismo: si alguien copiara la condición, el
+numerador y el denominador de la utilidad bruta divergirían en silencio. No abanica filas
+porque `electronic_documents_one_original_per_order_idx` garantiza un solo original no
+anulado por pedido. `costo × cantidad` se castea a `bigint` **antes** del producto, como
+`LINE_REVENUE`: en `int4` el producto desborda antes que la suma. La **nómina** suma
+`amount_cents` de los pagos con `voided_at is null` cuyo `paid_at` cae entre los dos días
+**inclusive** —es una columna `date`, como `expenses.incurred_on`, no la ventana semiabierta
+de los instantes—.
+
+**El IGV no resta en ninguno de los tres niveles** (D-10) y la pantalla lo dice: la empresa
+lo recauda del comprador y lo traslada a SUNAT, así que el ingreso base ya es `base_cents`
+sin IGV desde la primera línea y restarlo otra vez al final sería contarlo dos veces. La
+Renta sí es un impuesto **sobre** el resultado, y por eso separa la operativa de la neta.
+
+**`null` se propaga como «parcial» y jamás se sustituye por `0`** (D-3). `sum` ignora los
+nulos, así que una línea sin costo aporta `0` a la suma y `1` a `uncostedLineCount`: esa
+asimetría es el dato, y la vista rotula el bloque como cálculo parcial con el conteo y un
+enlace a `/admin/finance/pricing` —solo cuando el conteo es mayor que cero, porque una
+advertencia permanente que casi siempre dice cero es ruido—. Los tres márgenes son `null`
+con base **no positiva**, no solo con base cero: el guard vive en `profit.ts` y no dentro de
+`marginPercent()`, que lo comparte con el margen unitario del spec 021, donde el precio
+nunca es negativo. Con base negativa, `marginPercent()` devolvería un porcentaje de signo
+invertido que afirmaría lo contrario de lo que pasó.
+
+En la pantalla es un **bloque propio de ancho completo** y no tres cards más (D-12): los
+niveles se leen en cascada, con sus sustraendos entre medias, y en cards sueltas se pierde
+de dónde sale cada número. El signo se comunica con etiqueta, icono **y** color. La card
+«Gastos operativos» sigue mostrando el importe **registrado** (D-8) —responde «cuánto salió
+de caja», el número que cuadra con el banco—, y la rejilla vuelve a cuatro columnas. El
+resumen pasa de cinco a ocho lecturas en `Promise.all`, todas independientes y acotadas por
+índices existentes, así que el coste sigue siendo el de la más lenta.
+
+Tres advertencias que conviene no perder. La utilidad bruta **será poco fiable durante
+meses**, porque hoy casi ningún producto tiene `average_cost_cents`: es una señal operativa
+—faltan compras registradas—, no un defecto del cálculo, y el día que alguien proponga
+«poner cero mientras tanto», la respuesta es D-3. El **COGS no baja con una devolución**: el
+spec 023 no repone stock, así que una nota de crédito parcial reduce el ingreso y deja el
+costo entero. Y **ingreso y COGS no caen siempre en el mismo período**, porque el ingreso
+incluye las notas emitidas en el rango aunque corrijan ventas de meses anteriores: es el
+período contable de la nota, la deuda que 025 y 026 ya dejaron enganchada y que se retoma en
+el primer spec que cierre períodos.
+
+Fuera de alcance por decisión: costeo retroactivo y backfill, costeo por lote (FIFO/LIFO),
+utilidad por pedido, producto o categoría, comisiones de pasarela como línea propia, otros
+tributos que sí reducirían la neta —ESSALUD, entre otros—, y cierre de período, gráficos,
+exportación y comparación entre rangos.
 
 Construido a 2026-09-17: **personal y nómina** (`/admin/payroll`, spec 018), con
 migración `0007` (§5.4) y **dos** permisos nuevos —el catálogo pasa de 23 a 25
@@ -1340,13 +1466,12 @@ que aparece en la factura que la persona tiene delante.
 
 Lo que este número **no** es, y el encabezado de la página lo dice: es el promedio
 ponderado de las compras registradas, no el costo del lote vendido, así que el margen es el
-**potencial de la próxima venta** y no el realizado. **El costo no entra todavía en el
-resultado de `/admin/finance`**, que sigue diciendo exactamente lo que decía: `netCents` no
-descuenta el costo de la mercadería vendida y la pantalla sigue advirtiendo que no es
-utilidad contable. Congelar el costo en `order_items` y recalcular aquel resultado es el
-sub-proyecto #5 (Ganancias v2), y se retoma cuando este costo lleve unos meses
-alimentándose de compras reales: antes, el número saldría de un promedio que casi todos los
-productos no tienen.
+**potencial de la próxima venta** y no el realizado. **Desde el spec 027 ese costo sí entra
+en el resultado de `/admin/finance`**: se congela por línea en
+`order_items.cost_cents_snapshot` al confirmarse cada venta (§5.3) y alimenta el costo de lo
+vendido de la utilidad bruta, así que la aproximación del promedio ponderado llega ahora
+hasta la utilidad y el encabezado de aquella pantalla lo declara. Lo que **no** cambia es el
+alcance del costeo por lote (FIFO/LIFO), que sigue fuera (D-1).
 
 El riesgo principal queda declarado: **la aritmética del promedio vive en SQL y ningún test
 unitario la ejecuta**. Se acepta a cambio de la atomicidad y se mitiga con tres cosas —el

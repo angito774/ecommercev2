@@ -27,7 +27,7 @@ import type {
 import type { AdminOrderQueryParams } from '@/modules/orders/schemas/admin-order.schema';
 import type { OrderHistoryQueryParams } from '@/modules/orders/schemas/order-history.schema';
 import { db, type Reader, type Tx } from '@/server/db';
-import { orderItems, orders, users } from '@/server/db/schema';
+import { orderItems, orders, products, users } from '@/server/db/schema';
 
 type Order = typeof orders.$inferSelect;
 type NewOrder = typeof orders.$inferInsert;
@@ -587,6 +587,27 @@ export async function markPaymentFailed(tx: Tx, orderId: string): Promise<Order 
 // asíncrono ya cobrado, y ese pedido no debe volver atrás.
 export async function markCanceled(tx: Tx, orderId: string): Promise<Order | null> {
   return transitionFromPending(tx, orderId, { status: 'canceled' });
+}
+
+/**
+ * Congela el costo promedio vigente en las líneas del pedido (spec 027, §5.2). Solo `Tx`:
+ * corre dentro de la transacción del webhook o no corre, así que o se guarda con el
+ * `paid` o no se guarda nada.
+ *
+ * Un `UPDATE … FROM products` de **una sola sentencia** y no una escritura por línea
+ * (D-2): no relee el catálogo, no amplía el `RETURNING` de `decrementStock()` —que ya
+ * hace un UPDATE por línea— y no depende del array de líneas que el servicio ya cargó.
+ *
+ * **Sin `coalesce`.** Si `average_cost_cents` es `null`, la columna queda `null`: un costo
+ * `0` no es «no sé cuánto costó», es «me costó gratis», e inflaría la utilidad bruta justo
+ * en los productos peor registrados (D-3).
+ */
+export async function snapshotItemCosts(tx: Tx, orderId: string): Promise<void> {
+  await tx
+    .update(orderItems)
+    .set({ costCentsSnapshot: sql`${products.averageCostCents}` })
+    .from(products)
+    .where(and(eq(products.id, orderItems.productId), eq(orderItems.orderId, orderId)));
 }
 
 // ---------------------------------------------------------------------------
