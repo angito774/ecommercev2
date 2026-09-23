@@ -1,6 +1,7 @@
 import { UserButton } from '@clerk/nextjs';
 import { auth } from '@clerk/nextjs/server';
 import {
+  BookText,
   Boxes,
   HandCoins,
   Landmark,
@@ -54,6 +55,13 @@ const NAV_ITEMS: readonly NavItem[] = [
   // `Landmark` y no un glifo ya usado: dos entradas con el mismo icono se leen como la
   // misma, y la hacienda pública es exactamente lo que este bloque representa.
   { href: '/admin/finance/taxes', label: 'Impuestos', icon: Landmark, permission: 'finance.read' },
+  // Cuarta y última pantalla de Finanzas, con el mismo permiso: las cuatro aparecen y
+  // desaparecen juntas (spec 028, AC25). Detrás de «Impuestos» porque es donde se va
+  // cuando el cálculo no cuadra y hay que mirar documento por documento: primero el
+  // resumen, luego el estimado, y el registro al final, para cotejarlo contra el SIRE.
+  // `BookText` y no un glifo ya usado: dos entradas con el mismo icono se leen como la
+  // misma, y un libro contable es exactamente lo que esta pantalla lista.
+  { href: '/admin/finance/accounting', label: 'Contabilidad', icon: BookText, permission: 'finance.read' },
   // Junto a «Finanzas» porque también es dinero que sale, y delante de «Usuarios» para
   // que se lea «nómina» antes que «personas con acceso»: son dos cosas distintas y
   // confundirlas es el riesgo principal del módulo (spec 018, D-18). El icono no es

@@ -1087,7 +1087,9 @@ Fuera de alcance de esta ampliación, por decisión: el impuesto a pagar (cruzar
 contra el IGV de compras es el sub-proyecto #4), `base_cents`/`igv_cents` en la respuesta,
 el KPI de ventas del dashboard (spec 015, que sigue con su definición), filtros por URL en
 `/admin/orders`, ventas declarables por moneda, serie o vendedor, y exportación del
-Registro de Ventas a CSV.
+Registro de Ventas a CSV. **El Registro de Ventas y su exportación se construyeron
+después**, en el spec 028 (`/admin/finance/accounting`, más abajo): el resto de esta lista
+sigue fuera de alcance.
 
 Construido a 2026-09-23: **impuestos** (`/admin/finance/taxes`, spec 026). Es la tercera
 pantalla del módulo financiero y el sub-proyecto que cruza las dos mitades que 024 y 025
@@ -1161,7 +1163,10 @@ Fuera de alcance de este sub-proyecto, por decisión: registro de declaraciones 
 y cierre de período, arrastre automático del saldo a favor entre períodos (D-10), ajuste
 anual de Renta y cambio de régimen (RMT, General), otros tributos y regímenes de retención
 —ITAN, ESSALUD, ONP, cuarta categoría, detracciones, percepciones y retenciones de IGV—,
-presentación ante SUNAT y exportación del Registro de Ventas y de Compras.
+presentación ante SUNAT y exportación del Registro de Ventas y de Compras. **Los dos
+registros y sus dos exportaciones llegaron con el spec 028** (más abajo); lo demás sigue
+fuera de alcance, y en particular el registro de declaraciones presentadas: el CSV de 028
+no es una declaración ni el PLE oficial.
 
 Construido a 2026-09-23: **Ganancias v2** en `/admin/finance` (spec 027), con migración
 `0013` (§5.3) y **ningún permiso nuevo**: el catálogo se queda en 29 códigos. Es el
@@ -1252,6 +1257,93 @@ Fuera de alcance por decisión: costeo retroactivo y backfill, costeo por lote (
 utilidad por pedido, producto o categoría, comisiones de pasarela como línea propia, otros
 tributos que sí reducirían la neta —ESSALUD, entre otros—, y cierre de período, gráficos,
 exportación y comparación entre rangos.
+
+Construido a 2026-09-23: **contabilidad** (`/admin/finance/accounting`, spec 028). Es la
+**cuarta pantalla** del módulo financiero y el último sub-proyecto del roadmap de Finanzas.
+Es también la primera pieza que **no agrega nada al esquema** —`drizzle/` se queda en
+`0013`, ninguna tabla cambia, ningún índice nuevo y ningún permiso nuevo: el catálogo sigue
+en 29 códigos— y la primera que **exporta**. Las cuatro entradas de Finanzas del sidebar
+van detrás de `finance.read` y aparecen y desaparecen juntas.
+
+Las tres pantallas anteriores publican **agregados**; esta publica los **documentos**: una
+fila por comprobante emitido (Registro de Ventas) y una por compra con comprobante
+(Registro de Compras), en dos pestañas del mismo rango, paginadas y exportables a CSV. Los
+índices existentes bastan: `electronic_documents_issued_at_idx` y `expenses_incurred_on_idx`
+acotan los rangos, y los dos joins de ventas buscan por **clave primaria** (`orders.id` y
+`p.id` del auto-join al padre). `receipt_type is not null` es un predicado residual sobre
+las filas que el rango ya seleccionó, con el mismo criterio de 024 D-11.
+
+**El Registro de Ventas NO reutiliza `buildDeclarableFilter()`, y es la decisión central
+del spec** (028, D-1). No es la misma pregunta: aquel filtro exige «sin padre o padre
+`issued`» para poder **sumar un neto**, y `voidsParent()` deja `voided` al original justo en
+las anulaciones más frecuentes (motivos 01, 06, 02 y 03). Heredarlo **escondería del
+registro precisamente esas notas de crédito**, que son documentos reales que SUNAT ya tiene.
+Un registro lista documentos; un neto los compensa. La regla propia vive en
+`buildSalesRegistryFilter()` (`accounting.repository.ts`) y su test compila las dos con
+`PgDialect` afirmando que la del registro **no** contiene la disyunción del padre. Lo que sí
+se comparte es la ventana —`issued` más `issued_at` en `[from, to)`, del mismo
+`resolveFinanceRange()`—, para que un documento no pueda caer en el registro de un mes y en
+el neto de otro. La consecuencia hay que tenerla escrita: **la suma del registro no cuadra
+con «Ventas declarables», y no es un error**; el encabezado de la pantalla lo dice.
+
+La `comunicacion_baja` **no es fila del registro**: no consume serie ni número propios ni
+lleva importes —lo garantizan dos `CHECK`—, así que no hay nada que cruzar contra el SIRE.
+La lista de tipos se **deriva** del catálogo, `NUMBERED_DOCUMENT_KINDS` en
+`src/lib/electronic-documents.ts`, que es el mismo patrón de `ORIGINAL_DOCUMENT_KINDS` y
+`TAX_CREDIT_RECEIPT_TYPES`: añadir mañana un `kind` con serie propia lo mete en el registro
+sin tocar el módulo. El tipo y número de documento del comprador salen de **`orders`**, que
+es donde están: `electronic_documents` no los guarda. El Registro de Compras **compone**
+`buildExpenseFilters()` —los dos extremos inclusive sobre una columna `date`, no la ventana
+semiabierta de los instantes— y deriva el crédito fiscal con `grantsTaxCredit()`, sin
+publicarlo como campo del contrato: la tabla de elegibilidad es una sola y la leen igual el
+CSV del servidor y la tabla del cliente. Los dos registros ordenan **cronológicamente
+ascendente** con desempate total, al revés que el resto del módulo, porque un libro contable
+se lee de la primera operación del período a la última.
+
+Cuatro rutas, todas `GET` y todas bajo `finance.read`: `…/accounting/sales` y
+`…/accounting/purchases` devuelven JSON paginado, y sus dos `…/export` devuelven
+`text/csv; charset=utf-8` con `Cache-Control: no-store` —un archivo con RUCs, razones
+sociales e importes no se queda en ninguna caché intermedia—. Rutas separadas y no un
+`?format=csv` (D-13): un handler que devuelve JSON o texto según un query param mezcla dos
+contratos de error. **La exportación no pagina ni trunca** (D-7): un registro contable
+truncado en silencio es un registro incorrecto, y el rango de fechas es el límite; el día
+que un rango tarde, la salida es streaming con `ReadableStream`, no un tope.
+
+**Este spec fija el patrón de exportación del proyecto**, porque no había ninguno. Vive en
+dos módulos puros: `csv.ts` (el serializador, sin nada de contabilidad) y `accounting-csv.ts`
+(las dos tablas y el nombre del archivo). Las decisiones, que valen para cualquier
+exportación futura: **UTF-8 con BOM** —sin él Excel en Windows rompe tildes y ñ—, `\r\n` de
+RFC 4180, **coma** como separador y punto decimal —Perú usa el punto como decimal, así que
+el separador de lista es la coma; el `;` sería la elección para España—, entrecomillado solo
+cuando hace falta con las comillas internas duplicadas, e importes en soles con dos
+decimales **sin símbolo ni separador de miles**, en aritmética entera: `S/ 1,234.56` llega a
+Excel como texto y no se puede sumar, que es lo primero que hace quien abre el archivo. El
+serializador **neutraliza la inyección de fórmulas** —un campo que no es un número y empieza
+por `=`, `+`, `-`, `@`, TAB o CR se prefija con un apóstrofo—, con la excepción numérica que
+deja pasar `-1234.56` como importe y no como texto; el guard vive en **una sola función con
+test** y no repartido por cada celda.
+
+La descarga va por **`axios` con `responseType: 'blob'`** desde el service, con su hook y su
+`URL.revokeObjectURL`, y **no** por un `<a href="/api/…" download>` (D-6): el ancla es más
+corta, pero con el atributo `download` el navegador **guarda igualmente el cuerpo de un
+error**, y ante un 403 o un 500 el contador se queda con un `registro-ventas-….csv` que
+dentro tiene un JSON. Por eso el copy del fallo es propio y no el del servidor: con
+`responseType: 'blob'` el interceptor de axios no puede leer el `{ message }` del cuerpo. El
+nombre del archivo lo construye **una sola función pura** para el `Content-Disposition` y
+para el `a.download`.
+
+**Ninguna lectura ni exportación escribe en `audit_logs`** (D-17): la tabla es append-only
+para mutaciones y ninguna lectura del proyecto se audita hoy; empezar aquí instauraría un
+patrón que nadie pidió. La superficie ya está acotada por `finance.read` y por el
+`no-store`.
+
+Fuera de alcance por decisión: el **formato PLE / TXT** de SUNAT y la integración con el
+SIRE —SUNAT arma el registro oficial con lo que el OSE ya le reportó al emitir—, `.xlsx`,
+Libro Diario, Libro Mayor y plan de cuentas, los comprobantes anulados como fila con estado
+e importes en cero, totales al pie, gráficos, filtros por tipo de documento, serie o
+proveedor, búsqueda, orden configurable, streaming de la exportación, exportación programada
+o por correo, y un módulo `csv` compartido en `src/lib/`, que se mueve allí a la tercera
+repetición y hoy tiene un solo dominio consumidor.
 
 Construido a 2026-09-17: **personal y nómina** (`/admin/payroll`, spec 018), con
 migración `0007` (§5.4) y **dos** permisos nuevos —el catálogo pasa de 23 a 25

@@ -11,6 +11,7 @@ import {
   ELECTRONIC_DOCUMENT_STATUSES,
   formatDocumentLabel,
   isOriginalKind,
+  NUMBERED_DOCUMENT_KINDS,
   ORIGINAL_DOCUMENT_KINDS,
   REASONS_BY_INTENT,
   reasonLabelFor,
@@ -102,6 +103,48 @@ describe('isOriginalKind', () => {
   it('keeps the tuple inside the catalogue, with no duplicates', () => {
     expect(ORIGINAL_DOCUMENT_KINDS).toEqual(['boleta', 'factura']);
     for (const kind of ORIGINAL_DOCUMENT_KINDS) {
+      expect(ELECTRONIC_DOCUMENT_KINDS).toContain(kind);
+    }
+  });
+});
+
+// spec 028, T2 / AC28: la lista del Registro de Ventas se deriva del catálogo, así que
+// añadir un `kind` nuevo lo incluye sin tocar aquel módulo.
+describe('NUMBERED_DOCUMENT_KINDS', () => {
+  it('excludes the comunicacion_baja: it consumes no series and carries no amount', () => {
+    expect(NUMBERED_DOCUMENT_KINDS).not.toContain('comunicacion_baja');
+  });
+
+  it('keeps the other four kinds of the catalogue', () => {
+    expect(NUMBERED_DOCUMENT_KINDS).toEqual([
+      'boleta',
+      'factura',
+      'nota_credito',
+      'nota_debito',
+    ]);
+  });
+
+  // Longitud derivada y no literal: si alguien añade un `kind` al catálogo y lo excluye
+  // a mano de esta lista, esta aserción rompe en vez de dejar el documento fuera del
+  // registro en silencio (AC28).
+  it('drops exactly one kind from the catalogue, whatever the catalogue grows to', () => {
+    expect(NUMBERED_DOCUMENT_KINDS).toHaveLength(ELECTRONIC_DOCUMENT_KINDS.length - 1);
+  });
+
+  // La misma frontera que `seriesKeyFor()`, que devuelve `null` exactamente para el
+  // `kind` sin serie propia. Dos formas de decir lo mismo que no pueden separarse.
+  it('agrees with seriesKeyFor about which kind has no series of its own', () => {
+    for (const kind of ELECTRONIC_DOCUMENT_KINDS) {
+      const numbered = (NUMBERED_DOCUMENT_KINDS as readonly string[]).includes(kind);
+      // Las correcciones necesitan el `kind` del padre para resolver su serie, así que
+      // se pregunta con uno: lo que se compara es «tiene serie propia», no la clave.
+      expect(numbered).toBe(seriesKeyFor(kind, 'factura') !== null);
+    }
+  });
+
+  it('stays inside the catalogue, with no duplicates', () => {
+    expect(new Set(NUMBERED_DOCUMENT_KINDS).size).toBe(NUMBERED_DOCUMENT_KINDS.length);
+    for (const kind of NUMBERED_DOCUMENT_KINDS) {
       expect(ELECTRONIC_DOCUMENT_KINDS).toContain(kind);
     }
   });
