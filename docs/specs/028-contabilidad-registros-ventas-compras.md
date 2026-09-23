@@ -1,7 +1,7 @@
 ---
 id: 028
 title: Contabilidad — Registro de Ventas y Registro de Compras con exportación CSV
-status: approved
+status: done
 module: finance
 scope: admin
 created: 2026-09-23
@@ -593,59 +593,59 @@ cruzan la frontera son los puros (`electronic-documents.ts`,
 Orden de dependencia: catálogo → schemas → tipos → repositorio → módulos puros →
 handlers → service → estado cliente → vista → navegación → documentación → cierre.
 
-- [ ] **T1** — `NumberedDocumentKind` y `NUMBERED_DOCUMENT_KINDS` según §6.3,
+- [x] **T1** — `NumberedDocumentKind` y `NUMBERED_DOCUMENT_KINDS` según §6.3,
       derivados del catálogo con el type-guard del `filter` · archivo:
       `src/lib/electronic-documents.ts` · verificación: `npm run typecheck`
-- [ ] **T2** — Tests de T1: excluye `comunicacion_baja`, conserva los otros cuatro,
+- [x] **T2** — Tests de T1: excluye `comunicacion_baja`, conserva los otros cuatro,
       y su longitud es `ELECTRONIC_DOCUMENT_KINDS.length - 1` —así añadir un `kind`
       al catálogo rompe aquí si alguien lo excluye a mano— (AC28) · archivo:
       `src/lib/electronic-documents.test.ts` · verificación: `npm test`
-- [ ] **T3** — Exportar `dayKey`, `isOrderedRange` e `invertedRangeIssue` (hoy
+- [x] **T3** — Exportar `dayKey`, `isOrderedRange` e `invertedRangeIssue` (hoy
       privados, `finance.schema.ts:32-46`), con el comentario de por qué ahora sí
       se extraen: tercer consumidor (CLAUDE.md §6). **Sin cambiar ninguna de las
       dos schemas existentes** · archivo:
       `src/modules/finance/schemas/finance.schema.ts` · verificación:
       `npm run typecheck && npm test`
-- [ ] **T4** — `accountingQuerySchema` según §6.1, importando las tres piezas de
+- [x] **T4** — `accountingQuerySchema` según §6.1, importando las tres piezas de
       T3 · archivo: `src/modules/finance/schemas/accounting.schema.ts` ·
       verificación: `npm run typecheck`
-- [ ] **T5** — Tests de T4, al estilo de `finance.schema.test.ts`: los defaults
+- [x] **T5** — Tests de T4, al estilo de `finance.schema.test.ts`: los defaults
       (`page: 1`, `pageSize: 20`), el tope de `pageSize`, el rechazo del rango
       invertido con `path: ['from']`, y que **no** acepta `category` ni `search` ·
       archivo: `src/modules/finance/schemas/accounting.schema.test.ts` ·
       verificación: `npm test`
-- [ ] **T6** — Los tipos `SalesRegistryRow`, `PurchaseRegistryRow` y las dos
+- [x] **T6** — Los tipos `SalesRegistryRow`, `PurchaseRegistryRow` y las dos
       respuestas según §6.2, con los comentarios de nullabilidad (D-14) · archivo:
       `src/modules/finance/types/accounting.types.ts` · verificación:
       `npm run typecheck`
-- [ ] **T7** — `buildSalesRegistryFilter()` y `findSalesRegistry()` según §6.4:
+- [x] **T7** — `buildSalesRegistryFilter()` y `findSalesRegistry()` según §6.4:
       `innerJoin` a `orders` por la PK, `leftJoin` al alias del padre, `inArray`
       sobre `NUMBERED_DOCUMENT_KINDS`, orden ascendente con desempate, conteo sin
       joins y sin conteo cuando `pagination === null` · archivo:
       `src/server/repositories/accounting.repository.ts` · verificación:
       `npm run typecheck`
-- [ ] **T8** — Tests del SQL compilado de T7 con `PgDialect`, al estilo de
+- [x] **T8** — Tests del SQL compilado de T7 con `PgDialect`, al estilo de
       `finance.repository.test.ts`: exige `"status" = $n` con `'issued'`, acota
       `"issued_at"` con `>=` y `<` (extremo superior **estricto**, AC6), filtra por
       los cuatro `kind`, **no** menciona la condición del padre de
       `buildDeclarableFilter` (AC4, D-1), y ordena ascendente por `"issued_at"` ·
       archivo: `src/server/repositories/accounting.repository.test.ts` ·
       verificación: `npm test`
-- [ ] **T9** — `buildPurchaseRegistryFilter()` y `findPurchaseRegistry()` según
+- [x] **T9** — `buildPurchaseRegistryFilter()` y `findPurchaseRegistry()` según
       §6.4, componiendo `buildExpenseFilters()` importado con
       `isNotNull(expenses.receiptType)`, y derivando `baseCents` en el mapeo ·
       archivo: `src/server/repositories/accounting.repository.ts` · verificación:
       `npm run typecheck`
-- [ ] **T10** — Tests del SQL compilado de T9: acota `"incurred_on"` con `>=` y
+- [x] **T10** — Tests del SQL compilado de T9: acota `"incurred_on"` con `>=` y
       `<=` —y **no** con `<`— (AC9), exige `"receipt_type" is not null`, no filtra
       por `"category"`, y ordena ascendente con los tres desempates · archivo:
       `src/server/repositories/accounting.repository.test.ts` · verificación:
       `npm test`
-- [ ] **T11** — Módulo puro `csv.ts` según §6.5: `CSV_BOM`, `toCsv()` con
+- [x] **T11** — Módulo puro `csv.ts` según §6.5: `CSV_BOM`, `toCsv()` con
       entrecomillado RFC 4180, `\r\n`, guard de fórmulas con excepción numérica, y
       `formatCsvAmount()` / `formatCsvAmountOrEmpty()` en aritmética entera ·
       archivo: `src/modules/finance/lib/csv.ts` · verificación: `npm run typecheck`
-- [ ] **T12** — Tests de T11, uno por comportamiento y con los casos raros que
+- [x] **T12** — Tests de T11, uno por comportamiento y con los casos raros que
       pide `.claude/skills/test-unit`: `0` → `0.00`; negativo → `-1234.56`; céntimo
       suelto (`5` → `0.05`); el negativo entre `-1` y `-99` (`-5` → `-0.05`, que es
       donde un `trunc` mal puesto pierde el signo); `null` → `''`; campo con coma,
@@ -653,11 +653,11 @@ handlers → service → estado cliente → vista → navegación → documentac
       CR → prefijado; importe negativo → **no** prefijado (AC16); cero filas → solo
       el BOM y la cabecera (AC23); la cadena empieza por `﻿` y usa `\r\n` ·
       archivo: `src/modules/finance/lib/csv.test.ts` · verificación: `npm test`
-- [ ] **T13** — Módulo puro `accounting-csv.ts` según §6.5: las dos cabeceras, las
+- [x] **T13** — Módulo puro `accounting-csv.ts` según §6.5: las dos cabeceras, las
       dos funciones de tabla y `registryFileName()` · archivo:
       `src/modules/finance/lib/accounting-csv.ts` · verificación:
       `npm run typecheck`
-- [ ] **T14** — Tests de T13: el orden y el número de columnas coincide con las
+- [x] **T14** — Tests de T13: el orden y el número de columnas coincide con las
       cabeceras; la fecha de ventas es el **día de Lima** de un `issued_at` de las
       22:00 del día 30 (AC18); una nota de crédito trae la serie-número del padre y
       un original la trae vacía (AC7); `grantsTaxCredit` decide el `Sí`/`No` de
@@ -665,89 +665,89 @@ handlers → service → estado cliente → vista → navegación → documentac
       comprobante sin serie deja la celda vacía; el nombre del archivo es
       `registro-ventas-2026-09-01_2026-09-30.csv` · archivo:
       `src/modules/finance/lib/accounting-csv.test.ts` · verificación: `npm test`
-- [ ] **T15** — Handler del listado de ventas: `authorize('finance.read')` antes
+- [x] **T15** — Handler del listado de ventas: `authorize('finance.read')` antes
       de la query, `accountingQuerySchema`, `resolveFinanceRange` con un solo
       `new Date()`, y el `meta` de §6.2 · archivo:
       `src/app/api/admin/finance/accounting/sales/route.ts` · verificación:
       `npm run typecheck && npm run lint`
-- [ ] **T16** — Handler de la exportación de ventas según §6.6: `financeRangeSchema`,
+- [x] **T16** — Handler de la exportación de ventas según §6.6: `financeRangeSchema`,
       `findSalesRegistry(range, null)` y las tres cabeceras (AC19, AC20, AC21) ·
       archivo: `src/app/api/admin/finance/accounting/sales/export/route.ts` ·
       verificación: `npm run typecheck && npm run lint`
-- [ ] **T17** — Handler del listado de compras, gemelo de T15 sobre
+- [x] **T17** — Handler del listado de compras, gemelo de T15 sobre
       `findPurchaseRegistry` · archivo:
       `src/app/api/admin/finance/accounting/purchases/route.ts` · verificación:
       `npm run typecheck && npm run lint`
-- [ ] **T18** — Handler de la exportación de compras, gemelo de T16 ·
+- [x] **T18** — Handler de la exportación de compras, gemelo de T16 ·
       archivo: `src/app/api/admin/finance/accounting/purchases/export/route.ts` ·
       verificación: `npm run typecheck && npm run lint`
-- [ ] **T19** — Service con las cuatro llamadas: las dos de listado devuelven su
+- [x] **T19** — Service con las cuatro llamadas: las dos de listado devuelven su
       respuesta tipada; las dos de exportación usan `responseType: 'blob'` y
       devuelven `{ blob, filename }` con `registryFileName()`. Único punto del
       módulo que habla con la API · archivo:
       `src/modules/finance/services/accounting.service.ts` · verificación:
       `npm run typecheck`
-- [ ] **T20** — En `constants.ts`: `accountingKeys` (rama propia, no del resumen,
+- [x] **T20** — En `constants.ts`: `accountingKeys` (rama propia, no del resumen,
       con el rango y la paginación en la clave), `ACCOUNTING_PAGE_SIZE = 20`, los
       copys de estado vacío de cada pestaña, el de error de carga y el de error de
       exportación —que es un texto propio porque el cuerpo del fallo llega como
       `Blob` y el interceptor de axios no puede leer su `{ message }` (D-6)—, más
       la nota del encabezado que dice que esto **no es el PLE** · archivo:
       `src/modules/finance/constants.ts` · verificación: `npm run typecheck`
-- [ ] **T21** — Hooks de listado con `keepPreviousData` (AC24), uno por registro ·
+- [x] **T21** — Hooks de listado con `keepPreviousData` (AC24), uno por registro ·
       archivos: `src/modules/finance/hooks/use-sales-registry.ts`,
       `src/modules/finance/hooks/use-purchase-registry.ts` · verificación:
       `npm run typecheck`
-- [ ] **T22** — Hook de exportación: `useMutation` que llama al service, dispara la
+- [x] **T22** — Hook de exportación: `useMutation` que llama al service, dispara la
       descarga con un `<a>` temporal sobre `URL.createObjectURL` y **revoca la URL**
       al terminar; `onError` muestra el toast con el copy de T20 y **no** descarga
       nada (AC22) · archivo: `src/modules/finance/hooks/use-registry-export.ts` ·
       verificación: `npm run typecheck && npm run lint`
-- [ ] **T23** — Columnas del Registro de Ventas con TanStack Table: fecha (día de
+- [x] **T23** — Columnas del Registro de Ventas con TanStack Table: fecha (día de
       Lima), tipo con `ELECTRONIC_DOCUMENT_KIND_LABELS`, serie-número, comprador
       (tipo + número + razón social), base, IGV, total y documento que modifica;
       los nulos como celda vacía con texto accesible, nunca «S/ 0.00» · archivo:
       `src/modules/finance/components/sales-registry-columns.tsx` · verificación:
       `npm run typecheck && npm run lint`
-- [ ] **T24** — Columnas del Registro de Compras: fecha, proveedor (razón social +
+- [x] **T24** — Columnas del Registro de Compras: fecha, proveedor (razón social +
       RUC), tipo con `PURCHASE_RECEIPT_TYPE_LABELS`, serie-número, base, IGV, total
       y un `Badge` de crédito fiscal derivado con `grantsTaxCredit()` (AC11) ·
       archivo: `src/modules/finance/components/purchase-registry-columns.tsx` ·
       verificación: `npm run typecheck && npm run lint`
-- [ ] **T25** — Tabla del Registro de Ventas: `useReactTable` con
+- [x] **T25** — Tabla del Registro de Ventas: `useReactTable` con
       `manualPagination`, `DataTable` compartida, reinicio de página al cambiar el
       rango y estado vacío propio, al estilo de `expenses-table.tsx` · archivo:
       `src/modules/finance/components/sales-registry-table.tsx` · verificación:
       `npm run typecheck && npm run lint`
-- [ ] **T26** — Tabla del Registro de Compras, gemela de T25 · archivo:
+- [x] **T26** — Tabla del Registro de Compras, gemela de T25 · archivo:
       `src/modules/finance/components/purchase-registry-table.tsx` · verificación:
       `npm run typecheck && npm run lint`
-- [ ] **T27** — Botón «Exportar CSV» presentacional: recibe el registro y el rango,
+- [x] **T27** — Botón «Exportar CSV» presentacional: recibe el registro y el rango,
       usa el hook de T22, se deshabilita mientras descarga y anuncia el estado con
       `aria-live` · archivo:
       `src/modules/finance/components/registry-export-button.tsx` · verificación:
       `npm run typecheck && npm run lint`
-- [ ] **T28** — Contenedor con `FinanceRangeFilter` (mes en curso memoizado, como
+- [x] **T28** — Contenedor con `FinanceRangeFilter` (mes en curso memoizado, como
       `finance-taxes-overview.tsx`) y las dos pestañas con `Tabs`, al estilo de
       `inventory-tabs.tsx`; cada pestaña monta su tabla y su botón de exportación ·
       archivo: `src/modules/finance/components/accounting-tabs.tsx` · verificación:
       `npm run typecheck && npm run lint`
-- [ ] **T29** — Página server component: `requirePagePermission('finance.read')`
+- [x] **T29** — Página server component: `requirePagePermission('finance.read')`
       (AC3), `metadata`, encabezado que dice qué es esto —un registro para revisar y
       cruzar contra el SIRE— y qué **no** es —el PLE oficial, ni una declaración— ·
       archivo: `src/app/(admin)/admin/finance/accounting/page.tsx` · verificación:
       `npm run typecheck && npm run lint`
-- [ ] **T30** — Entrada «Contabilidad» en `NAV_ITEMS` detrás de «Impuestos», con
+- [x] **T30** — Entrada «Contabilidad» en `NAV_ITEMS` detrás de «Impuestos», con
       `finance.read` y un icono no usado todavía (p. ej. `BookText`), con el
       comentario de por qué va ahí (AC25) · archivo:
       `src/app/(admin)/admin/layout.tsx` · verificación:
       `npm run typecheck && npm run lint`
-- [ ] **T31** — Documentar en `docs/SETUP.md`: la cuarta pantalla del módulo
+- [x] **T31** — Documentar en `docs/SETUP.md`: la cuarta pantalla del módulo
       financiero en §6, los cuatro endpoints, las decisiones del CSV (BOM,
       separador, guard de fórmulas) y **corregir la línea 1090**, que hoy deja la
       exportación del Registro de Ventas fuera de alcance · archivo:
       `docs/SETUP.md` · verificación: lectura
-- [ ] **T32** — Cierre: confirmar que `drizzle/` no ganó ninguna migración
+- [x] **T32** — Cierre: confirmar que `drizzle/` no ganó ninguna migración
       (AC26), que `src/lib/permissions.ts` sigue en 29 códigos (AC25) y que ningún
       componente importa `@/server/repositories` ni `axios` (AC27) · verificación:
       `npm run typecheck && npm run lint && npm test && npm run build`

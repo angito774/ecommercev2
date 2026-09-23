@@ -1,5 +1,7 @@
 import type { OriginalDocumentKind } from '@/lib/electronic-documents';
+import type { BuyerDocumentType } from '@/modules/orders/lib/peru-document';
 
+import type { AccountingQueryParams } from './schemas/accounting.schema';
 import {
   EXPENSE_CATEGORIES,
   type ExpenseCategory,
@@ -310,6 +312,74 @@ export const PROFIT_NET_EXPENSES_NOTE =
 export const PROFIT_INCOME_TAX_HINT = 'Solo Renta RER estimada; no incluye otros tributos';
 
 export const PERIOD_PROFIT_ERROR_MESSAGE = 'No se pudo cargar el resultado del período.';
+
+// ── Contabilidad: registros de ventas y compras (spec 028) ──────────────────
+
+// `Record` total sobre el enum, así que añadir un tipo de documento rompería el typecheck
+// aquí en vez de pintar el código crudo en el CSV. Lo consumen las dos orillas del
+// registro —el archivo del servidor y la columna del cliente—, que es la razón de que viva
+// en el módulo y no dentro de uno de los dos.
+export const BUYER_DOCUMENT_TYPE_LABELS: Record<BuyerDocumentType, string> = {
+  dni: 'DNI',
+  ruc: 'RUC',
+};
+
+export const ACCOUNTING_PAGE_SIZE = 20;
+
+// Rama propia y no una de `financeKeys`: son dos endpoints distintos de dos pestañas
+// distintas, y compartir clave haría que una invalidación arrastrara a la otra tabla
+// (mismo criterio que 026, D-1). El rango y la paginación entran en la clave: cambiar de
+// mes o de página es otra consulta, no una invalidación de la anterior, y
+// `keepPreviousData` necesita distinguirlas.
+export const accountingKeys = {
+  all: ['accounting'] as const,
+  sales: (params: AccountingQueryParams) => [...accountingKeys.all, 'sales', params] as const,
+  purchases: (params: AccountingQueryParams) =>
+    [...accountingKeys.all, 'purchases', params] as const,
+};
+
+// Los copys viven juntos porque todos dicen la misma cosa con distintas palabras —«no hay
+// datos» no es «hubo un error»— y separarlos por componente hace que uno se desalinee.
+export const EMPTY_SALES_REGISTRY_TITLE = 'Sin comprobantes en el rango';
+
+// Dice «no se emitió» y no «faltan datos»: el registro lista lo que existe ante SUNAT hoy,
+// y un rango sin emisiones es un hecho, no un fallo (AC23).
+export const EMPTY_SALES_REGISTRY_MESSAGE =
+  'No se emitió ningún comprobante con fecha dentro de estas fechas.';
+
+export const EMPTY_PURCHASE_REGISTRY_TITLE = 'Sin compras con comprobante en el rango';
+
+// Distingue las dos cosas que se confunden: un gasto sin comprobante formal existe y se ve
+// en Egresos, pero no es una compra que cruzar contra el SIRE (AC10).
+export const EMPTY_PURCHASE_REGISTRY_MESSAGE =
+  'Ningún gasto del rango se registró con comprobante. Los gastos sin comprobante siguen apareciendo en Egresos.';
+
+export const SALES_REGISTRY_ERROR_MESSAGE = 'No se pudo cargar el registro de ventas.';
+
+export const PURCHASE_REGISTRY_ERROR_MESSAGE = 'No se pudo cargar el registro de compras.';
+
+export const EXPORT_CSV_LABEL = 'Exportar CSV';
+
+// Texto propio y no el mensaje del servidor (D-6): con `responseType: 'blob'` el cuerpo del
+// fallo llega como `Blob` y el interceptor de axios no puede leer su `{ message }`. Dice
+// además lo que importa —no se descargó nada—, porque el gesto que el usuario acaba de
+// hacer es «guardar un archivo» (AC22).
+export const REGISTRY_EXPORT_ERROR_MESSAGE =
+  'No se pudo exportar el registro. No se descargó ningún archivo.';
+
+export const REGISTRY_EXPORT_PENDING_LABEL = 'Preparando la descarga…';
+
+// El aviso del encabezado. Permanente y no condicional, con el mismo criterio que 026
+// (D-13): el riesgo real de esta pantalla es de interpretación —que alguien tome el archivo
+// por el Registro oficial—, no de código (§10).
+export const ACCOUNTING_NOT_PLE_NOTE =
+  'Este registro es para revisar y cruzar contra la propuesta del SIRE, no es el PLE oficial ni una declaración. El CSV no tiene el formato normativo de SUNAT: SUNAT arma el registro oficial con lo que el OSE le reportó al emitir cada comprobante.';
+
+// La otra pregunta que hará quien compare esta pantalla con el resumen (§10): el registro
+// lista cada documento emitido y el agregado compensa las correcciones, así que las dos
+// cifras casi nunca cuadran y eso no es un error.
+export const ACCOUNTING_VS_DECLARABLE_NOTE =
+  'La suma del Registro de Ventas no cuadra con «Ventas declarables» del resumen, y no es un error: aquí se lista cada documento emitido, incluidas las notas de crédito y de débito, mientras que aquella cifra las compensa y descarta los comprobantes anulados.';
 
 // ── Precio unitario (spec 021) ──────────────────────────────────────────────
 

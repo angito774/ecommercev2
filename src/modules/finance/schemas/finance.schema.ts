@@ -26,21 +26,27 @@ export type ExpenseCategory = (typeof EXPENSE_CATEGORIES)[number];
 // a ~21,4 M PEN) provocando un 500 en vez de un 400.
 export const MAX_EXPENSE_AMOUNT_CENTS = 100_000_000;
 
+// Las tres piezas de abajo nacieron privadas y se exportan desde el spec 028: su
+// **tercer** consumidor —`financeRangeSchema`, `expenseQuerySchema` y
+// `accountingQuerySchema`— es justo el umbral de extracción de CLAUDE.md §6. Se exportan
+// desde donde ya estaban en vez de copiarlas al schema nuevo, que es lo que haría que un
+// día el registro y el resumen discreparan sobre qué rango es válido.
+
 // Días, no instantes: el rango lo elige una persona en un `<input type="date">` y los
 // dos extremos son inclusivos tal y como se leen (AC8). La traducción a instantes
 // para `orders.created_at` la hace el servidor (D-8).
-const dayKey = z.iso.date();
+export const dayKey = z.iso.date();
 
 // Comparación lexicográfica sobre dos `'YYYY-MM-DD'`: el formato es de ancho fijo, así
 // que el orden de cadena coincide con el cronológico. Mismo criterio que
 // `adminOrderQuerySchema` (spec 014).
-const isOrderedRange = (value: { from?: string; to?: string }): boolean =>
+export const isOrderedRange = (value: { from?: string; to?: string }): boolean =>
   !value.from || !value.to || value.from <= value.to;
 
 // El `path` marca el campo `from` para que el formulario sepa dónde pintar el error.
 // Función y no objeto compartido: Zod lo tipa como array mutable y reutilizar la misma
 // instancia entre dos schemas dejaría un array compartido al alcance de quien lo mute.
-const invertedRangeIssue = () => ({
+export const invertedRangeIssue = () => ({
   message: 'La fecha inicial no puede ser posterior a la final.',
   path: ['from'],
 });

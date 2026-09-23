@@ -61,6 +61,23 @@ export function isOriginalKind(kind: ElectronicDocumentKind): kind is OriginalDo
   return (ORIGINAL_DOCUMENT_KINDS as readonly ElectronicDocumentKind[]).includes(kind);
 }
 
+/**
+ * Los `kind` que consumen serie y número propios y llevan importes: todos menos la
+ * comunicación de baja. **Derivado del catálogo, no escrito a mano** (spec 028, AC28),
+ * igual que `TAX_CREDIT_RECEIPT_TYPES` se deriva de `PURCHASE_RECEIPT_RULES` (024, D-4).
+ *
+ * Es la misma frontera que ya traza `seriesKeyFor()`, que devuelve `null` exactamente
+ * para `comunicacion_baja`, y la que fijan los `CHECK
+ * electronic_documents_void_has_no_series` y `..._void_has_no_amount`.
+ */
+export type NumberedDocumentKind = Exclude<ElectronicDocumentKind, 'comunicacion_baja'>;
+
+// El type-guard del `filter` es lo que estrecha el tipo sin un `as`: añadir mañana un
+// `kind` al catálogo lo mete en el Registro de Ventas sin tocar aquel módulo.
+export const NUMBERED_DOCUMENT_KINDS = ELECTRONIC_DOCUMENT_KINDS.filter(
+  (kind): kind is NumberedDocumentKind => kind !== 'comunicacion_baja',
+);
+
 // `null` = el documento no consume correlativo propio. Hoy solo `comunicacion_baja`,
 // que referencia el documento que anula y por eso no tiene serie (§5.3, `CHECK
 // electronic_documents_void_has_no_series`).
