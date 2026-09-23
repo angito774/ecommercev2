@@ -1,14 +1,30 @@
-import { and, asc, count, desc, eq, gte, inArray, lt, lte, sql, type SQL } from 'drizzle-orm';
+import {
+  and,
+  asc,
+  count,
+  desc,
+  eq,
+  gte,
+  inArray,
+  isNull,
+  lt,
+  lte,
+  or,
+  sql,
+  type SQL,
+} from 'drizzle-orm';
+import { alias } from 'drizzle-orm/pg-core';
 
 import { TAX_CREDIT_RECEIPT_TYPES } from '@/lib/purchase-receipts';
 import type { ExpenseQueryParams } from '@/modules/finance/schemas/finance.schema';
 import type {
+  DeclarableSalesByKind,
   ExpenseCategoryTotal,
   ExpenseReceipt,
   ExpenseRow,
 } from '@/modules/finance/types/finance.types';
 import { db, type Reader, type Tx } from '@/server/db';
-import { expenses, orders, users } from '@/server/db/schema';
+import { electronicDocuments, expenses, orders, users } from '@/server/db/schema';
 
 type Expense = typeof expenses.$inferSelect;
 type NewExpense = typeof expenses.$inferInsert;
@@ -57,6 +73,139 @@ export async function findSalesTotals(
     revenueCents: toCents(row?.revenueCents ?? null),
     orderCount: row?.orderCount ?? 0,
   };
+}
+
+// ---------------------------------------------------------------------------
+// Ventas declarables (spec 025)
+// ---------------------------------------------------------------------------
+
+// El padre del auto-join. Se declara una vez a nivel de módulo y no dentro de la
+// función: el alias es parte de la forma de la consulta, y `buildDeclarableFilter()`
+// tiene que referirse exactamente al mismo para que el `WHERE` y el `JOIN` hablen de la
+// misma tabla.
+const parentDocuments = alias(electronicDocuments, 'parent_document');
+
+export type ParentAlias = typeof parentDocuments;
+
+/**
+ * La regla de «venta declarable» (§5.2), exportada para compilarla con `PgDialect` y
+ * probarla sin base de datos: es la pieza que decide qué se declara ante SUNAT, y
+ * equivocarse aquí es declarar ventas que no existen.
+ *
+ * Un documento cuenta cuando **(a)** está `issued`, **(b)** su `issued_at` cae en el
+ * rango y **(c)** la venta que documenta sigue contando: o no tiene padre —es un
+ * original— o su padre sigue `issued`.
+ *
+ * La condición (c) es la que se aparta de la fórmula del diseño, que restaba **toda**
+ * nota de crédito emitida. No vale: `voidsParent()` deja `voided` al original cuando la
+ * nota lleva motivo 01, 06, 02 o 03, y en la misma transacción en que la emite
+ * (`voidParentAndReissue()`). Con la fórmula del diseño, una anulación total fuera de
+ * ventana declararía ventas **negativas** y una corrección de comprador declararía cero.
+ * Preguntar por el estado real del padre da el número correcto en los cinco caminos de
+ * ajuste, absorbe la `comunicacion_baja` sin tratarla como caso especial —su padre
+ * siempre queda `voided`— y no depende de la lista de motivos (D-1).
+ */
+export function buildDeclarableFilter({ from, to }: InstantRange, parent: ParentAlias): SQL {
+  return and(
+    eq(electronicDocuments.status, 'issued'),
+    // Misma ventana semiabierta que los pedidos, derivada del mismo par de días: es lo
+    // que hace imposible que una cifra cuente un día que la otra no (§5.3, AC4).
+    gte(electronicDocuments.issuedAt, from),
+    lt(electronicDocuments.issuedAt, to),
+    or(isNull(electronicDocuments.relatedDocumentId), eq(parent.status, 'issued')),
+  ) as SQL;
+}
+
+// La familia del padre cuando lo hay: la nota de crédito de una factura descuenta de
+// facturas, no de boletas (AC12). Solo puede valer `boleta` o `factura`, porque solo esos
+// dos `kind` carecen de padre —lo garantiza el `CHECK
+// electronic_documents_original_has_no_parent`—, y el parentesco se lee de la columna y
+// no de la letra de la serie (D-2).
+const DECLARABLE_FAMILY = sql<DeclarableSalesByKind['kind']>`coalesce(${parentDocuments.kind}, ${electronicDocuments.kind})`;
+
+// El signo lo da el `kind`: original `+`, nota de crédito `−`, nota de débito `+`. El
+// `::bigint` con `Number()` de vuelta es el de siempre (017, D-11), y aquí importa por
+// los dos extremos: la suma lleva signo, así que un `int4` desborda tanto por arriba como
+// por abajo.
+const DECLARABLE_AMOUNT = sql<string>`coalesce(sum(case when ${electronicDocuments.kind} = 'nota_credito' then -${electronicDocuments.amountCents} else ${electronicDocuments.amountCents} end), 0)::bigint`;
+
+export type DeclarableSalesTotals = DeclarableSalesByKind[];
+
+/**
+ * Una sola consulta con auto-join al padre; devuelve el desglose por familia, del que el
+ * handler deriva el total sumándolo (D-4). Sin `category`: la firma es lo que hace
+ * imposible colar el filtro del detalle en el resultado del período (AC18).
+ *
+ * Se agrupa y se ordena **por ordinal** y no repitiendo la expresión: con un `coalesce`
+ * en el `SELECT`, reutilizar la plantilla `sql` entre cláusulas es la condición exacta
+ * que produjo el `42803` del spec 015 (D-5). El orden del enum de Postgres pone `boleta`
+ * antes que `factura`, así que `order by 1` basta y no hace falta un `CASE` de ordenación.
+ */
+export async function findDeclarableSalesByKind(
+  range: InstantRange,
+  reader: Reader = db,
+): Promise<DeclarableSalesTotals> {
+  const rows = await reader
+    .select({
+      kind: DECLARABLE_FAMILY,
+      amountCents: DECLARABLE_AMOUNT,
+      documentCount: sql<number>`count(*) filter (where ${electronicDocuments.relatedDocumentId} is null)::int`,
+      adjustmentCount: sql<number>`count(*) filter (where ${electronicDocuments.relatedDocumentId} is not null)::int`,
+    })
+    .from(electronicDocuments)
+    // `leftJoin` del hijo al padre por `p.id`, así que el lado indexado es la clave
+    // primaria y no hace falta un índice sobre `related_document_id` (§5.1).
+    .leftJoin(parentDocuments, eq(parentDocuments.id, electronicDocuments.relatedDocumentId))
+    .where(buildDeclarableFilter(range, parentDocuments))
+    .groupBy(sql`1`)
+    .orderBy(sql`1`);
+
+  return rows.map((row) => ({
+    kind: row.kind,
+    amountCents: toCents(row.amountCents),
+    documentCount: row.documentCount,
+    adjustmentCount: row.adjustmentCount,
+  }));
+}
+
+// El `NOT EXISTS` mira «original `issued`», no «tiene alguna fila»: un pedido cuyo
+// comprobante quedó `voided` y cuyo reemitido sigue `pending` cuenta como pendiente
+// (AC17), que es la verdad —hoy no tiene comprobante ante SUNAT—. Se escribe como
+// plantilla `sql` y no con `notExists(db.select()…)` para no construir la subconsulta con
+// el `db` global cuando el llamador pasó su propio `reader`: aquí solo se genera texto.
+//
+// Constante de módulo porque no depende del rango. Se usa en una sola cláusula, así que
+// no entra en la clase de bug del 42803 (reutilizar una plantilla entre `SELECT` y
+// `GROUP BY`).
+const WITHOUT_ISSUED_ORIGINAL = sql`not exists (select 1 from ${electronicDocuments} where ${and(
+  eq(electronicDocuments.orderId, orders.id),
+  isNull(electronicDocuments.relatedDocumentId),
+  eq(electronicDocuments.status, 'issued'),
+)})`;
+
+/**
+ * Pedidos `paid` del rango sin comprobante original `issued` (§5.3). Es la brecha entre
+ * las dos cifras de ventas, no un error: la emisión es manual (022, D-8).
+ *
+ * Consulta aparte y no un `FILTER` más dentro de `findSalesTotals()` (D-6): allí haría
+ * falta un join, y un join en la consulta que calcula `sum(amount_total_cents)` abre la
+ * puerta a que un cambio de condición duplique filas y **falsee las ventas confirmadas**,
+ * que es la cifra más mirada del panel. Como consulta aparte entra en el `Promise.all` y
+ * no cuesta latencia.
+ */
+export async function findUninvoicedPaidOrderCount(
+  { from, to }: InstantRange,
+  reader: Reader = db,
+): Promise<number> {
+  const [row] = await reader
+    .select({ value: sql<number>`count(*)::int` })
+    .from(orders)
+    // La misma ventana semiabierta y el mismo `status = 'paid'` que las ventas
+    // confirmadas: el indicador cuenta un subconjunto exacto de los pedidos de la
+    // primera card, no otro universo.
+    .where(and(PAID, gte(orders.createdAt, from), lt(orders.createdAt, to), WITHOUT_ISSUED_ORIGINAL));
+
+  return row?.value ?? 0;
 }
 
 export type ExpenseFilters = DayRange & { category?: ExpenseQueryParams['category'] };

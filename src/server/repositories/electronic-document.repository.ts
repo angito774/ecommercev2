@@ -1,6 +1,10 @@
 import { and, asc, eq, inArray, ne, sql, type SQL } from 'drizzle-orm';
 
-import { formatDocumentLabel, reasonLabelFor } from '@/lib/electronic-documents';
+import {
+  formatDocumentLabel,
+  ORIGINAL_DOCUMENT_KINDS,
+  reasonLabelFor,
+} from '@/lib/electronic-documents';
 import type { ElectronicDocumentRow } from '@/modules/invoicing/types/electronic-document.types';
 import { db, type Reader, type Tx } from '@/server/db';
 import { electronicDocuments } from '@/server/db/schema';
@@ -238,11 +242,6 @@ export async function markFailed(
 // Ajuste del pedido (spec 023)
 // ---------------------------------------------------------------------------
 
-// Los dos `kind` que pueden ser el padre de una corrección. Vive en una constante y no
-// repetido en cada `WHERE`, por lo mismo que `ISSUABLE_STATUSES`: es la definición de
-// «comprobante original» y equivocarse aquí sería acreditar el documento que no toca.
-const ORIGINAL_KINDS = ['boleta', 'factura'] as const;
-
 /**
  * El `WHERE` que localiza el comprobante que un ajuste puede corregir. `status = 'issued'`
  * y no `<> 'voided'`: **no se puede acreditar un documento que SUNAT todavía no tiene**
@@ -254,7 +253,10 @@ const ORIGINAL_KINDS = ['boleta', 'factura'] as const;
 export function buildIssuedOriginalFilter(orderId: string): SQL {
   return and(
     eq(electronicDocuments.orderId, orderId),
-    inArray(electronicDocuments.kind, [...ORIGINAL_KINDS]),
+    // La tupla viene del catálogo puro y no de una copia local: es la definición de
+    // «comprobante original», y equivocarse aquí sería acreditar el documento que no toca
+    // (spec 025, D-7).
+    inArray(electronicDocuments.kind, [...ORIGINAL_DOCUMENT_KINDS]),
     eq(electronicDocuments.status, 'issued'),
   ) as SQL;
 }

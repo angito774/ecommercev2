@@ -1,14 +1,18 @@
 import { SQL } from 'drizzle-orm';
-import { PgDialect } from 'drizzle-orm/pg-core';
+import { alias, PgDialect } from 'drizzle-orm/pg-core';
 import { describe, expect, it } from 'vitest';
 
 import { TAX_CREDIT_RECEIPT_TYPES } from '@/lib/purchase-receipts';
+import { electronicDocuments } from '@/server/db/schema';
 
 import {
+  buildDeclarableFilter,
   buildExpenseFilters,
+  findDeclarableSalesByKind,
   findExpenseTotals,
   findManyExpenses,
   findSalesTotals,
+  findUninvoicedPaidOrderCount,
 } from './finance.repository';
 
 // El dialecto real compila el árbol a texto y parámetros, así que las aserciones miran
@@ -156,6 +160,305 @@ describe('findSalesTotals', () => {
     const query = captureSalesQuery(RANGE_INSTANTS);
 
     expect(query.sql).not.toContain('"expenses"');
+  });
+});
+
+// ── Ventas declarables (spec 025) ───────────────────────────────────────────
+
+// Mismo sumidero que los anteriores, ampliado con las cláusulas que este agregado sí
+// usa: el `leftJoin` al padre, el `group by` y el `order by`. Captura el árbol que
+// Drizzle habría enviado, sin base de datos.
+function captureDeclarableQuery(range: { from: Date; to: Date }) {
+  let fields: Record<string, SQL> | undefined;
+  let where: SQL | undefined;
+  let joined = false;
+  const groupBy: SQL[] = [];
+  const orderBy: SQL[] = [];
+
+  const chain: Record<string, unknown> = {
+    leftJoin: () => {
+      joined = true;
+      return chain;
+    },
+    where: (condition: SQL) => {
+      where = condition;
+      return chain;
+    },
+    groupBy: (...args: SQL[]) => {
+      groupBy.push(...args);
+      return chain;
+    },
+    orderBy: (...args: SQL[]) => {
+      orderBy.push(...args);
+      return chain;
+    },
+  };
+  // Thenable, para que el `await` de la función resuelva sin base de datos.
+  chain.then = (resolve: (rows: unknown[]) => void) => resolve([]);
+
+  const reader = {
+    select: (selected: Record<string, SQL>) => {
+      fields = selected;
+      return { from: () => chain };
+    },
+  };
+
+  void findDeclarableSalesByKind(range, reader as never);
+
+  if (!fields || !where) throw new Error('findDeclarableSalesByKind no construyó la consulta');
+  return { fields, where, joined, groupBy, orderBy };
+}
+
+const DECLARABLE_RANGE = {
+  from: new Date('2026-09-01T05:00:00.000Z'),
+  to: new Date('2026-10-01T05:00:00.000Z'),
+};
+
+// El filtro se compila contra el mismo alias del padre que usa la consulta real: la
+// disyunción de la condición (c) se apoya en él, y probarlo con otro alias probaría
+// otra consulta.
+const declarableFilter = () =>
+  dialect.sqlToQuery(captureDeclarableQuery(DECLARABLE_RANGE).where);
+
+describe('buildDeclarableFilter', () => {
+  // Se exporta para poder compilarla suelta, pero probar una copia no probaría nada: la
+  // aserción es que el texto compilado a mano y el que la consulta envía son el mismo.
+  it('is the very WHERE that findDeclarableSalesByKind sends, not a lookalike', () => {
+    const parent = alias(electronicDocuments, 'parent_document');
+    const direct = dialect.sqlToQuery(buildDeclarableFilter(DECLARABLE_RANGE, parent));
+
+    expect(direct.sql).toBe(declarableFilter().sql);
+    expect(direct.params).toEqual(declarableFilter().params);
+  });
+
+  it('bounds the lower end of issued_at (AC4)', () => {
+    expect(declarableFilter().sql).toMatch(/"issued_at" >= \$\d/);
+  });
+
+  it('closes the window with a strict upper bound: it is semi-open, like orders (AC4)', () => {
+    const query = declarableFilter();
+
+    expect(query.sql).toMatch(/"issued_at" < \$\d/);
+    expect(query.sql).not.toMatch(/"issued_at" <= \$\d/);
+  });
+
+  // AC4: el rango se aplica sobre `issued_at` y nunca sobre `created_at`, `updated_at`
+  // ni la fecha del pedido. `updated_at` lleva `$onUpdate` y movería la venta de mes.
+  it('never bounds the range by created_at or updated_at', () => {
+    const query = declarableFilter();
+
+    expect(query.sql).not.toContain('"created_at"');
+    expect(query.sql).not.toContain('"updated_at"');
+  });
+
+  it('counts only issued documents: a voided original does not sum (AC6)', () => {
+    const query = declarableFilter();
+
+    expect(query.sql).toContain('"electronic_documents"."status"');
+    expect(query.params).toContain('issued');
+  });
+
+  // El punto de §5.2: un documento cuenta si no tiene padre —es un original— o si su
+  // padre sigue `issued`. Sin la disyunción, una anulación total fuera de ventana
+  // declararía ventas negativas (D-1, AC7 a AC11).
+  it('keeps the disjunction "no parent OR parent still issued" (D-1)', () => {
+    const query = declarableFilter();
+
+    expect(query.sql).toContain(
+      '("electronic_documents"."related_document_id" is null or "parent_document"."status" = ',
+    );
+  });
+
+  it('decides by the parent state and never by a list of reason codes (D-1)', () => {
+    const query = declarableFilter();
+
+    expect(query.sql).not.toContain('"reason_code"');
+    expect(query.params).not.toContain('01');
+    expect(query.params).not.toContain('06');
+  });
+
+  // La `comunicacion_baja` sale sola por la condición (c): su padre siempre queda
+  // `voided` al emitirse ella. No hay cláusula que la nombre (AC7).
+  it('never names comunicacion_baja: it leaves the sum through the parent rule (AC7)', () => {
+    expect(declarableFilter().sql).not.toContain('comunicacion_baja');
+  });
+
+  it('sends both instants as parameters, serialized by the timestamptz mapper', () => {
+    const query = declarableFilter();
+
+    expect(query.params).toContain('2026-09-01T05:00:00.000Z');
+    expect(query.params).toContain('2026-10-01T05:00:00.000Z');
+  });
+
+  it('never inlines the instants into the SQL text', () => {
+    expect(declarableFilter().sql).not.toContain('2026-09-01');
+  });
+
+  it('never filters by category: the summary is the whole period (AC18)', () => {
+    expect(declarableFilter().sql).not.toContain('"category"');
+  });
+});
+
+describe('findDeclarableSalesByKind', () => {
+  const fields = () => captureDeclarableQuery(DECLARABLE_RANGE).fields;
+  const field = (key: string) => dialect.sqlToQuery(fields()[key]);
+
+  it('joins the parent by its primary key, so the indexed side is the PK (§5.1)', () => {
+    expect(captureDeclarableQuery(DECLARABLE_RANGE).joined).toBe(true);
+  });
+
+  // D-5: con un `coalesce` en el SELECT, el ordinal es la forma que no puede
+  // desalinearse. Repetir la expresión —o reutilizar la plantilla `sql` entre
+  // cláusulas— es la condición exacta que produjo el 42803 del spec 015.
+  it('groups by ordinal and not by the expression', () => {
+    const { groupBy } = captureDeclarableQuery(DECLARABLE_RANGE);
+
+    expect(groupBy).toHaveLength(1);
+    expect(dialect.sqlToQuery(groupBy[0]).sql).toBe('1');
+  });
+
+  it('orders by ordinal too: the enum already puts boleta before factura', () => {
+    const { orderBy } = captureDeclarableQuery(DECLARABLE_RANGE);
+
+    expect(orderBy).toHaveLength(1);
+    expect(dialect.sqlToQuery(orderBy[0]).sql).toBe('1');
+  });
+
+  it('does not repeat the coalesce in the grouping clauses', () => {
+    const { groupBy, orderBy } = captureDeclarableQuery(DECLARABLE_RANGE);
+
+    for (const clause of [...groupBy, ...orderBy]) {
+      expect(dialect.sqlToQuery(clause).sql).not.toContain('coalesce');
+    }
+  });
+
+  // AC12: la familia es la del padre cuando lo hay, leída de `related_document_id` y no
+  // de la letra de la serie (D-2).
+  it('takes the family from the parent when there is one, never from the series', () => {
+    const query = field('kind');
+
+    expect(query.sql).toBe(
+      'coalesce("parent_document"."kind", "electronic_documents"."kind")',
+    );
+    expect(query.sql).not.toContain('"series"');
+  });
+
+  // El signo lo da el `kind`: original +, nota de crédito −, nota de débito +.
+  it('negates only credit notes in the signed sum', () => {
+    const query = field('amountCents');
+
+    expect(query.sql).toContain(`case when "electronic_documents"."kind" = 'nota_credito'`);
+    expect(query.sql).toContain('then -"electronic_documents"."amount_cents"');
+    expect(query.sql).toContain('else "electronic_documents"."amount_cents"');
+  });
+
+  it('does not negate debit notes: they add (AC11)', () => {
+    expect(field('amountCents').sql).not.toContain(`= 'nota_debito'`);
+  });
+
+  // 017 D-11, agravado aquí: la suma lleva signo, así que el int4 desborda por los dos
+  // extremos.
+  it('casts the signed sum to bigint and coalesces it to 0', () => {
+    const query = field('amountCents');
+
+    expect(query.sql).toContain('::bigint');
+    expect(query.sql).toContain('coalesce');
+  });
+
+  it('counts originals and adjustments apart, each with its own FILTER', () => {
+    expect(field('documentCount').sql).toBe(
+      'count(*) filter (where "electronic_documents"."related_document_id" is null)::int',
+    );
+    expect(field('adjustmentCount').sql).toBe(
+      'count(*) filter (where "electronic_documents"."related_document_id" is not null)::int',
+    );
+  });
+
+  it('publishes exactly the four columns of DeclarableSalesByKind', () => {
+    expect(Object.keys(fields())).toEqual([
+      'kind',
+      'amountCents',
+      'documentCount',
+      'adjustmentCount',
+    ]);
+  });
+
+  // D-13: `base_cents` e `igv_cents` existen en la tabla desde el spec 022 y son el
+  // insumo del sub-proyecto #4. Publicarlos aquí fijaría esa decisión desde la pantalla
+  // equivocada.
+  it('never reads base_cents nor igv_cents: this spec publishes totals, not tax', () => {
+    for (const key of Object.keys(fields())) {
+      expect(field(key).sql).not.toContain('"base_cents"');
+      expect(field(key).sql).not.toContain('"igv_cents"');
+    }
+  });
+});
+
+function captureUninvoicedQuery(range: { from: Date; to: Date }) {
+  let where: SQL | undefined;
+
+  const reader = {
+    select: () => ({
+      from: () => ({
+        where: (condition: SQL) => {
+          where = condition;
+          return Promise.resolve([]);
+        },
+      }),
+    }),
+  };
+
+  void findUninvoicedPaidOrderCount(range, reader as never);
+
+  if (!where) throw new Error('findUninvoicedPaidOrderCount no construyó ningún WHERE');
+  return dialect.sqlToQuery(where);
+}
+
+describe('findUninvoicedPaidOrderCount', () => {
+  const query = () => captureUninvoicedQuery(DECLARABLE_RANGE);
+
+  it('counts only paid orders: the indicator is a subset of confirmed sales', () => {
+    expect(query().sql).toContain('"orders"."status"');
+    expect(query().params).toContain('paid');
+  });
+
+  it('bounds created_at with the same semi-open window as findSalesTotals', () => {
+    expect(query().sql).toMatch(/"orders"\."created_at" >= \$\d/);
+    expect(query().sql).toMatch(/"orders"\."created_at" < \$\d/);
+    expect(query().sql).not.toMatch(/"orders"\."created_at" <= \$\d/);
+  });
+
+  it('uses NOT EXISTS and not a left join with an is-null test', () => {
+    expect(query().sql).toContain('not exists (select 1 from "electronic_documents"');
+  });
+
+  // AC16 y AC17: la subconsulta exige original **y** emitido. Sin `related_document_id
+  // is null`, una nota de crédito taparía la falta del comprobante; sin
+  // `status = 'issued'`, un `pending` o un `failed` contarían como emitidos.
+  it('requires the document to be an original: related_document_id is null', () => {
+    expect(query().sql).toContain('"electronic_documents"."related_document_id" is null');
+  });
+
+  it('requires the original to be issued, so pending and failed still count (AC16)', () => {
+    expect(query().sql).toContain('"electronic_documents"."status" = ');
+    expect(query().params).toEqual([
+      'paid',
+      '2026-09-01T05:00:00.000Z',
+      '2026-10-01T05:00:00.000Z',
+      'issued',
+    ]);
+  });
+
+  it('correlates the subquery with the order at hand', () => {
+    expect(query().sql).toContain('"electronic_documents"."order_id" = "orders"."id"');
+  });
+
+  it('never inlines the instants into the SQL text', () => {
+    expect(query().sql).not.toContain('2026-09-01');
+  });
+
+  it('never filters by category: the summary is the whole period (AC18)', () => {
+    expect(query().sql).not.toContain('"category"');
   });
 });
 

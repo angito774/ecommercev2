@@ -42,14 +42,23 @@ export const DOCUMENT_SERIES_KEYS = [
 
 export type DocumentSeriesKey = (typeof DOCUMENT_SERIES_KEYS)[number];
 
-// Los dos únicos `kind` que este spec inserta, y los dos únicos que pueden ser el padre
-// de una corrección. Tipo propio porque es lo que `seriesKeyFor` exige como segundo
-// argumento: aceptar `ElectronicDocumentKind` dejaría representable «nota de crédito de
-// una nota de crédito», que no existe.
-export type OriginalDocumentKind = Extract<ElectronicDocumentKind, 'boleta' | 'factura'>;
+// Los dos únicos `kind` que el spec 022 inserta, y los dos únicos que pueden ser el padre
+// de una corrección. Tupla exportada y no tres copias sueltas (spec 025, D-7): la usan el
+// `WHERE` de `buildIssuedOriginalFilter()`, el tipo de abajo y `isOriginalKind()`, así que
+// las tres formas de preguntar lo mismo no pueden separarse.
+export const ORIGINAL_DOCUMENT_KINDS = ['boleta', 'factura'] as const;
+
+// Tipo propio porque es lo que `seriesKeyFor` exige como segundo argumento: aceptar
+// `ElectronicDocumentKind` dejaría representable «nota de crédito de una nota de
+// crédito», que no existe. El `Extract` mantiene la relación con el enum: si un día se
+// quitara `boleta` del catálogo, este tipo dejaría de compilar en vez de quedar suelto.
+export type OriginalDocumentKind = Extract<
+  ElectronicDocumentKind,
+  (typeof ORIGINAL_DOCUMENT_KINDS)[number]
+>;
 
 export function isOriginalKind(kind: ElectronicDocumentKind): kind is OriginalDocumentKind {
-  return kind === 'boleta' || kind === 'factura';
+  return (ORIGINAL_DOCUMENT_KINDS as readonly ElectronicDocumentKind[]).includes(kind);
 }
 
 // `null` = el documento no consume correlativo propio. Hoy solo `comunicacion_baja`,

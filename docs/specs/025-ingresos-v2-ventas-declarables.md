@@ -1,7 +1,7 @@
 ---
 id: 025
 title: Ingresos v2 — ventas confirmadas y ventas declarables
-status: approved
+status: done
 module: finance
 scope: admin
 created: 2026-09-22
@@ -522,7 +522,7 @@ Ningún componente importa `db`, Drizzle ni el repositorio.
 Orden de dependencia: catálogo → tipos → repositorio → tests → handler → copys
 → vista → documentación → cierre.
 
-- [ ] **T1** — Exportar `ORIGINAL_DOCUMENT_KINDS` (tupla `as const` con
+- [x] **T1** — Exportar `ORIGINAL_DOCUMENT_KINDS` (tupla `as const` con
       `'boleta'`, `'factura'`), derivar de ella el tipo `OriginalDocumentKind` y
       reescribir `isOriginalKind()` como una comprobación sobre la tupla;
       sustituir el `ORIGINAL_KINDS` privado de
@@ -533,17 +533,17 @@ Orden de dependencia: catálogo → tipos → repositorio → tests → handler 
       · nota: los dos archivos en una sola tarea por lo mismo que el T5 del spec
       017: exportar la tupla y dejar la copia privada viva es no haber hecho el
       cambio
-- [ ] **T2** — Tipos `DeclarableSalesByKind`, `DeclarableSales` y el campo
+- [x] **T2** — Tipos `DeclarableSalesByKind`, `DeclarableSales` y el campo
       `declarableSales` en `FinanceSummary`, con los comentarios de §6.1 ·
       archivo: `src/modules/finance/types/finance.types.ts` · verificación:
       `npm run typecheck`
-- [ ] **T3** — `buildDeclarableFilter()` y `findDeclarableSalesByKind()` según
+- [x] **T3** — `buildDeclarableFilter()` y `findDeclarableSalesByKind()` según
       §5.3: alias del padre con `alias()`, `leftJoin` por
       `p.id = d.related_document_id`, el `CASE` del signo, los dos `FILTER` de
       conteo y `group by 1 / order by 1` · archivo:
       `src/server/repositories/finance.repository.ts` · verificación:
       `npm run typecheck`
-- [ ] **T4** — Tests de `buildDeclarableFilter` con `PgDialect`, siguiendo el
+- [x] **T4** — Tests de `buildDeclarableFilter` con `PgDialect`, siguiendo el
       patrón ya establecido en `finance.repository.test.ts`: el filtro acota los
       dos extremos de `issued_at` y el superior es **estricto** (`<`, no `<=`);
       exige `status = 'issued'`; contiene la disyunción
@@ -552,47 +552,47 @@ Orden de dependencia: catálogo → tipos → repositorio → tests → handler 
       `findDeclarableSalesByKind` agrupa por ordinal y no por la expresión ·
       archivo: `src/server/repositories/finance.repository.test.ts` ·
       verificación: `npm test`
-- [ ] **T5** — `findUninvoicedPaidOrderCount()` según §5.3, con el `NOT EXISTS`
+- [x] **T5** — `findUninvoicedPaidOrderCount()` según §5.3, con el `NOT EXISTS`
       sobre originales `issued` · archivo:
       `src/server/repositories/finance.repository.ts` · verificación:
       `npm run typecheck`
-- [ ] **T6** — Tests del SQL compilado de T5: filtra `status = 'paid'`, acota
+- [x] **T6** — Tests del SQL compilado de T5: filtra `status = 'paid'`, acota
       `created_at` con la ventana semiabierta, usa `not exists` y su subconsulta
       exige `related_document_id is null` y `status = 'issued'` · archivo:
       `src/server/repositories/finance.repository.test.ts` · verificación:
       `npm test`
-- [ ] **T7** — El handler pasa a cinco lecturas en paralelo y deriva
+- [x] **T7** — El handler pasa a cinco lecturas en paralelo y deriva
       `declarableSales.amountCents` sumando el desglose (§6.3) · archivo:
       `src/app/api/admin/finance/summary/route.ts` · verificación:
       `npm run typecheck && npm run lint`
-- [ ] **T8** — Copys nuevos en `constants.ts`: títulos de las dos cards,
+- [x] **T8** — Copys nuevos en `constants.ts`: títulos de las dos cards,
       etiquetas del desglose, estado vacío de ventas declarables, texto del
       indicador de salud y la nota informativa del encabezado · archivo:
       `src/modules/finance/constants.ts` · verificación: `npm run typecheck`
-- [ ] **T9** — En `finance-summary-cards.tsx`: rotular la primera card «Ventas
+- [x] **T9** — En `finance-summary-cards.tsx`: rotular la primera card «Ventas
       confirmadas», añadir la card «Ventas declarables» con un
       `DeclarableSalesFooter` local —dos barras de ancho porcentual en CSS, sin
       Recharts, al estilo de `ExpensesByCategory`—, pasar la rejilla a
       `sm:grid-cols-2 lg:grid-cols-3` y los esqueletos de cuatro a cinco ·
       archivo: `src/modules/finance/components/finance-summary-cards.tsx` ·
       verificación: `npm run typecheck && npm run lint`
-- [ ] **T10** — Componente del indicador de salud: recibe el conteo por props,
+- [x] **T10** — Componente del indicador de salud: recibe el conteo por props,
       no pinta nada cuando es cero y enlaza a `/admin/orders` con `next/link` ·
       archivo:
       `src/modules/finance/components/uninvoiced-orders-notice.tsx` ·
       verificación: `npm run typecheck`
-- [ ] **T11** — Montar el indicador bajo las cards, pasándole
+- [x] **T11** — Montar el indicador bajo las cards, pasándole
       `summary?.declarableSales.uninvoicedOrderCount` · archivo:
       `src/modules/finance/components/finance-overview.tsx` · verificación:
       `npm run typecheck && npm run lint`
-- [ ] **T12** — Línea en el encabezado que explique por qué hay dos cifras de
+- [x] **T12** — Línea en el encabezado que explique por qué hay dos cifras de
       ventas y en qué se diferencian · archivo:
       `src/app/(admin)/admin/finance/page.tsx` · verificación:
       `npm run typecheck`
-- [ ] **T13** — Documentar en `docs/SETUP.md` §6 que el módulo financiero
+- [x] **T13** — Documentar en `docs/SETUP.md` §6 que el módulo financiero
       publica ahora ventas declarables, **sin** tocar §5.3: no hay cambio de
       esquema que registrar · archivo: `docs/SETUP.md` · verificación: lectura
-- [ ] **T14** — Cierre: confirmar que `drizzle/` sigue en
+- [x] **T14** — Cierre: confirmar que `drizzle/` sigue en
       `0012_careful_cargill` y que no se generó ninguna migración (AC21) ·
       verificación: `npm run typecheck && npm run lint && npm test && npm run build`
 

@@ -13,6 +13,7 @@ import { ExpensesByCategory } from './expenses-by-category';
 import { ExpensesTable } from './expenses-table';
 import { FinanceRangeFilter } from './finance-range-filter';
 import { FinanceSummaryCards } from './finance-summary-cards';
+import { UninvoicedOrdersNotice } from './uninvoiced-orders-notice';
 
 const EMPTY_BREAKDOWN: never[] = [];
 
@@ -62,6 +63,10 @@ export function FinanceOverview() {
         message={query.error?.message}
         onRetry={onRetry}
       />
+
+      {/* Bajo las cards: explica la brecha entre las dos cifras de ventas que acaban de
+          leerse. No se pinta con cero ni mientras carga (D-12). */}
+      <UninvoicedOrdersNotice count={summary?.declarableSales.uninvoicedOrderCount} />
 
       <ExpensesByCategory
         rows={summary?.expensesByCategory ?? EMPTY_BREAKDOWN}

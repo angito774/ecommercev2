@@ -11,6 +11,7 @@ import {
   ELECTRONIC_DOCUMENT_STATUSES,
   formatDocumentLabel,
   isOriginalKind,
+  ORIGINAL_DOCUMENT_KINDS,
   REASONS_BY_INTENT,
   reasonLabelFor,
   seriesKeyFor,
@@ -83,6 +84,26 @@ describe('isOriginalKind', () => {
     expect(isOriginalKind('nota_credito')).toBe(false);
     expect(isOriginalKind('nota_debito')).toBe(false);
     expect(isOriginalKind('comunicacion_baja')).toBe(false);
+  });
+
+  // D-7: las dos formas de preguntar lo mismo salen de la misma tupla, así que no pueden
+  // separarse. Sin esto, alguien podría ampliar la tupla y dejar el predicado atrás.
+  it('agrees with ORIGINAL_DOCUMENT_KINDS for every kind of the catalogue', () => {
+    for (const kind of ELECTRONIC_DOCUMENT_KINDS) {
+      expect(isOriginalKind(kind)).toBe(
+        (ORIGINAL_DOCUMENT_KINDS as readonly string[]).includes(kind),
+      );
+    }
+  });
+
+  // La tupla no es una lista suelta: todos sus valores pertenecen al catálogo, y son
+  // exactamente los dos que el `CHECK electronic_documents_original_has_no_parent`
+  // nombra como «sin padre».
+  it('keeps the tuple inside the catalogue, with no duplicates', () => {
+    expect(ORIGINAL_DOCUMENT_KINDS).toEqual(['boleta', 'factura']);
+    for (const kind of ORIGINAL_DOCUMENT_KINDS) {
+      expect(ELECTRONIC_DOCUMENT_KINDS).toContain(kind);
+    }
   });
 });
 

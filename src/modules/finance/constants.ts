@@ -1,3 +1,5 @@
+import type { OriginalDocumentKind } from '@/lib/electronic-documents';
+
 import {
   EXPENSE_CATEGORIES,
   type ExpenseCategory,
@@ -111,6 +113,62 @@ export const SUPPLIER_RUC_HINT =
 export const SUPPLIER_NAME_HINT = 'Razón social tal y como figura en el comprobante.';
 
 export const RECEIPT_SERIES_HINT = 'Opcional, pero serie y número van juntos.';
+
+// ── Ventas confirmadas y declarables (spec 025) ─────────────────────────────
+
+// Solo la etiqueta cambia: el cálculo y el campo del contrato (`revenueCents`) son los
+// de siempre (D-3, AC3). Se rotula «confirmadas» y no «por ventas» porque ahora hay dos
+// cifras de ventas en la misma pantalla y el rótulo tiene que decir cuál es cuál.
+export const CONFIRMED_SALES_CARD_TITLE = 'Ventas confirmadas';
+
+export const DECLARABLE_SALES_CARD_TITLE = 'Ventas declarables';
+
+// El pie de la card «Ventas confirmadas»: dice qué mide, porque el primer instinto ante
+// dos números distintos es pensar que uno está mal (§10).
+export const CONFIRMED_SALES_HINT = 'Cobrado por Stripe';
+
+export const DECLARABLE_SALES_HINT = 'Emitido ante SUNAT, neto de correcciones';
+
+// Etiquetas cortas del desglose: en un pie de card de dos filas, «Boleta de venta
+// electrónica» de `ELECTRONIC_DOCUMENT_KIND_LABELS` ocupa más que el importe que
+// acompaña. `Record` total sobre `OriginalDocumentKind`, así que añadir un `kind` sin
+// padre rompería el typecheck aquí en vez de pintar el código crudo.
+export const DECLARABLE_SALES_KIND_LABELS: Record<OriginalDocumentKind, string> = {
+  boleta: 'Boletas',
+  factura: 'Facturas',
+};
+
+// La etiqueta del importe negativo. Un total en negativo es real y frecuente —las notas
+// de crédito emitidas en el rango corrigen ventas facturadas en otro—, y el glifo «−» a
+// secas no lo comunica: se lee como un importe positivo más. Va en minúscula porque
+// sigue a la cifra («-S/ 1,000.00 crédito neto» — Intl es-PE pone el signo antes
+// del símbolo, no antes de la cifra), no la encabeza.
+export const DECLARABLE_SALES_NET_CREDIT_LABEL = 'crédito neto';
+
+// Un rango sin comprobantes emitidos no es un error ni una carga: es S/ 0.00 con su copy
+// (AC14). Dice «no se emitió» y no «faltan datos» porque el desglose oculta a propósito
+// las familias sin filas, y el copy no debe sugerir que se perdió algo (§10).
+export const EMPTY_DECLARABLE_SALES_MESSAGE = 'No se emitió ningún comprobante en el rango.';
+
+// El indicador de salud. Solo aparece con conteo mayor que cero (D-12): una línea
+// permanente que casi siempre dice cero es ruido que se deja de leer.
+export const UNINVOICED_ORDERS_LINK_LABEL = 'Ir a pedidos';
+
+// El indicador cuenta, no resuelve: la emisión y sus reintentos viven en `/admin/orders`
+// (§3). Si el número crece mes a mes, el problema es que nadie está emitiendo, no esta
+// pantalla (§10).
+export const UNINVOICED_ORDERS_HINT =
+  'Están cobrados, pero todavía no tienen comprobante emitido ante SUNAT. La emisión es manual y se hace desde el panel de pedidos.';
+
+// El enlace va a `/admin/orders` **a secas** (D-11): aquella tabla guarda sus filtros en
+// `useState` y no lee la URL, así que una query string no filtraría nada y el enlace
+// prometería algo que no pasa.
+export const UNINVOICED_ORDERS_HREF = '/admin/orders';
+
+// El aviso del encabezado: las dos cifras casi nunca coinciden, y eso no es un fallo
+// (§10). Se dice aquí, arriba del todo, porque es interpretación y no código.
+export const DECLARABLE_SALES_INFORMATIVE_NOTE =
+  'Las ventas confirmadas son lo cobrado por Stripe; las declarables, lo emitido ante SUNAT neto de notas de crédito y débito. Casi nunca coinciden: la emisión es manual, un pedido cobrado el día 30 puede facturarse el 1, y una corrección posterior cambia lo facturado sin devolver el cobro.';
 
 // ── Precio unitario (spec 021) ──────────────────────────────────────────────
 

@@ -6,6 +6,7 @@ import { marginPercent } from '@/modules/finance/lib/finance-math';
 import { resolveFinanceRange } from '@/modules/finance/lib/finance-range';
 import { financeRangeSchema } from '@/modules/finance/schemas/finance.schema';
 import type {
+  DeclarableSales,
   FinanceSummaryResponse,
   PurchaseIgvTotals,
 } from '@/modules/finance/types/finance.types';
@@ -31,13 +32,16 @@ export async function GET(request: Request) {
     const now = new Date();
     const range = resolveFinanceRange(parsed.data, now);
 
-    // En paralelo: tres lecturas fijas e independientes, así que el coste es el de la
-    // más lenta y no la suma.
-    const [sales, expenseTotals, byCategory] = await Promise.all([
-      financeRepository.findSalesTotals(range),
-      financeRepository.findExpenseTotals(range),
-      financeRepository.findExpenseTotalsByCategory(range),
-    ]);
+    // En paralelo: cinco lecturas fijas e independientes, así que el coste es el de la
+    // más lenta y no la suma (015, D-5).
+    const [sales, expenseTotals, byCategory, declarableByKind, uninvoicedOrderCount] =
+      await Promise.all([
+        financeRepository.findSalesTotals(range),
+        financeRepository.findExpenseTotals(range),
+        financeRepository.findExpenseTotalsByCategory(range),
+        financeRepository.findDeclarableSalesByKind(range),
+        financeRepository.findUninvoicedPaidOrderCount(range),
+      ]);
 
     // Resta de enteros en céntimos; puede ser negativo (AC9). La división por 100 solo
     // ocurre al formatear en la vista (AC22).
@@ -61,8 +65,17 @@ export async function GET(request: Request) {
       nonCreditableCount: igvCount - igvCreditableCount,
     };
 
+    // El total se **deriva del desglose** con una suma entera y no con una segunda
+    // consulta: así es imposible que el total y sus partes discrepen (025, AC13, D-4).
+    // Misma técnica que la resta con la que se deriva `nonCreditableCents`.
+    const declarableSales: DeclarableSales = {
+      amountCents: declarableByKind.reduce((total, row) => total + row.amountCents, 0),
+      byKind: declarableByKind,
+      uninvoicedOrderCount,
+    };
+
     // Un rango sin ventas y sin gastos es un 200 con ceros, nunca un 404: el recurso
-    // «resumen del rango» existe siempre (AC11).
+    // «resumen del rango» existe siempre (AC11, 025 AC14).
     const body: FinanceSummaryResponse = {
       data: {
         ...sales,
@@ -73,6 +86,9 @@ export async function GET(request: Request) {
         // Dato al lado, no un sumando: `netCents` y `marginPercent` siguen diciendo
         // exactamente lo que decían antes de este spec (§3).
         purchaseIgv,
+        // Cifra aparte y no un reemplazo de `revenueCents`: el resultado del período
+        // sigue restando los gastos a las **ventas confirmadas** (025, D-10).
+        declarableSales,
       },
       meta: {
         range: { from: range.fromDay, to: range.toDay },

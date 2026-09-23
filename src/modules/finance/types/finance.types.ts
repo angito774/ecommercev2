@@ -1,3 +1,4 @@
+import type { OriginalDocumentKind } from '@/lib/electronic-documents';
 import type { PurchaseReceiptType } from '@/lib/purchase-receipts';
 import type { expenses } from '@/server/db/schema';
 
@@ -44,9 +45,40 @@ export type PurchaseIgvTotals = {
   nonCreditableCount: number;
 };
 
+// Una fila por familia de comprobante, neta de **sus propias** correcciones: la nota de
+// crédito de una factura no descuenta del total de boletas (AC12). La familia es la del
+// padre cuando el documento es una corrección, y por eso solo puede valer `boleta` o
+// `factura`: son los dos únicos `kind` sin padre.
+export type DeclarableSalesByKind = {
+  kind: OriginalDocumentKind;
+  /** Originales menos notas de crédito más notas de débito, en céntimos. */
+  amountCents: number;
+  /** Comprobantes originales contados. */
+  documentCount: number;
+  /** Notas de crédito y débito contadas. Explica por qué el neto no es el bruto. */
+  adjustmentCount: number;
+};
+
+export type DeclarableSales = {
+  /** Suma exacta de `byKind[].amountCents`: se deriva de ellas, no de otra consulta (AC13). */
+  amountCents: number;
+  /** Solo las familias con al menos un documento contado, `boleta` antes que `factura`. */
+  byKind: DeclarableSalesByKind[];
+  /**
+   * Pedidos `paid` del rango sin comprobante original `issued`. Es la brecha entre las
+   * dos cifras, no un error: la emisión es manual (022, D-8).
+   */
+  uninvoicedOrderCount: number;
+};
+
 export type FinanceSummary = {
-  // Lo cobrado: `sum(amount_total_cents)` de los pedidos `paid`, envío incluido
-  // (D-10). Mismo número que el KPI de ventas del dashboard para igual rango.
+  /**
+   * Ventas **confirmadas**: lo cobrado, `sum(amount_total_cents)` de los pedidos `paid`,
+   * envío incluido (017, D-10). Mismo número que el KPI de ventas del dashboard para
+   * igual rango. El nombre del campo no cambia en el spec 025 —solo la etiqueta de la
+   * card— porque renombrarlo tocaría service, hook y componentes sin mover un solo
+   * número (025, D-3).
+   */
   revenueCents: number;
   orderCount: number;
   expensesCents: number;
@@ -61,6 +93,12 @@ export type FinanceSummary = {
   // Dato al lado, no un sumando: el IGV de compras no entra en `netCents` ni en
   // `marginPercent`, que siguen diciendo exactamente lo que decían (§3).
   purchaseIgv: PurchaseIgvTotals;
+  /**
+   * Ventas **declarables**: lo facturado ante SUNAT neto de correcciones. Cifra aparte y
+   * no un reemplazo: `netCents` y `marginPercent` siguen restando los gastos a
+   * `revenueCents` y dicen exactamente lo que decían (025, §3, D-10).
+   */
+  declarableSales: DeclarableSales;
 };
 
 export type FinanceSummaryResponse = {

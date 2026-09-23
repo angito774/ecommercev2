@@ -736,7 +736,8 @@ Dashboard con métricas (Recharts: ventas, pedidos, top productos, stock bajo) �
 CRUD de productos y categorías (TanStack Table: paginación, orden, filtros) ·
 gestión de pedidos y cambio de estado · control de inventario con notas de ingreso y
 salida · resumen financiero
-con registro de gastos operativos · precio unitario con costo promedio y margen por
+con ventas confirmadas y declarables, registro de gastos operativos y crédito fiscal de
+compras · precio unitario con costo promedio y margen por
 producto · personal y nómina · emisión manual de comprobantes electrónicos ·
 listado de clientes.
 
@@ -976,6 +977,81 @@ padrón de SUNAT —la comprobación es aritmética y offline: dice que el núme
 tecleado al azar, no que exista—, adjuntar el PDF del comprobante, retroactividad,
 detracciones y retenciones, tasas distintas del 18 %, afectación por línea de gasto, y
 filtro por comprobante o búsqueda por RUC en la tabla (D-15).
+
+Ampliado a 2026-09-22: **ventas declarables** (spec 025). **Sin migración** —el journal
+de `drizzle/` se queda en `0012_careful_cargill`— y **sin permiso nuevo**: el catálogo
+sigue en 29 códigos y toda la pantalla sigue detrás de `finance.read`. Las tres columnas
+que hacían falta (`issued_at`, `base_cents`, `igv_cents`) y los dos índices que sostienen
+las consultas ya existían: el spec 022 los construyó por adelantado (§5.6). Ninguna ruta
+nueva tampoco: `GET /api/admin/finance/summary` gana `data.declarableSales` y pasa de
+tres lecturas en paralelo a cinco.
+
+El módulo responde ahora «cuánto entró» con **dos** cifras que no coinciden y no tienen
+por qué. **Ventas confirmadas** es la de siempre —`sum(amount_total_cents)` de los
+pedidos `paid`, envío incluido— y solo cambia su etiqueta en la card: el campo del
+contrato **sigue llamándose `revenueCents`** (D-3), porque renombrarlo movería tipo,
+handler, repositorio, service, hook y dos componentes sin alterar un céntimo y rompería
+cualquier caché de TanStack Query en vuelo durante el despliegue. **Ventas declarables**
+es lo emitido ante SUNAT neto de correcciones, agregado sobre `electronic_documents` por
+`issued_at` y nunca por `created_at` ni `updated_at` —`updated_at` lleva `$onUpdate` y
+movería una venta de mes—. `netCents` y `marginPercent` siguen restando los gastos a las
+**confirmadas** (D-10): alinear el resultado con lo declarado es el sub-proyecto #5.
+
+**La regla de conteo es el punto delicado y se apartó del diseño aprobado.** Aquel
+proponía restar toda nota de crédito `issued`, razonando que la `comunicacion_baja` no
+resta porque ya deja `voided` al original. El razonamiento es correcto pero la baja **no
+es el único documento que anula a su padre**: `voidsParent()`
+(`src/modules/invoicing/lib/adjustment.ts`) devuelve `true` también para una nota de
+crédito con motivo 01, 06, 02 o 03, y `voidParentAndReissue()` ejecuta ese `markVoided`
+**dentro de la misma transacción** que emite la nota. Con la fórmula del diseño, una
+anulación total fuera de ventana declara ventas **negativas** y una corrección de
+comprador declara cero: dos de los cinco caminos de ajuste del spec 023 dan un número
+falso, y el primero es el camino frecuente en cuanto pasan unos días.
+
+La regla que se implementó es una sola, positiva y sin lista de motivos: **un documento
+cuenta cuando está `issued`, su `issued_at` cae en el rango y la venta que documenta
+sigue contando —es un original, o su padre sigue `issued`—**; el signo lo da el `kind`
+(original `+`, nota de crédito `−`, nota de débito `+`). Da el número correcto en los
+cinco caminos, absorbe la `comunicacion_baja` sin tratarla como caso especial —su padre
+siempre queda `voided` al emitirse ella— y **no depende de los códigos de motivo**: si el
+spec 023 cambiara qué motivos anulan, la consulta sigue valiendo. Vive en
+`buildDeclarableFilter()` (`finance.repository.ts`), exportada para compilarla con
+`PgDialect`, porque equivocarse ahí es declarar ventas que no existen.
+
+El desglose sale de **una sola consulta** con auto-join al padre, agrupada por familia de
+comprobante: la nota de crédito de una factura descuenta de facturas y nunca de boletas,
+y el parentesco se lee de `related_document_id` y no de la letra de la serie (D-2). Se
+agrupa y se ordena **por ordinal** (`group by 1`), que es la precaución que este mismo
+repositorio dejó escrita tras el `42803` del spec 015: con un `coalesce` en el `SELECT`,
+el ordinal es la única forma que no puede desalinearse. El total lo **deriva el handler
+sumando el desglose**, no una segunda consulta, así que es imposible que el total y sus
+partes discrepen. Solo aparecen las familias con al menos una fila contada, igual que
+`expensesByCategory`. `base_cents` e `igv_cents` **no se publican** aunque existan desde
+022: son el insumo del sub-proyecto #4, que decidirá cómo se agregan (D-13).
+
+El indicador de salud cuenta los pedidos `paid` del rango sin comprobante original
+`issued`, con un `NOT EXISTS` y en consulta aparte —no un `FILTER` dentro de
+`findSalesTotals()` (D-6): un join en la consulta que calcula `sum(amount_total_cents)`
+abre la puerta a que un cambio de condición duplique filas y falsee la cifra más mirada
+del panel—. Mira «original `issued`», así que un pedido cuyo comprobante quedó `voided` y
+cuyo reemitido sigue `pending` cuenta como pendiente, que es la verdad. No se pinta con
+cero (D-12) y **enlaza a `/admin/orders` a secas**: aquella tabla guarda sus filtros en
+`useState` y no lee la URL, así que una query string no filtraría nada y el enlace
+prometería algo que no pasa (D-11).
+
+Un riesgo que conviene tener escrito: **el período de una venta puede cambiar hacia
+atrás**. Si una nota de crédito anulatoria de octubre deja `voided` un original de
+septiembre, las ventas declarables de septiembre bajan al recargar. Es consecuencia
+directa del modelo del spec 023 y contablemente lo discutible es el caso de la nota de
+crédito —SUNAT la registra en **su** período—; corregirlo exige dejar de anular el padre
+por nota de crédito, que es un cambio de 023. Hasta que el sub-proyecto #4 tenga que
+producir un Registro de Ventas por período cerrado, la cifra es correcta como saldo vivo.
+
+Fuera de alcance de esta ampliación, por decisión: el impuesto a pagar (cruzar esta cifra
+contra el IGV de compras es el sub-proyecto #4), `base_cents`/`igv_cents` en la respuesta,
+el KPI de ventas del dashboard (spec 015, que sigue con su definición), filtros por URL en
+`/admin/orders`, ventas declarables por moneda, serie o vendedor, y exportación del
+Registro de Ventas a CSV.
 
 Construido a 2026-09-17: **personal y nómina** (`/admin/payroll`, spec 018), con
 migración `0007` (§5.4) y **dos** permisos nuevos —el catálogo pasa de 23 a 25
